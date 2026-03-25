@@ -24,11 +24,16 @@ async function processOrder(
   try {
     const fullOrder = await mlApiCall(`/orders/${orderId}`, accessToken);
 
-    // Extrai marketplace_fee dos payments
+    // Extrai marketplace_fee e shipping_cost dos payments
+    let paymentShippingCost = 0;
     if (Array.isArray(fullOrder.payments)) {
       for (const payment of fullOrder.payments) {
         if (payment.marketplace_fee != null) {
           platformFee += Math.abs(Number(payment.marketplace_fee));
+        }
+        // shipping_cost no payment = frete que o COMPRADOR pagou
+        if (payment.shipping_cost != null) {
+          paymentShippingCost += Math.abs(Number(payment.shipping_cost));
         }
       }
     }
@@ -42,46 +47,52 @@ async function processOrder(
       }
     }
 
-    // Busca frete via shipment
+    // shipping.cost do pedido = custo TOTAL do frete (comprador + vendedor)
+    const totalShipping = Number(fullOrder.shipping?.cost || 0);
+
+    // Busca frete via shipment (mais preciso)
     const shippingId = fullOrder.shipping?.id;
+    let gotShipmentData = false;
+
     if (shippingId) {
       try {
         const shipment = await mlApiCall(`/shipments/${shippingId}`, accessToken);
 
-        // sender_cost = frete pago pelo VENDEDOR (Frete Vendedor no Mercado Turbo)
-        if (shipment.sender_cost != null) {
-          shippingCostSeller = Math.abs(Number(shipment.sender_cost));
-        }
-        // receiver_cost = frete pago pelo COMPRADOR (Frete Comprador no Mercado Turbo)
-        if (shipment.receiver_cost != null) {
-          shippingCostBuyer = Math.abs(Number(shipment.receiver_cost));
+        // sender_cost = frete VENDEDOR, receiver_cost = frete COMPRADOR
+        if (shipment.sender_cost != null || shipment.receiver_cost != null) {
+          shippingCostSeller = Math.abs(Number(shipment.sender_cost || 0));
+          shippingCostBuyer = Math.abs(Number(shipment.receiver_cost || 0));
+          gotShipmentData = true;
         }
 
-        // Se nao tem sender_cost/receiver_cost, tenta shipping_option
-        if (shippingCostSeller === 0 && shippingCostBuyer === 0 && shipment.shipping_option) {
+        // Fallback: shipping_option
+        if (!gotShipmentData && shipment.shipping_option) {
           const opt = shipment.shipping_option;
-          const totalCost = Number(opt.cost || 0);
+          const cost = Number(opt.cost || 0);
           const listCost = Number(opt.list_cost || 0);
-          // list_cost geralmente e o que o comprador ve/paga
           shippingCostBuyer = listCost;
-          // Se free shipping (frete gratis), vendedor paga tudo
-          if (listCost === 0 && totalCost > 0) {
-            shippingCostSeller = totalCost;
-          } else {
-            shippingCostSeller = Math.max(0, totalCost - listCost);
-          }
+          shippingCostSeller = listCost === 0 && cost > 0 ? cost : Math.max(0, cost - listCost);
+          gotShipmentData = true;
         }
       } catch {
-        // Shipment nao disponivel - usa dados do search
-        // shipping.cost no search e geralmente o custo do VENDEDOR
-        shippingCostSeller = Number(fullOrder.shipping?.cost || 0);
+        // Shipment nao disponivel
       }
     }
+
+    // Se nao conseguiu do shipment, calcula a partir do total e payment
+    if (!gotShipmentData && totalShipping > 0) {
+      // paymentShippingCost = o que o comprador pagou de frete
+      shippingCostBuyer = paymentShippingCost;
+      // O vendedor paga a diferenca entre o total e o que o comprador pagou
+      shippingCostSeller = Math.max(0, totalShipping - paymentShippingCost);
+    }
   } catch {
-    // Fallback: dados basicos do search
-    // shipping.cost no ML search = custo do VENDEDOR (nao do comprador!)
+    // Fallback total: nao conseguiu nem o pedido completo
     const shipping = mlOrder.shipping as Record<string, unknown> | undefined;
-    shippingCostSeller = Number(shipping?.cost || 0);
+    const totalShipping = Number(shipping?.cost || 0);
+    // Sem dados suficientes, assume frete gratis pro comprador
+    shippingCostSeller = totalShipping;
+    shippingCostBuyer = 0;
   }
 
   // Dados do pedido do search
