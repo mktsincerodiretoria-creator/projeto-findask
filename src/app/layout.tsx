@@ -1,0 +1,37 @@
+import type { Metadata } from "next";
+import localFont from "next/font/local";
+import "./globals.css";
+import Navbar from "@/components/Navbar";
+
+const geistSans = localFont({
+  src: "./fonts/GeistVF.woff",
+  variable: "--font-geist-sans",
+  weight: "100 900",
+});
+const geistMono = localFont({
+  src: "./fonts/GeistMonoVF.woff",
+  variable: "--font-geist-mono",
+  weight: "100 900",
+});
+
+export const metadata: Metadata = {
+  title: "FinDash - Dashboard Financeiro Multi-Plataforma",
+  description: "Dashboard financeiro para Mercado Livre, Shopee, TikTok Shop e Amazon",
+};
+
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
+  return (
+    <html lang="pt-BR">
+      <body
+        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-gray-50`}
+      >
+        <Navbar />
+        <main className="max-w-7xl mx-auto px-4 py-6">{children}</main>
+      </body>
+    </html>
+  );
+}

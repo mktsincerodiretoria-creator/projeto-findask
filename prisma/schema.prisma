@@ -1,0 +1,169 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ========================
+// CONTAS DE MARKETPLACE
+// ========================
+model Account {
+  id           String   @id @default(cuid())
+  platform     Platform
+  platformId   String
+  nickname     String?
+  email        String?
+  accessToken  String
+  refreshToken String?
+  tokenExpires DateTime?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  orders       Order[]
+  products     Product[]
+  syncLogs     SyncLog[]
+
+  @@unique([platform, platformId])
+  @@map("accounts")
+}
+
+enum Platform {
+  MERCADO_LIVRE
+  SHOPEE
+  TIKTOK_SHOP
+  AMAZON
+}
+
+// ========================
+// PRODUTOS
+// ========================
+model Product {
+  id              String   @id @default(cuid())
+  accountId       String
+  account         Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  platformItemId  String
+  title           String
+  sku             String?
+  price           Float
+  currency        String   @default("BRL")
+  stock           Int      @default(0)
+  status          String?
+  categoryId      String?
+  thumbnail       String?
+  permalink       String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  orderItems      OrderItem[]
+
+  @@unique([accountId, platformItemId])
+  @@map("products")
+}
+
+// ========================
+// PEDIDOS / VENDAS
+// ========================
+model Order {
+  id                 String      @id @default(cuid())
+  accountId          String
+  account            Account     @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  platformOrderId    String
+  status             String
+  totalAmount        Float
+  currency           String      @default("BRL")
+
+  productCost        Float       @default(0)
+  shippingCost       Float       @default(0)
+  sellerShippingCost Float       @default(0)
+  platformFee        Float       @default(0)
+  taxAmount          Float       @default(0)
+  discount           Float       @default(0)
+
+  buyerNickname      String?
+  shippingId         String?
+  packId             String?
+
+  orderDate          DateTime
+  paidDate           DateTime?
+  shippedDate        DateTime?
+  deliveredDate      DateTime?
+
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+
+  items              OrderItem[]
+
+  @@unique([accountId, platformOrderId])
+  @@map("orders")
+}
+
+model OrderItem {
+  id              String   @id @default(cuid())
+  orderId         String
+  order           Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId       String?
+  product         Product? @relation(fields: [productId], references: [id])
+  platformItemId  String
+  title           String
+  quantity        Int
+  unitPrice       Float
+  totalPrice      Float
+  sku             String?
+
+  @@map("order_items")
+}
+
+// ========================
+// METRICAS DIARIAS (cache para dashboard)
+// ========================
+model DailyMetric {
+  id              String   @id @default(cuid())
+  platform        Platform
+  date            DateTime @db.Date
+
+  revenue         Float    @default(0)
+  cost            Float    @default(0)
+  tax             Float    @default(0)
+  platformFee     Float    @default(0)
+  shippingCost    Float    @default(0)
+  discount        Float    @default(0)
+  margin          Float    @default(0)
+
+  totalOrders     Int      @default(0)
+  totalUnits      Int      @default(0)
+  cancelledOrders Int      @default(0)
+  avgTicket       Float    @default(0)
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([platform, date])
+  @@map("daily_metrics")
+}
+
+// ========================
+// LOGS DE SINCRONIZACAO
+// ========================
+model SyncLog {
+  id          String     @id @default(cuid())
+  accountId   String
+  account     Account    @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  syncType    String
+  status      SyncStatus
+  recordsSync Int        @default(0)
+  errorMsg    String?
+  startedAt   DateTime   @default(now())
+  finishedAt  DateTime?
+
+  @@map("sync_logs")
+}
+
+enum SyncStatus {
+  RUNNING
+  SUCCESS
+  FAILED
+}
