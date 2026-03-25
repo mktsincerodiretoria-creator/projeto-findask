@@ -19,6 +19,8 @@ async function processOrder(
   let platformFee = 0;
   let shippingCostSeller = 0;
   let shippingCostBuyer = 0;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const debugInfo: Record<string, any> = { orderId };
 
   // Busca pedido completo via /orders/{id}
   try {
@@ -27,11 +29,19 @@ async function processOrder(
     // Extrai marketplace_fee dos payments E calcula frete do comprador
     let buyerShippingFromPayment = 0;
     if (Array.isArray(fullOrder.payments)) {
+      debugInfo.payments = fullOrder.payments.map((p: Record<string, unknown>) => ({
+        id: p.id, status: p.status,
+        total_paid_amount: p.total_paid_amount,
+        transaction_amount: p.transaction_amount,
+        shipping_cost: p.shipping_cost,
+        marketplace_fee: p.marketplace_fee,
+      }));
+
       for (const payment of fullOrder.payments) {
         if (payment.marketplace_fee != null) {
           platformFee += Math.abs(Number(payment.marketplace_fee));
         }
-        // Calcula frete comprador: total_paid - transaction_amount = shipping pago pelo comprador
+        // Calcula frete comprador: total_paid - transaction_amount
         const totalPaid = Number(payment.total_paid_amount || 0);
         const transactionAmt = Number(payment.transaction_amount || 0);
         if (totalPaid > transactionAmt) {
@@ -39,6 +49,8 @@ async function processOrder(
         }
       }
     }
+
+    debugInfo.buyerShippingFromPayment = buyerShippingFromPayment;
 
     // Fallback: sale_fee dos items
     if (platformFee === 0 && Array.isArray(fullOrder.order_items)) {
@@ -51,6 +63,8 @@ async function processOrder(
 
     // shipping.cost do pedido = custo TOTAL do frete
     const totalShipping = Number(fullOrder.shipping?.cost || 0);
+    debugInfo.shippingFromOrder = { cost: fullOrder.shipping?.cost, id: fullOrder.shipping?.id };
+    debugInfo.totalShipping = totalShipping;
 
     // Tenta shipment primeiro (mais preciso)
     const shippingId = fullOrder.shipping?.id;
@@ -59,10 +73,21 @@ async function processOrder(
     if (shippingId) {
       try {
         const shipment = await mlApiCall(`/shipments/${shippingId}`, accessToken);
+        debugInfo.shipment = {
+          sender_cost: shipment.sender_cost,
+          receiver_cost: shipment.receiver_cost,
+          cost: shipment.cost,
+          shipping_option: shipment.shipping_option ? {
+            cost: shipment.shipping_option.cost,
+            list_cost: shipment.shipping_option.list_cost,
+          } : null,
+        };
+
         if (shipment.sender_cost != null || shipment.receiver_cost != null) {
           shippingCostSeller = Math.abs(Number(shipment.sender_cost || 0));
           shippingCostBuyer = Math.abs(Number(shipment.receiver_cost || 0));
           gotShipmentData = true;
+          debugInfo.shippingSource = "shipment.sender_cost/receiver_cost";
         }
         if (!gotShipmentData && shipment.shipping_option) {
           const opt = shipment.shipping_option;
@@ -71,26 +96,32 @@ async function processOrder(
           shippingCostBuyer = listCost;
           shippingCostSeller = listCost === 0 && cost > 0 ? cost : Math.max(0, cost - listCost);
           gotShipmentData = true;
+          debugInfo.shippingSource = "shipment.shipping_option";
         }
-      } catch {
-        // Shipment nao disponivel
+      } catch (e) {
+        debugInfo.shipmentError = String(e);
       }
     }
 
     // Se nao conseguiu do shipment, usa calculo do payment
     if (!gotShipmentData && totalShipping > 0) {
-      // Frete comprador = diferenca entre total_paid e transaction_amount
       shippingCostBuyer = buyerShippingFromPayment;
-      // Frete vendedor = total - o que o comprador pagou
       shippingCostSeller = Math.max(0, totalShipping - buyerShippingFromPayment);
+      debugInfo.shippingSource = "payment_calc";
     }
-  } catch {
-    // Fallback total
+    if (!gotShipmentData && totalShipping === 0) {
+      debugInfo.shippingSource = "no_shipping";
+    }
+  } catch (e) {
+    debugInfo.orderDetailError = String(e);
     const shipping = mlOrder.shipping as Record<string, unknown> | undefined;
     const totalShipping = Number(shipping?.cost || 0);
     shippingCostSeller = totalShipping;
     shippingCostBuyer = 0;
+    debugInfo.shippingSource = "fallback_total";
   }
+
+  debugInfo.result = { platformFee, shippingCostSeller, shippingCostBuyer };
 
   // Dados do pedido do search
   const orderItems = (mlOrder.order_items || []) as Array<Record<string, unknown>>;
@@ -155,7 +186,7 @@ async function processOrder(
     });
   }
 
-  return { platformFee, shippingCostSeller, shippingCostBuyer };
+  return { platformFee, shippingCostSeller, shippingCostBuyer, debugInfo };
 }
 
 // Processa lote de pedidos em paralelo
@@ -167,7 +198,14 @@ async function processBatch(
   const results = await Promise.allSettled(
     orders.map((order) => processOrder(order, accessToken, accountId))
   );
-  return results.filter((r) => r.status === "fulfilled").length;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const debugItems: any[] = [];
+  for (const r of results) {
+    if (r.status === "fulfilled" && r.value.debugInfo) {
+      debugItems.push(r.value.debugInfo);
+    }
+  }
+  return { synced: results.filter((r) => r.status === "fulfilled").length, debugItems };
 }
 
 // POST /api/sync/mercadolivre
@@ -215,17 +253,19 @@ export async function POST(request: NextRequest) {
         let totalSynced = 0;
         let offset = 0;
         let hasMore = true;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const allDebug: any[] = [];
 
         // Busca e processa pedidos em lotes de 5 (paralelo)
         while (hasMore) {
           const ordersData = await getOrders(accessToken, account.platformId, offset, 50);
           const orders = (ordersData.results || []) as Record<string, unknown>[];
-
           // Processa em lotes de 5 pedidos paralelos
           for (let i = 0; i < orders.length; i += 5) {
             const batch = orders.slice(i, i + 5);
-            const synced = await processBatch(batch, accessToken, account.id);
+            const { synced, debugItems } = await processBatch(batch, accessToken, account.id);
             totalSynced += synced;
+            if (allDebug.length < 3) allDebug.push(...debugItems.slice(0, 3 - allDebug.length));
           }
 
           offset += 50;
@@ -245,6 +285,7 @@ export async function POST(request: NextRequest) {
           nickname: account.nickname,
           status: "success",
           recordsSynced: totalSynced,
+          debug: allDebug,
         });
       } catch (error) {
         console.error(`Sync error:`, error);
