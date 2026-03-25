@@ -79,13 +79,16 @@ export async function POST(request: NextRequest) {
 
           for (const mlOrder of orders) {
             // Busca billing info para tarifas
-            const billing = await getOrderBilling(accessToken, mlOrder.id);
-
             let platformFee = 0;
             let shippingCostSeller = 0;
 
-            if (billing?.billing_info) {
-              for (const detail of billing.billing_info) {
+            try {
+              const billing = await getOrderBilling(accessToken, mlOrder.id);
+              const billingDetails = Array.isArray(billing?.billing_info)
+                ? billing.billing_info
+                : [];
+
+              for (const detail of billingDetails) {
                 if (detail.type === "marketplace_fee") {
                   platformFee += Math.abs(detail.amount || 0);
                 }
@@ -93,6 +96,8 @@ export async function POST(request: NextRequest) {
                   shippingCostSeller += Math.abs(detail.amount || 0);
                 }
               }
+            } catch {
+              // Billing info pode nao estar disponivel para todos os pedidos
             }
 
             // Upsert do pedido
