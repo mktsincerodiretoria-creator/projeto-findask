@@ -79,37 +79,63 @@ export async function POST(request: NextRequest) {
           const orders = ordersData.results || [];
 
           for (const mlOrder of orders) {
-            // === EXTRAI TARIFAS E COMISSOES ===
+            // === BUSCA DETALHES COMPLETOS DO PEDIDO ===
             let platformFee = 0;
             let shippingCostSeller = 0;
-            const shippingCostBuyer = mlOrder.shipping?.cost || 0;
+            let shippingCostBuyer = 0;
 
-            // Tenta extrair fees dos payments (mais confiavel)
+            // Busca o pedido completo via /orders/{id} (inclui payments com fees)
             try {
-              if (mlOrder.payments && mlOrder.payments.length > 0) {
-                for (const payment of mlOrder.payments) {
-                  // marketplace_fee vem direto no payment
-                  if (payment.marketplace_fee) {
-                    platformFee += Math.abs(payment.marketplace_fee);
-                  }
-                  // shipping_cost no payment
-                  if (payment.shipping_cost) {
-                    shippingCostSeller += Math.abs(payment.shipping_cost);
+              const fullOrder = await mlApiCall(`/orders/${mlOrder.id}`, accessToken);
+
+              // Extrai fees dos payments do pedido completo
+              if (fullOrder.payments && Array.isArray(fullOrder.payments)) {
+                for (const payment of fullOrder.payments) {
+                  if (payment.marketplace_fee !== undefined && payment.marketplace_fee !== null) {
+                    platformFee += Math.abs(Number(payment.marketplace_fee));
                   }
                 }
               }
-            } catch {
-              // fallback: tenta billing_info
-            }
 
-            // Se nao achou fees nos payments, tenta billing_info
-            if (platformFee === 0) {
+              // Extrai sale_fee dos order_items
+              if (platformFee === 0 && fullOrder.order_items && Array.isArray(fullOrder.order_items)) {
+                for (const item of fullOrder.order_items) {
+                  if (item.sale_fee !== undefined && item.sale_fee !== null) {
+                    platformFee += Math.abs(Number(item.sale_fee));
+                  }
+                }
+              }
+
+              // Busca frete via shipment
+              if (fullOrder.shipping?.id) {
+                try {
+                  const shipment = await mlApiCall(`/shipments/${fullOrder.shipping.id}`, accessToken);
+                  if (shipment.shipping_option) {
+                    const opt = shipment.shipping_option;
+                    // cost = custo total, buyer_cost = pago pelo comprador
+                    const totalShippingCost = opt.cost || 0;
+                    const buyerCost = opt.list_cost || opt.buyer_cost || 0;
+                    shippingCostBuyer = buyerCost;
+                    // Frete vendedor = custo total - o que o comprador pagou
+                    shippingCostSeller = Math.max(0, totalShippingCost - buyerCost);
+                  }
+                  // Se tem receiver_cost (frete gratis pelo vendedor)
+                  if (shipment.cost !== undefined) {
+                    shippingCostSeller = Math.max(shippingCostSeller, Math.abs(Number(shipment.cost || 0)));
+                  }
+                } catch {
+                  // Shipment nao disponivel
+                  shippingCostBuyer = mlOrder.shipping?.cost || 0;
+                }
+              }
+            } catch {
+              // Fallback: dados basicos do search
+              shippingCostBuyer = mlOrder.shipping?.cost || 0;
+
+              // Tenta billing_info como ultimo recurso
               try {
                 const billing = await getOrderBilling(accessToken, mlOrder.id);
-                const billingDetails = Array.isArray(billing?.billing_info)
-                  ? billing.billing_info
-                  : [];
-
+                const billingDetails = Array.isArray(billing?.billing_info) ? billing.billing_info : [];
                 for (const detail of billingDetails) {
                   if (detail.type === "marketplace_fee" || detail.detail === "marketplace_fee") {
                     platformFee += Math.abs(detail.amount || 0);
@@ -119,29 +145,12 @@ export async function POST(request: NextRequest) {
                   }
                 }
               } catch {
-                // Billing nao disponivel
+                // Sem dados de fees
               }
             }
 
-            // Se ainda nao achou fees, tenta /orders/{id} detalhado com mediations
-            if (platformFee === 0) {
-              try {
-                const orderDetail = await mlApiCall(`/orders/${mlOrder.id}`, accessToken);
-                if (orderDetail.mediations) {
-                  // Mediations pode conter info de fees
-                }
-                // Tenta pegar de order_items[].sale_fee
-                if (orderDetail.order_items) {
-                  for (const item of orderDetail.order_items) {
-                    if (item.sale_fee) {
-                      platformFee += Math.abs(item.sale_fee);
-                    }
-                  }
-                }
-              } catch {
-                // Sem detalhes adicionais
-              }
-            }
+            // Rate limiting entre chamadas de detalhe
+            await new Promise((r) => setTimeout(r, 200));
 
             // Upsert do pedido
             const savedOrder = await prisma.order.upsert({
