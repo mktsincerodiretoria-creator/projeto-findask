@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import SyncButton from "@/components/SyncButton";
 
@@ -30,12 +30,32 @@ const platformLabels: Record<string, { name: string; icon: string; color: string
   AMAZON: { name: "Amazon", icon: "📦", color: "bg-orange-100 border-orange-300" },
 };
 
-export default function ContasPage() {
-  const [accounts, setAccounts] = useState<AccountData[]>([]);
-  const [loading, setLoading] = useState(true);
+function StatusMessages() {
   const searchParams = useSearchParams();
   const error = searchParams.get("error");
   const mlConnected = searchParams.get("ml_connected");
+
+  return (
+    <>
+      {error && (
+        <div className="bg-red-50 border border-red-300 rounded-lg p-4">
+          <p className="text-red-800 font-semibold">Erro ao conectar:</p>
+          <p className="text-red-600 text-sm mt-1">{decodeURIComponent(error)}</p>
+        </div>
+      )}
+      {mlConnected && (
+        <div className="bg-green-50 border border-green-300 rounded-lg p-4">
+          <p className="text-green-800 font-semibold">Mercado Livre conectado com sucesso!</p>
+          <p className="text-green-600 text-sm mt-1">Agora clique em &quot;Sincronizar Vendas&quot; para importar seus dados.</p>
+        </div>
+      )}
+    </>
+  );
+}
+
+export default function ContasPage() {
+  const [accounts, setAccounts] = useState<AccountData[]>([]);
+  const [loading, setLoading] = useState(true);
 
   async function fetchAccounts() {
     try {
@@ -59,19 +79,9 @@ export default function ContasPage() {
         <h1 className="text-2xl font-bold text-gray-900">Contas Conectadas</h1>
       </div>
 
-      {/* Mensagens de status */}
-      {error && (
-        <div className="bg-red-50 border border-red-300 rounded-lg p-4">
-          <p className="text-red-800 font-semibold">Erro ao conectar:</p>
-          <p className="text-red-600 text-sm mt-1">{decodeURIComponent(error)}</p>
-        </div>
-      )}
-      {mlConnected && (
-        <div className="bg-green-50 border border-green-300 rounded-lg p-4">
-          <p className="text-green-800 font-semibold">Mercado Livre conectado com sucesso!</p>
-          <p className="text-green-600 text-sm mt-1">Agora clique em &quot;Sincronizar Vendas&quot; para importar seus dados.</p>
-        </div>
-      )}
+      <Suspense fallback={null}>
+        <StatusMessages />
+      </Suspense>
 
       {/* Botao para conectar ML */}
       <div className="bg-white rounded-lg border p-6">
