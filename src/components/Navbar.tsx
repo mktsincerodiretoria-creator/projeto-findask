@@ -20,7 +20,7 @@ export default function Navbar() {
 
   return (
     <nav className="bg-gray-900 text-white">
-      <div className="max-w-7xl mx-auto px-4">
+      <div className="w-full px-4">
         <div className="flex items-center h-14">
           <Link href="/dashboard" className="font-bold text-xl mr-8">
             <span className="text-blue-400">Fin</span>

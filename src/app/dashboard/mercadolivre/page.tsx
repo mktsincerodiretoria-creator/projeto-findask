@@ -232,7 +232,7 @@ export default function MercadoLivrePage() {
 
             {/* Tabela */}
             <div className="bg-white rounded-lg border overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-sm min-w-[1200px]">
                 <thead className="bg-gray-50 sticky top-0">
                   <tr>
                     <SortHeader label="Anuncio" field="title" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} align="left" />
