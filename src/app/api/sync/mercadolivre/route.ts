@@ -24,16 +24,18 @@ async function processOrder(
   try {
     const fullOrder = await mlApiCall(`/orders/${orderId}`, accessToken);
 
-    // Extrai marketplace_fee e shipping_cost dos payments
-    let paymentShippingCost = 0;
+    // Extrai marketplace_fee dos payments E calcula frete do comprador
+    let buyerShippingFromPayment = 0;
     if (Array.isArray(fullOrder.payments)) {
       for (const payment of fullOrder.payments) {
         if (payment.marketplace_fee != null) {
           platformFee += Math.abs(Number(payment.marketplace_fee));
         }
-        // shipping_cost no payment = frete que o COMPRADOR pagou
-        if (payment.shipping_cost != null) {
-          paymentShippingCost += Math.abs(Number(payment.shipping_cost));
+        // Calcula frete comprador: total_paid - transaction_amount = shipping pago pelo comprador
+        const totalPaid = Number(payment.total_paid_amount || 0);
+        const transactionAmt = Number(payment.transaction_amount || 0);
+        if (totalPaid > transactionAmt) {
+          buyerShippingFromPayment += (totalPaid - transactionAmt);
         }
       }
     }
@@ -47,25 +49,21 @@ async function processOrder(
       }
     }
 
-    // shipping.cost do pedido = custo TOTAL do frete (comprador + vendedor)
+    // shipping.cost do pedido = custo TOTAL do frete
     const totalShipping = Number(fullOrder.shipping?.cost || 0);
 
-    // Busca frete via shipment (mais preciso)
+    // Tenta shipment primeiro (mais preciso)
     const shippingId = fullOrder.shipping?.id;
     let gotShipmentData = false;
 
     if (shippingId) {
       try {
         const shipment = await mlApiCall(`/shipments/${shippingId}`, accessToken);
-
-        // sender_cost = frete VENDEDOR, receiver_cost = frete COMPRADOR
         if (shipment.sender_cost != null || shipment.receiver_cost != null) {
           shippingCostSeller = Math.abs(Number(shipment.sender_cost || 0));
           shippingCostBuyer = Math.abs(Number(shipment.receiver_cost || 0));
           gotShipmentData = true;
         }
-
-        // Fallback: shipping_option
         if (!gotShipmentData && shipment.shipping_option) {
           const opt = shipment.shipping_option;
           const cost = Number(opt.cost || 0);
@@ -79,18 +77,17 @@ async function processOrder(
       }
     }
 
-    // Se nao conseguiu do shipment, calcula a partir do total e payment
+    // Se nao conseguiu do shipment, usa calculo do payment
     if (!gotShipmentData && totalShipping > 0) {
-      // paymentShippingCost = o que o comprador pagou de frete
-      shippingCostBuyer = paymentShippingCost;
-      // O vendedor paga a diferenca entre o total e o que o comprador pagou
-      shippingCostSeller = Math.max(0, totalShipping - paymentShippingCost);
+      // Frete comprador = diferenca entre total_paid e transaction_amount
+      shippingCostBuyer = buyerShippingFromPayment;
+      // Frete vendedor = total - o que o comprador pagou
+      shippingCostSeller = Math.max(0, totalShipping - buyerShippingFromPayment);
     }
   } catch {
-    // Fallback total: nao conseguiu nem o pedido completo
+    // Fallback total
     const shipping = mlOrder.shipping as Record<string, unknown> | undefined;
     const totalShipping = Number(shipping?.cost || 0);
-    // Sem dados suficientes, assume frete gratis pro comprador
     shippingCostSeller = totalShipping;
     shippingCostBuyer = 0;
   }
