@@ -7,7 +7,9 @@ import { cn } from "@/lib/utils";
 const tabs = [
   { name: "Dashboard", href: "/dashboard", color: "bg-blue-600" },
   { name: "Mercado Livre", href: "/dashboard/mercadolivre", color: "bg-yellow-500" },
-  { name: "Vendas", href: "/vendas", color: "bg-emerald-600" },
+  { name: "Shopee", href: "/dashboard/shopee", color: "bg-orange-500" },
+  { name: "Amazon", href: "/dashboard/amazon", color: "bg-amber-600" },
+  { name: "TikTok Shop", href: "/dashboard/tiktok", color: "bg-gray-800" },
   { name: "Custos/SKU", href: "/custos", color: "bg-red-600" },
   { name: "Contas", href: "/contas", color: "bg-purple-600" },
   { name: "Config", href: "/configuracoes", color: "bg-gray-600" },
