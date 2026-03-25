@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { formatCurrency, formatPercent } from "@/lib/utils";
 import DateFilter from "@/components/DateFilter";
 
@@ -37,11 +37,64 @@ interface OrderData {
   account: { platform: string; nickname: string | null };
 }
 
+// Linha achatada para ordenacao
+interface FlatRow {
+  orderId: string;
+  title: string;
+  sku: string;
+  date: string;
+  dateObj: Date;
+  unitPrice: number;
+  quantity: number;
+  revenue: number;
+  cost: number;
+  hasCost: boolean;
+  tax: number;
+  fee: number;
+  freteVend: number;
+  freteComp: number;
+  margin: number;
+  mc: number;
+}
+
+type SortKey = keyof FlatRow;
+type SortDir = "asc" | "desc";
+
+function SortHeader({
+  label,
+  field,
+  sortKey,
+  sortDir,
+  onSort,
+  align = "right",
+}: {
+  label: string;
+  field: SortKey;
+  sortKey: SortKey;
+  sortDir: SortDir;
+  onSort: (key: SortKey) => void;
+  align?: "left" | "right" | "center";
+}) {
+  const active = sortKey === field;
+  const arrow = active ? (sortDir === "asc" ? " \u25B2" : " \u25BC") : " \u25B4\u25BE";
+  const textAlign = align === "left" ? "text-left" : align === "center" ? "text-center" : "text-right";
+  return (
+    <th
+      className={`${textAlign} px-3 py-2 font-medium text-gray-600 whitespace-nowrap cursor-pointer select-none hover:bg-gray-100 transition-colors`}
+      onClick={() => onSort(field)}
+    >
+      {label}
+      <span className={`text-xs ml-0.5 ${active ? "text-blue-600" : "text-gray-400"}`}>{arrow}</span>
+    </th>
+  );
+}
+
 export default function VendasPage() {
   const [orders, setOrders] = useState<OrderData[]>([]);
   const [loading, setLoading] = useState(true);
   const [taxRate, setTaxRate] = useState(0);
-  const [, setDateRange] = useState({ from: "", to: "" });
+  const [sortKey, setSortKey] = useState<SortKey>("dateObj");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
 
   const fetchOrders = useCallback(async (from?: string, to?: string) => {
     setLoading(true);
@@ -49,7 +102,6 @@ export default function VendasPage() {
       const params = new URLSearchParams();
       if (from) params.set("from", from);
       if (to) params.set("to", to);
-
       const res = await fetch(`/api/orders?${params.toString()}`);
       const data = await res.json();
       setOrders(data.orders || []);
@@ -64,28 +116,71 @@ export default function VendasPage() {
   useEffect(() => {
     const now = new Date();
     const from = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-    const fromStr = from.toISOString().split("T")[0];
-    const toStr = now.toISOString().split("T")[0];
-    setDateRange({ from: fromStr, to: toStr });
-    fetchOrders(fromStr, toStr);
+    fetchOrders(from.toISOString().split("T")[0], now.toISOString().split("T")[0]);
   }, [fetchOrders]);
 
-  function handleFilter(from: string, to: string) {
-    setDateRange({ from, to });
-    fetchOrders(from, to);
+  function handleSort(key: SortKey) {
+    if (sortKey === key) {
+      setSortDir(sortDir === "asc" ? "desc" : "asc");
+    } else {
+      setSortKey(key);
+      setSortDir("desc");
+    }
   }
 
+  // Achata orders em rows e aplica ordenacao
+  const rows: FlatRow[] = useMemo(() => {
+    const flat: FlatRow[] = [];
+    for (const order of orders) {
+      const itemCount = order.items.length || 1;
+      for (const item of order.items) {
+        flat.push({
+          orderId: order.id,
+          title: item.title,
+          sku: item.sku || "",
+          date: new Date(order.orderDate).toLocaleDateString("pt-BR"),
+          dateObj: new Date(order.orderDate),
+          unitPrice: item.unitPrice,
+          quantity: item.quantity,
+          revenue: item.totalPrice,
+          cost: item.totalCost,
+          hasCost: item.hasCost,
+          tax: item.totalPrice * (order.taxRate / 100),
+          fee: order.platformFee / itemCount,
+          freteVend: order.sellerShippingCost / itemCount,
+          freteComp: order.shippingCost / itemCount,
+          margin: order.margin / itemCount,
+          mc: order.marginPercent,
+        });
+      }
+    }
+
+    flat.sort((a, b) => {
+      const aVal = a[sortKey];
+      const bVal = b[sortKey];
+      if (typeof aVal === "string" && typeof bVal === "string") {
+        return sortDir === "asc" ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+      }
+      if (aVal instanceof Date && bVal instanceof Date) {
+        return sortDir === "asc" ? aVal.getTime() - bVal.getTime() : bVal.getTime() - aVal.getTime();
+      }
+      return sortDir === "asc" ? Number(aVal) - Number(bVal) : Number(bVal) - Number(aVal);
+    });
+
+    return flat;
+  }, [orders, sortKey, sortDir]);
+
   // Totais
-  const totals = orders.reduce(
-    (acc, o) => ({
-      revenue: acc.revenue + o.totalAmount,
-      productCost: acc.productCost + o.productCost,
-      tax: acc.tax + o.calculatedTax,
-      platformFee: acc.platformFee + o.platformFee,
-      shipping: acc.shipping + o.sellerShippingCost,
-      margin: acc.margin + o.margin,
+  const totals = rows.reduce(
+    (acc, r) => ({
+      revenue: acc.revenue + r.revenue,
+      cost: acc.cost + r.cost,
+      tax: acc.tax + r.tax,
+      fee: acc.fee + r.fee,
+      freteVend: acc.freteVend + r.freteVend,
+      margin: acc.margin + r.margin,
     }),
-    { revenue: 0, productCost: 0, tax: 0, platformFee: 0, shipping: 0, margin: 0 }
+    { revenue: 0, cost: 0, tax: 0, fee: 0, freteVend: 0, margin: 0 }
   );
 
   return (
@@ -94,18 +189,16 @@ export default function VendasPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Vendas Detalhadas</h1>
           <p className="text-sm text-gray-500">
-            {orders.length} vendas |{" "}
+            {rows.length} vendas |{" "}
             Imposto: {taxRate}%{" "}
             {taxRate === 0 && (
-              <a href="/configuracoes" className="text-blue-600 underline">
-                (configurar)
-              </a>
+              <a href="/configuracoes" className="text-blue-600 underline">(configurar)</a>
             )}
           </p>
         </div>
       </div>
 
-      <DateFilter onFilter={handleFilter} />
+      <DateFilter onFilter={(from, to) => fetchOrders(from, to)} />
 
       {/* Resumo */}
       <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
@@ -115,7 +208,7 @@ export default function VendasPage() {
         </div>
         <div className="bg-white rounded-lg border p-3">
           <p className="text-xs text-gray-500">(-) Custo</p>
-          <p className="text-lg font-bold text-red-600">{formatCurrency(totals.productCost)}</p>
+          <p className="text-lg font-bold text-red-600">{formatCurrency(totals.cost)}</p>
         </div>
         <div className="bg-white rounded-lg border p-3">
           <p className="text-xs text-gray-500">(-) Imposto ({taxRate}%)</p>
@@ -123,11 +216,11 @@ export default function VendasPage() {
         </div>
         <div className="bg-white rounded-lg border p-3">
           <p className="text-xs text-gray-500">(-) Tarifa ML</p>
-          <p className="text-lg font-bold text-red-600">{formatCurrency(totals.platformFee)}</p>
+          <p className="text-lg font-bold text-red-600">{formatCurrency(totals.fee)}</p>
         </div>
         <div className="bg-white rounded-lg border p-3">
           <p className="text-xs text-gray-500">(-) Frete Vendedor</p>
-          <p className="text-lg font-bold text-red-600">{formatCurrency(totals.shipping)}</p>
+          <p className="text-lg font-bold text-red-600">{formatCurrency(totals.freteVend)}</p>
         </div>
         <div className="bg-white rounded-lg border p-3">
           <p className="text-xs text-gray-500">= Margem</p>
@@ -137,7 +230,7 @@ export default function VendasPage() {
         </div>
       </div>
 
-      {/* Tabela de vendas */}
+      {/* Tabela com ordenacao */}
       {loading ? (
         <div className="flex items-center justify-center h-32">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
@@ -148,65 +241,46 @@ export default function VendasPage() {
           <table className="w-full text-sm">
             <thead className="bg-gray-50 sticky top-0">
               <tr>
-                <th className="text-left px-3 py-2 font-medium text-gray-600 whitespace-nowrap">Anuncio</th>
-                <th className="text-left px-3 py-2 font-medium text-gray-600">SKU</th>
-                <th className="text-left px-3 py-2 font-medium text-gray-600">Data</th>
-                <th className="text-right px-3 py-2 font-medium text-gray-600">Valor</th>
-                <th className="text-center px-3 py-2 font-medium text-gray-600">Qtde</th>
-                <th className="text-right px-3 py-2 font-medium text-gray-600">Faturamento</th>
-                <th className="text-right px-3 py-2 font-medium text-gray-600">Custo (-)</th>
-                <th className="text-right px-3 py-2 font-medium text-gray-600">Imposto (-)</th>
-                <th className="text-right px-3 py-2 font-medium text-gray-600">Tarifa (-)</th>
-                <th className="text-right px-3 py-2 font-medium text-gray-600">Frete Vend (-)</th>
-                <th className="text-right px-3 py-2 font-medium text-gray-600">Frete Comp</th>
-                <th className="text-right px-3 py-2 font-medium text-gray-600 text-green-700">Margem</th>
-                <th className="text-right px-3 py-2 font-medium text-gray-600 text-green-700">MC %</th>
+                <SortHeader label="Anuncio" field="title" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} align="left" />
+                <SortHeader label="SKU" field="sku" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} align="left" />
+                <SortHeader label="Data" field="dateObj" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} align="left" />
+                <SortHeader label="Valor Unit." field="unitPrice" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                <SortHeader label="Qtde" field="quantity" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} align="center" />
+                <SortHeader label="Faturamento" field="revenue" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                <SortHeader label="Custo (-)" field="cost" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                <SortHeader label="Imposto (-)" field="tax" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                <SortHeader label="Tarifa (-)" field="fee" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                <SortHeader label="Frete Vend (-)" field="freteVend" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                <SortHeader label="Frete Comp" field="freteComp" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                <SortHeader label="Margem" field="margin" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                <SortHeader label="MC %" field="mc" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
               </tr>
             </thead>
             <tbody>
-              {orders.map((order) =>
-                order.items.map((item, idx) => (
-                  <tr
-                    key={`${order.id}-${idx}`}
-                    className="border-t hover:bg-gray-50"
-                  >
-                    <td className="px-3 py-2 max-w-[200px] truncate" title={item.title}>
-                      {item.title}
-                    </td>
-                    <td className="px-3 py-2 font-mono text-xs">
-                      {item.sku || (
-                        <span className="text-orange-500">Sem SKU</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2 whitespace-nowrap">
-                      {new Date(order.orderDate).toLocaleDateString("pt-BR")}
-                    </td>
-                    <td className="px-3 py-2 text-right">{formatCurrency(item.unitPrice)}</td>
-                    <td className="px-3 py-2 text-center">{item.quantity}</td>
-                    <td className="px-3 py-2 text-right font-medium">{formatCurrency(item.totalPrice)}</td>
-                    <td className="px-3 py-2 text-right">
-                      {item.hasCost ? (
-                        formatCurrency(item.totalCost)
-                      ) : (
-                        <span className="text-orange-500 text-xs">Sem custo</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2 text-right">
-                      {formatCurrency(item.totalPrice * (order.taxRate / 100))}
-                    </td>
-                    <td className="px-3 py-2 text-right">{formatCurrency(order.platformFee / order.items.length)}</td>
-                    <td className="px-3 py-2 text-right">{formatCurrency(order.sellerShippingCost / order.items.length)}</td>
-                    <td className="px-3 py-2 text-right">{formatCurrency(order.shippingCost / order.items.length)}</td>
-                    <td className={`px-3 py-2 text-right font-medium ${order.margin >= 0 ? "text-green-600" : "text-red-600"}`}>
-                      {formatCurrency(order.margin / order.items.length)}
-                    </td>
-                    <td className={`px-3 py-2 text-right font-medium ${order.marginPercent >= 0 ? "text-green-600" : "text-red-600"}`}>
-                      {formatPercent(order.marginPercent)}
-                    </td>
-                  </tr>
-                ))
-              )}
-              {orders.length === 0 && (
+              {rows.map((row, idx) => (
+                <tr key={`${row.orderId}-${idx}`} className="border-t hover:bg-gray-50">
+                  <td className="px-3 py-2 max-w-[200px] truncate" title={row.title}>{row.title}</td>
+                  <td className="px-3 py-2 font-mono text-xs">{row.sku || <span className="text-orange-500">Sem SKU</span>}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">{row.date}</td>
+                  <td className="px-3 py-2 text-right">{formatCurrency(row.unitPrice)}</td>
+                  <td className="px-3 py-2 text-center">{row.quantity}</td>
+                  <td className="px-3 py-2 text-right font-medium">{formatCurrency(row.revenue)}</td>
+                  <td className="px-3 py-2 text-right">
+                    {row.hasCost ? formatCurrency(row.cost) : <span className="text-orange-500 text-xs">Sem custo</span>}
+                  </td>
+                  <td className="px-3 py-2 text-right">{formatCurrency(row.tax)}</td>
+                  <td className="px-3 py-2 text-right">{formatCurrency(row.fee)}</td>
+                  <td className="px-3 py-2 text-right">{formatCurrency(row.freteVend)}</td>
+                  <td className="px-3 py-2 text-right">{formatCurrency(row.freteComp)}</td>
+                  <td className={`px-3 py-2 text-right font-medium ${row.margin >= 0 ? "text-green-600" : "text-red-600"}`}>
+                    {formatCurrency(row.margin)}
+                  </td>
+                  <td className={`px-3 py-2 text-right font-medium ${row.mc >= 0 ? "text-green-600" : "text-red-600"}`}>
+                    {formatPercent(row.mc)}
+                  </td>
+                </tr>
+              ))}
+              {rows.length === 0 && (
                 <tr>
                   <td colSpan={13} className="px-3 py-8 text-center text-gray-500">
                     Nenhuma venda encontrada no periodo selecionado.
