@@ -93,12 +93,12 @@ export default function ContasPage() {
           >
             🟡 Conectar Mercado Livre
           </a>
-          <button
-            disabled
-            className="inline-flex items-center gap-2 px-6 py-3 bg-gray-200 text-gray-400 font-semibold rounded-lg cursor-not-allowed"
+          <a
+            href="/api/auth/shopee"
+            className="inline-flex items-center gap-2 px-6 py-3 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-lg transition-colors"
           >
-            🧡 Shopee (em breve)
-          </button>
+            🧡 Conectar Shopee
+          </a>
           <button
             disabled
             className="inline-flex items-center gap-2 px-6 py-3 bg-gray-200 text-gray-400 font-semibold rounded-lg cursor-not-allowed"
