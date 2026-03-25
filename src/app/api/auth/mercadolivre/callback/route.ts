@@ -2,9 +2,19 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { exchangeCodeForToken, getUserInfo } from "@/lib/mercadolivre";
 
+export const dynamic = "force-dynamic";
+
 // GET /api/auth/mercadolivre/callback?code=xxx
 export async function GET(request: NextRequest) {
   const code = request.nextUrl.searchParams.get("code");
+  const error = request.nextUrl.searchParams.get("error");
+
+  // ML pode retornar erro direto na URL
+  if (error) {
+    return NextResponse.redirect(
+      new URL(`/contas?error=${encodeURIComponent(error)}`, request.url)
+    );
+  }
 
   if (!code) {
     return NextResponse.redirect(new URL("/contas?error=no_code", request.url));
@@ -45,10 +55,11 @@ export async function GET(request: NextRequest) {
     });
 
     return NextResponse.redirect(new URL("/contas?ml_connected=1", request.url));
-  } catch (error) {
-    console.error("ML OAuth callback error:", error);
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : "Unknown error";
+    console.error("ML OAuth callback error:", errorMsg);
     return NextResponse.redirect(
-      new URL(`/contas?error=oauth_failed`, request.url)
+      new URL(`/contas?error=${encodeURIComponent(errorMsg)}`, request.url)
     );
   }
 }
