@@ -32,6 +32,9 @@ export async function GET(request: NextRequest) {
 
     if (status && status !== "Todos") {
       where.status = status;
+    } else {
+      // Por padrao, exclui pedidos cancelados (como o Mercado Turbo faz)
+      where.status = { not: "cancelled" };
     }
 
     if (sku) {
