@@ -91,10 +91,14 @@ async function processOrder(
         }
         if (!gotShipmentData && shipment.shipping_option) {
           const opt = shipment.shipping_option;
-          const cost = Number(opt.cost || 0);
-          const listCost = Number(opt.list_cost || 0);
-          shippingCostBuyer = listCost;
-          shippingCostSeller = listCost === 0 && cost > 0 ? cost : Math.max(0, cost - listCost);
+          // cost ou custo = o que o COMPRADOR paga
+          const buyerPays = Number(opt.cost || opt.custo || 0);
+          // list_cost = custo TOTAL do frete
+          const totalCost = Number(opt.list_cost || 0);
+          // Frete Comprador = o que o comprador paga
+          shippingCostBuyer = buyerPays;
+          // Frete Vendedor = total - o que comprador pagou
+          shippingCostSeller = Math.max(0, totalCost - buyerPays);
           gotShipmentData = true;
           debugInfo.shippingSource = "shipment.shipping_option";
         }
