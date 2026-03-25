@@ -20,6 +20,7 @@ interface OrderItem {
 }
 interface OrderData {
   id: string;
+  platformOrderId: string;
   totalAmount: number;
   platformFee: number;
   sellerShippingCost: number;
@@ -45,7 +46,7 @@ interface MetricsData {
   }>;
 }
 interface FlatRow {
-  orderId: string; title: string; sku: string; date: string; dateObj: Date;
+  orderId: string; orderNumber: string; title: string; sku: string; date: string; dateObj: Date;
   unitPrice: number; quantity: number; revenue: number; cost: number;
   hasCost: boolean; tax: number; fee: number; freteVend: number;
   freteComp: number; margin: number; mc: number;
@@ -127,7 +128,7 @@ export default function MercadoLivrePage() {
       const n = order.items.length || 1;
       for (const item of order.items) {
         flat.push({
-          orderId: order.id, title: item.title, sku: item.sku || "",
+          orderId: order.id, orderNumber: order.platformOrderId, title: item.title, sku: item.sku || "",
           date: new Date(order.orderDate).toLocaleDateString("pt-BR"),
           dateObj: new Date(order.orderDate),
           unitPrice: item.unitPrice, quantity: item.quantity, revenue: item.totalPrice,
@@ -147,7 +148,6 @@ export default function MercadoLivrePage() {
     return flat;
   }, [orders, sortKey, sortDir]);
 
-  const t = metrics?.totals || { revenue: 0, cost: 0, tax: 0, platformFee: 0, shippingCost: 0, discount: 0, margin: 0, totalOrders: 0, totalUnits: 0, avgTicket: 0, marginPercent: 0 };
   const salesTotals = rows.reduce((a, r) => ({ revenue: a.revenue + r.revenue, cost: a.cost + r.cost, tax: a.tax + r.tax, fee: a.fee + r.fee, freteVend: a.freteVend + r.freteVend, margin: a.margin + r.margin }), { revenue: 0, cost: 0, tax: 0, fee: 0, freteVend: 0, margin: 0 });
 
   return (
@@ -172,25 +172,33 @@ export default function MercadoLivrePage() {
         </div>
       ) : (
         <>
-          {/* ===== DASHBOARD ===== */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <MetricCard title="Faturamento" value={t.revenue} icon="💰" />
-            <MetricCard title="Vendas" value={t.totalOrders} type="number" icon="🛒" />
-            <MetricCard title="Ticket Medio" value={t.avgTicket} icon="🎫" />
-            <MetricCard title="Margem" value={t.margin} subtitle={`${t.marginPercent.toFixed(1)}% do faturamento`} icon="📈" color={t.margin >= 0 ? "text-green-600" : "text-red-600"} />
-          </div>
+          {/* ===== DASHBOARD (usando dados das vendas, nao daily_metrics) ===== */}
+          {(() => {
+            const marginPct = salesTotals.revenue > 0 ? (salesTotals.margin / salesTotals.revenue) * 100 : 0;
+            const avgTicket = rows.length > 0 ? salesTotals.revenue / rows.length : 0;
+            return (
+              <>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <MetricCard title="Faturamento" value={salesTotals.revenue} icon="💰" />
+                  <MetricCard title="Vendas" value={rows.length} type="number" icon="🛒" />
+                  <MetricCard title="Ticket Medio" value={avgTicket} icon="🎫" />
+                  <MetricCard title="Margem" value={salesTotals.margin} subtitle={`${marginPct.toFixed(1)}% do faturamento`} icon="📈" color={salesTotals.margin >= 0 ? "text-green-600" : "text-red-600"} />
+                </div>
 
-          <div className="bg-white rounded-lg border p-4">
-            <h3 className="font-semibold text-gray-700 mb-3">Detalhamento de Custos</h3>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-              <MetricCard title="(-) Custo Produtos" value={salesTotals.cost} icon="📦" />
-              <MetricCard title={`(-) Impostos (${taxRate}%)`} value={salesTotals.tax} icon="🏛️" />
-              <MetricCard title="(-) Tarifa ML" value={t.platformFee} icon="💳" />
-              <MetricCard title="(-) Frete Vendedor" value={salesTotals.freteVend} icon="🚚" />
-              <MetricCard title="(-) Descontos" value={t.discount} icon="🏷️" />
-              <MetricCard title="= Margem Liquida" value={salesTotals.margin} icon="✅" color={salesTotals.margin >= 0 ? "text-green-600" : "text-red-600"} />
-            </div>
-          </div>
+                <div className="bg-white rounded-lg border p-4">
+                  <h3 className="font-semibold text-gray-700 mb-3">Detalhamento de Custos</h3>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                    <MetricCard title="(-) Custo Produtos" value={salesTotals.cost} icon="📦" />
+                    <MetricCard title={`(-) Impostos (${taxRate}%)`} value={salesTotals.tax} icon="🏛️" />
+                    <MetricCard title="(-) Tarifa ML" value={salesTotals.fee} icon="💳" />
+                    <MetricCard title="(-) Frete Vendedor" value={salesTotals.freteVend} icon="🚚" />
+                    <MetricCard title="(-) Descontos" value={0} icon="🏷️" />
+                    <MetricCard title="= Margem Liquida" value={salesTotals.margin} icon="✅" color={salesTotals.margin >= 0 ? "text-green-600" : "text-red-600"} />
+                  </div>
+                </div>
+              </>
+            );
+          })()}
 
           <RevenueChart data={metrics?.daily || []} />
 
@@ -232,9 +240,10 @@ export default function MercadoLivrePage() {
 
             {/* Tabela */}
             <div className="bg-white rounded-lg border overflow-x-auto">
-              <table className="w-full text-sm min-w-[1200px]">
+              <table className="w-full text-sm min-w-[1400px]">
                 <thead className="bg-gray-50 sticky top-0">
                   <tr>
+                    <SortHeader label="N. Pedido" field="orderNumber" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} align="left" />
                     <SortHeader label="Anuncio" field="title" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} align="left" />
                     <SortHeader label="SKU" field="sku" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} align="left" />
                     <SortHeader label="Data" field="dateObj" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} align="left" />
@@ -253,6 +262,7 @@ export default function MercadoLivrePage() {
                 <tbody>
                   {rows.map((row, idx) => (
                     <tr key={`${row.orderId}-${idx}`} className="border-t hover:bg-gray-50">
+                      <td className="px-3 py-2 font-mono text-xs text-gray-500 whitespace-nowrap">{row.orderNumber}</td>
                       <td className="px-3 py-2 max-w-[200px] truncate" title={row.title}>{row.title}</td>
                       <td className="px-3 py-2 font-mono text-xs">{row.sku || <span className="text-orange-500">Sem SKU</span>}</td>
                       <td className="px-3 py-2 whitespace-nowrap">{row.date}</td>
@@ -269,7 +279,7 @@ export default function MercadoLivrePage() {
                     </tr>
                   ))}
                   {rows.length === 0 && (
-                    <tr><td colSpan={13} className="px-3 py-8 text-center text-gray-500">Nenhuma venda no periodo.</td></tr>
+                    <tr><td colSpan={14} className="px-3 py-8 text-center text-gray-500">Nenhuma venda no periodo.</td></tr>
                   )}
                 </tbody>
               </table>
