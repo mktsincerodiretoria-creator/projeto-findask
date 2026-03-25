@@ -104,15 +104,25 @@ export default function CustosPage() {
 
         if (cols.length >= 2) {
           const sku = cols[0];
-          // Tenta encontrar a coluna de custo (pode ser coluna 1 ou 2)
           let cost: number;
           let title: string | undefined;
 
+          // Funcao para limpar valor monetario: "R$ 33,01" -> 33.01
+          const parseMoney = (val: string) => {
+            return parseFloat(
+              val
+                .replace(/R\$\s*/gi, "")  // Remove "R$ "
+                .replace(/\./g, "")       // Remove ponto de milhar
+                .replace(",", ".")        // Troca virgula por ponto
+                .trim()
+            );
+          };
+
           if (cols.length >= 3) {
             title = cols[1] || undefined;
-            cost = parseFloat(cols[2]?.replace(",", ".") || "0");
+            cost = parseMoney(cols[2] || "0");
           } else {
-            cost = parseFloat(cols[1]?.replace(",", ".") || "0");
+            cost = parseMoney(cols[1] || "0");
           }
 
           if (sku && !isNaN(cost) && cost > 0) {
