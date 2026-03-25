@@ -167,3 +167,28 @@ enum SyncStatus {
   SUCCESS
   FAILED
 }
+
+// ========================
+// CONFIGURACOES DO APP
+// ========================
+model Setting {
+  id    String @id @default(cuid())
+  key   String @unique
+  value String
+
+  @@map("settings")
+}
+
+// ========================
+// CUSTOS DE PRODUTO (SKU)
+// ========================
+model ProductCost {
+  id        String   @id @default(cuid())
+  sku       String   @unique
+  title     String?
+  cost      Float
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("product_costs")
+}

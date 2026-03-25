@@ -135,3 +135,12 @@ export async function getOrderBilling(accessToken: string, orderId: string) {
     return null;
   }
 }
+
+// Busca detalhes de pagamento do pedido (inclui fees)
+export async function getPaymentInfo(accessToken: string, paymentId: string) {
+  try {
+    return await mlApiCall(`/collections/${paymentId}`, accessToken);
+  } catch {
+    return null;
+  }
+}

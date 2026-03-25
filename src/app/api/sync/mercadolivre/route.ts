@@ -6,6 +6,7 @@ import {
   getItemDetails,
   refreshAccessToken,
   getOrderBilling,
+  mlApiCall,
 } from "@/lib/mercadolivre";
 
 export const dynamic = "force-dynamic";
@@ -78,26 +79,68 @@ export async function POST(request: NextRequest) {
           const orders = ordersData.results || [];
 
           for (const mlOrder of orders) {
-            // Busca billing info para tarifas
+            // === EXTRAI TARIFAS E COMISSOES ===
             let platformFee = 0;
             let shippingCostSeller = 0;
+            const shippingCostBuyer = mlOrder.shipping?.cost || 0;
 
+            // Tenta extrair fees dos payments (mais confiavel)
             try {
-              const billing = await getOrderBilling(accessToken, mlOrder.id);
-              const billingDetails = Array.isArray(billing?.billing_info)
-                ? billing.billing_info
-                : [];
-
-              for (const detail of billingDetails) {
-                if (detail.type === "marketplace_fee") {
-                  platformFee += Math.abs(detail.amount || 0);
-                }
-                if (detail.type === "shipping_fee") {
-                  shippingCostSeller += Math.abs(detail.amount || 0);
+              if (mlOrder.payments && mlOrder.payments.length > 0) {
+                for (const payment of mlOrder.payments) {
+                  // marketplace_fee vem direto no payment
+                  if (payment.marketplace_fee) {
+                    platformFee += Math.abs(payment.marketplace_fee);
+                  }
+                  // shipping_cost no payment
+                  if (payment.shipping_cost) {
+                    shippingCostSeller += Math.abs(payment.shipping_cost);
+                  }
                 }
               }
             } catch {
-              // Billing info pode nao estar disponivel para todos os pedidos
+              // fallback: tenta billing_info
+            }
+
+            // Se nao achou fees nos payments, tenta billing_info
+            if (platformFee === 0) {
+              try {
+                const billing = await getOrderBilling(accessToken, mlOrder.id);
+                const billingDetails = Array.isArray(billing?.billing_info)
+                  ? billing.billing_info
+                  : [];
+
+                for (const detail of billingDetails) {
+                  if (detail.type === "marketplace_fee" || detail.detail === "marketplace_fee") {
+                    platformFee += Math.abs(detail.amount || 0);
+                  }
+                  if (detail.type === "shipping_fee" || detail.detail === "shipping") {
+                    shippingCostSeller += Math.abs(detail.amount || 0);
+                  }
+                }
+              } catch {
+                // Billing nao disponivel
+              }
+            }
+
+            // Se ainda nao achou fees, tenta /orders/{id} detalhado com mediations
+            if (platformFee === 0) {
+              try {
+                const orderDetail = await mlApiCall(`/orders/${mlOrder.id}`, accessToken);
+                if (orderDetail.mediations) {
+                  // Mediations pode conter info de fees
+                }
+                // Tenta pegar de order_items[].sale_fee
+                if (orderDetail.order_items) {
+                  for (const item of orderDetail.order_items) {
+                    if (item.sale_fee) {
+                      platformFee += Math.abs(item.sale_fee);
+                    }
+                  }
+                }
+              } catch {
+                // Sem detalhes adicionais
+              }
             }
 
             // Upsert do pedido
@@ -113,7 +156,7 @@ export async function POST(request: NextRequest) {
                 totalAmount: mlOrder.total_amount || 0,
                 platformFee,
                 sellerShippingCost: shippingCostSeller,
-                shippingCost: mlOrder.shipping?.cost || 0,
+                shippingCost: shippingCostBuyer,
                 paidDate: mlOrder.date_closed ? new Date(mlOrder.date_closed) : null,
               },
               create: {
@@ -124,7 +167,7 @@ export async function POST(request: NextRequest) {
                 currency: mlOrder.currency_id || "BRL",
                 platformFee,
                 sellerShippingCost: shippingCostSeller,
-                shippingCost: mlOrder.shipping?.cost || 0,
+                shippingCost: shippingCostBuyer,
                 shippingId: mlOrder.shipping?.id ? String(mlOrder.shipping.id) : null,
                 packId: mlOrder.pack_id ? String(mlOrder.pack_id) : null,
                 buyerNickname: mlOrder.buyer?.nickname || null,
