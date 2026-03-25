@@ -75,7 +75,11 @@ export async function GET(request: NextRequest) {
       });
 
       const taxAmount = order.totalAmount * (taxRate / 100);
-      const margin = order.totalAmount - totalProductCost - taxAmount - order.platformFee - order.sellerShippingCost - order.discount;
+      // Frete vendedor = o maior entre sellerShippingCost e shippingCost
+      // (corrige dados que podem ter sido sincronizados com campos trocados)
+      const freteVendedor = Math.max(order.sellerShippingCost, order.shippingCost);
+      const freteComprador = Math.min(order.sellerShippingCost, order.shippingCost);
+      const margin = order.totalAmount - totalProductCost - taxAmount - order.platformFee - freteVendedor - order.discount;
       const marginPercent = order.totalAmount > 0 ? (margin / order.totalAmount) * 100 : 0;
 
       return {
@@ -84,6 +88,8 @@ export async function GET(request: NextRequest) {
         productCost: totalProductCost,
         calculatedTax: taxAmount,
         taxRate,
+        sellerShippingCost: freteVendedor,
+        shippingCost: freteComprador,
         margin,
         marginPercent,
       };
