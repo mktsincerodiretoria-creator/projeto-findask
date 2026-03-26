@@ -6,6 +6,7 @@ import MetricCard from "@/components/MetricCard";
 import DateFilter from "@/components/DateFilter";
 import SyncButton from "@/components/SyncButton";
 import RevenueChart from "@/components/RevenueChart";
+import ImportPlanilha from "@/components/ImportPlanilha";
 
 // ======= TYPES =======
 interface OrderItem {
@@ -201,6 +202,9 @@ export default function MercadoLivrePage() {
           })()}
 
           <RevenueChart data={metrics?.daily || []} />
+
+          {/* Importar planilha */}
+          <ImportPlanilha platform="MERCADO_LIVRE" onImportComplete={() => fetchData(dateRange.from, dateRange.to)} />
 
           {/* ===== VENDAS (na mesma aba) ===== */}
           <div className="border-t-2 border-yellow-400 pt-6">

@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { formatCurrency, formatPercent } from "@/lib/utils";
 import MetricCard from "@/components/MetricCard";
 import DateFilter from "@/components/DateFilter";
-// SyncButton not used - Shopee has custom sync button
+import ImportPlanilha from "@/components/ImportPlanilha";
 
 interface OrderItem {
   title: string; quantity: number; unitPrice: number; totalPrice: number;
@@ -167,6 +167,9 @@ export default function ShopeePage() {
               <MetricCard title="= Margem Liquida" value={totals.margin} icon="✅" color={totals.margin >= 0 ? "text-green-600" : "text-red-600"} />
             </div>
           </div>
+
+          {/* Importar planilha */}
+          <ImportPlanilha platform="SHOPEE" onImportComplete={() => fetchData(dateRange.from, dateRange.to)} />
 
           {/* Vendas */}
           <div className="border-t-2 border-orange-400 pt-6">
