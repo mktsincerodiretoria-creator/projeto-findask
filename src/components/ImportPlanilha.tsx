@@ -33,7 +33,18 @@ export default function ImportPlanilha({ platform, onImportComplete }: ImportPla
     setError("");
 
     try {
-      const csvText = await file.text();
+      let csvText: string;
+
+      // Se for xlsx/xls, converte para CSV usando xlsx library
+      if (file.name.endsWith(".xlsx") || file.name.endsWith(".xls")) {
+        const XLSX = (await import("xlsx")).default;
+        const buffer = await file.arrayBuffer();
+        const workbook = XLSX.read(buffer, { type: "array" });
+        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+        csvText = XLSX.utils.sheet_to_csv(firstSheet, { FS: "\t" });
+      } else {
+        csvText = await file.text();
+      }
 
       const res = await fetch("/api/import", {
         method: "POST",
@@ -61,15 +72,15 @@ export default function ImportPlanilha({ platform, onImportComplete }: ImportPla
     <div className="bg-white rounded-lg border p-4">
       <h3 className="font-semibold text-gray-700 mb-2">Importar Planilha da Plataforma</h3>
       <p className="text-sm text-gray-500 mb-3">
-        Exporte o CSV/Excel do Mercado Turbo, Shopee, ou da propria plataforma e envie aqui.
-        O sistema detecta automaticamente as colunas (SKU, Faturamento, Custo, Imposto, Tarifa, Frete, etc).
+        Exporte o CSV ou Excel (.xlsx) do Mercado Turbo, Shopee, TikTok ou da propria plataforma e envie aqui.
+        Aceita formatos: CSV, TSV, XLS, XLSX. Detecta colunas automaticamente.
       </p>
 
       <div className="flex items-center gap-3">
         <input
           ref={fileRef}
           type="file"
-          accept=".csv,.txt,.tsv"
+          accept=".csv,.txt,.tsv,.xlsx,.xls"
           onChange={handleUpload}
           disabled={uploading}
           className="text-sm"
