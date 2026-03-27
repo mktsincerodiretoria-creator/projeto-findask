@@ -99,12 +99,12 @@ export default function ContasPage() {
           >
             🧡 Conectar Shopee
           </a>
-          <button
-            disabled
-            className="inline-flex items-center gap-2 px-6 py-3 bg-gray-200 text-gray-400 font-semibold rounded-lg cursor-not-allowed"
+          <a
+            href="/api/auth/tiktok"
+            className="inline-flex items-center gap-2 px-6 py-3 bg-gray-800 hover:bg-gray-900 text-white font-semibold rounded-lg transition-colors"
           >
-            🎵 TikTok Shop (em breve)
-          </button>
+            🎵 Conectar TikTok Shop
+          </a>
         </div>
       </div>
 
