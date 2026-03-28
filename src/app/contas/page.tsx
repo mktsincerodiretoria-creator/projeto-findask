@@ -105,6 +105,12 @@ export default function ContasPage() {
           >
             🎵 Conectar TikTok Shop
           </a>
+          <a
+            href="/api/auth/amazon"
+            className="inline-flex items-center gap-2 px-6 py-3 bg-amber-600 hover:bg-amber-700 text-white font-semibold rounded-lg transition-colors"
+          >
+            📦 Conectar Amazon
+          </a>
         </div>
       </div>
 
