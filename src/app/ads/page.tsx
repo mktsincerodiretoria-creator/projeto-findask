@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { formatCurrency, formatPercent } from "@/lib/utils";
 import DateFilter from "@/components/DateFilter";
 
@@ -24,8 +24,9 @@ export default function AdsPage() {
   const [campaigns, setCampaigns] = useState<CampaignData[]>([]);
   const [skuData, setSkuData] = useState<SkuData[]>([]);
   const [loading, setLoading] = useState(true);
-  const [syncing, setSyncing] = useState(false);
-  const [syncMsg, setSyncMsg] = useState("");
+  const [importing, setImporting] = useState(false);
+  const [importMsg, setImportMsg] = useState("");
+  const fileRef = useRef<HTMLInputElement>(null);
 
   const fetchAds = useCallback(async (from?: string, to?: string) => {
     setLoading(true);
@@ -48,23 +49,35 @@ export default function AdsPage() {
     fetchAds(from.toISOString().split("T")[0], now.toISOString().split("T")[0]);
   }, [fetchAds]);
 
-  async function syncAds() {
-    setSyncing(true); setSyncMsg("");
+  async function importAdsCSV(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImporting(true); setImportMsg("");
     try {
-      const res = await fetch("/api/ads", {
+      let csvText: string;
+      if (file.name.endsWith(".xlsx") || file.name.endsWith(".xls")) {
+        const XLSX = (await import("xlsx")).default;
+        const buffer = await file.arrayBuffer();
+        const workbook = XLSX.read(buffer, { type: "array" });
+        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+        csvText = XLSX.utils.sheet_to_csv(firstSheet, { FS: "\t" });
+      } else {
+        csvText = await file.text();
+      }
+      const res = await fetch("/api/ads/import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ platform: "MERCADO_LIVRE" }),
+        body: JSON.stringify({ csvText, platform: "MERCADO_LIVRE" }),
       });
       const data = await res.json();
-      if (data.error) {
-        setSyncMsg(`Erro: ${data.error}`);
-      } else {
-        setSyncMsg(`Sincronizado! ${data.totalSynced} metricas importadas`);
+      if (data.success) {
+        setImportMsg(`Importado! ${data.imported} campanhas/anuncios importados`);
         fetchAds();
+      } else {
+        setImportMsg(`Erro: ${data.error}`);
       }
-    } catch (e) { setSyncMsg(`Erro: ${e}`); }
-    finally { setSyncing(false); setTimeout(() => setSyncMsg(""), 10000); }
+    } catch (err) { setImportMsg(`Erro: ${err}`); }
+    finally { setImporting(false); if (fileRef.current) fileRef.current.value = ""; }
   }
 
   const t = totals || { impressions: 0, clicks: 0, spend: 0, revenue: 0, orders: 0, cpc: 0, ctr: 0, acos: 0, roas: 0, tacos: 0, totalFaturamento: 0 };
@@ -78,12 +91,19 @@ export default function AdsPage() {
           <h1 className="text-2xl font-bold text-gray-900">Anuncios Patrocinados (ADS)</h1>
           <p className="text-sm text-gray-500">Metricas de publicidade ML, Shopee, TikTok</p>
         </div>
-        <div className="flex gap-3 items-center">
-          <button onClick={syncAds} disabled={syncing}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:bg-gray-400">
-            {syncing ? "Sincronizando..." : "Sincronizar ADS ML"}
-          </button>
-          {syncMsg && <span className={`text-sm ${syncMsg.includes("Erro") ? "text-red-500" : "text-green-600"}`}>{syncMsg}</span>}
+      </div>
+
+      {/* Importar CSV de ADS */}
+      <div className="bg-white rounded-lg border p-4">
+        <h3 className="font-semibold text-gray-700 mb-2">Importar Relatorio de ADS</h3>
+        <p className="text-sm text-gray-500 mb-3">
+          Exporte o relatorio de Product Ads do Mercado Livre (CSV ou XLSX) e envie aqui.
+          O sistema detecta campanhas, impressoes, cliques, investimento, receita e vendas automaticamente.
+        </p>
+        <div className="flex flex-wrap items-center gap-3">
+          <input ref={fileRef} type="file" accept=".csv,.txt,.tsv,.xlsx,.xls" onChange={importAdsCSV} disabled={importing} className="text-sm" />
+          {importing && <span className="text-sm text-blue-600">Importando...</span>}
+          {importMsg && <span className={`text-sm ${importMsg.includes("Erro") ? "text-red-500" : "text-green-600"}`}>{importMsg}</span>}
         </div>
       </div>
 
@@ -255,12 +275,8 @@ export default function AdsPage() {
           {campaigns.length === 0 && (
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 text-center">
               <p className="text-blue-800 font-semibold mb-2">Sem dados de ADS</p>
-              <p className="text-blue-600 text-sm mb-4">
-                Clique em &quot;Sincronizar ADS ML&quot; para importar os dados de anuncios do Mercado Livre.
-                Para Shopee e TikTok Ads, a integracao sera adicionada em breve.
-              </p>
-              <p className="text-blue-500 text-xs">
-                Nota: Precisa da permissao &quot;Publicidade de um produto&quot; ativada no app do ML.
+              <p className="text-blue-600 text-sm">
+                Importe o relatorio de Product Ads acima (CSV ou XLSX exportado do Mercado Livre).
               </p>
             </div>
           )}
