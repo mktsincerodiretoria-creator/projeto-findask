@@ -10,6 +10,7 @@ const tabs = [
   { name: "Shopee", href: "/dashboard/shopee", color: "bg-orange-500" },
   { name: "Amazon", href: "/dashboard/amazon", color: "bg-amber-600" },
   { name: "TikTok Shop", href: "/dashboard/tiktok", color: "bg-gray-800" },
+  { name: "ADS", href: "/ads", color: "bg-indigo-600" },
   { name: "Mensagens IA", href: "/mensagens", color: "bg-green-600" },
   { name: "Custos/SKU", href: "/custos", color: "bg-red-600" },
   { name: "Contas", href: "/contas", color: "bg-purple-600" },
