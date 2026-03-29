@@ -26,6 +26,7 @@ model Account {
   orders       Order[]
   products     Product[]
   syncLogs     SyncLog[]
+  adCampaigns  AdCampaign[]
 
   @@unique([platform, platformId])
   @@map("accounts")
@@ -191,4 +192,77 @@ model ProductCost {
   updatedAt DateTime @updatedAt
 
   @@map("product_costs")
+}
+
+// ========================
+// CAMPANHAS DE ADS
+// ========================
+model AdCampaign {
+  id            String   @id @default(cuid())
+  accountId     String
+  account       Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  platform      Platform
+  campaignId    String   // ID da campanha na plataforma
+  campaignName  String?
+  status        String?  // active, paused, ended
+  dailyBudget   Float    @default(0)
+  totalBudget   Float    @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  metrics       AdMetric[]
+
+  @@unique([accountId, campaignId])
+  @@map("ad_campaigns")
+}
+
+// Metricas diarias de ADS por campanha
+model AdMetric {
+  id            String     @id @default(cuid())
+  campaignId    String
+  campaign      AdCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  date          DateTime   @db.Date
+
+  impressions   Int        @default(0)
+  clicks        Int        @default(0)
+  spend         Float      @default(0)  // Investimento (R$)
+  revenue       Float      @default(0)  // Receita gerada pelos ads
+  orders        Int        @default(0)  // Vendas geradas pelos ads
+
+  // Metricas calculadas
+  cpc           Float      @default(0)  // Custo por clique
+  ctr           Float      @default(0)  // Click-through rate (%)
+  acos          Float      @default(0)  // Advertising Cost of Sales (%)
+  roas          Float      @default(0)  // Return on Ad Spend
+
+  itemId        String?    // ID do produto anunciado
+  sku           String?    // SKU do produto
+
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  @@unique([campaignId, date])
+  @@map("ad_metrics")
+}
+
+// Metricas diarias de ADS agregadas por plataforma
+model AdDailyTotal {
+  id            String   @id @default(cuid())
+  platform      Platform
+  date          DateTime @db.Date
+
+  impressions   Int      @default(0)
+  clicks        Int      @default(0)
+  spend         Float    @default(0)
+  revenue       Float    @default(0)
+  orders        Int      @default(0)
+  cpc           Float    @default(0)
+  acos          Float    @default(0)
+  tacos         Float    @default(0)
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([platform, date])
+  @@map("ad_daily_totals")
 }
