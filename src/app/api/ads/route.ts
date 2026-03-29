@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { mlApiCall, refreshAccessToken } from "@/lib/mercadolivre";
+import { refreshAccessToken } from "@/lib/mercadolivre";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -144,6 +144,24 @@ export async function POST(request: NextRequest) {
   }
 }
 
+// Chamada especifica para API de Ads do ML (requer header api-version: 2)
+async function mlAdsApiCall(endpoint: string, accessToken: string) {
+  const response = await fetch(`https://api.mercadolibre.com${endpoint}`, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+      "api-version": "2",
+    },
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`ML Ads API (${response.status}): ${error}`);
+  }
+
+  return response.json();
+}
+
 async function syncMLAds() {
   const account = await prisma.account.findFirst({
     where: { platform: "MERCADO_LIVRE", isActive: true },
@@ -166,139 +184,145 @@ async function syncMLAds() {
   }
 
   const sellerId = account.platformId;
+  const dateFrom = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+  const dateTo = new Date().toISOString().split("T")[0];
   let totalSynced = 0;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const debugInfo: any[] = [];
 
   try {
-    // Endpoint correto: /advertising/product_ads/campaigns/{seller_id}
-    const campaignsData = await mlApiCall(
-      `/advertising/product_ads/campaigns/${sellerId}`,
+    // Endpoint v2: /marketplace/advertising/MLB/advertisers/{USER_ID}/product_ads/campaigns/search
+    const campaignsData = await mlAdsApiCall(
+      `/marketplace/advertising/MLB/advertisers/${sellerId}/product_ads/campaigns/search`,
       accessToken
     );
 
-    debugInfo.push({ endpoint: "campaigns", response: typeof campaignsData === "object" ? Object.keys(campaignsData) : typeof campaignsData });
-
-    const campaigns = campaignsData.results || (Array.isArray(campaignsData) ? campaignsData : [campaignsData]);
+    const campaigns = campaignsData.results || (Array.isArray(campaignsData) ? campaignsData : []);
+    debugInfo.push({ campaignsFound: campaigns.length });
 
     for (const camp of campaigns) {
-      if (!camp || !camp.campaign_id) continue;
-
-      const campId = String(camp.campaign_id);
+      const campId = String(camp.id || camp.campaign_id);
+      if (!campId) continue;
       const campName = camp.name || `Campanha ${campId}`;
+
+      // Extrai metricas do campo metrics do campaign (se disponivel)
+      const campMetrics = camp.metrics || camp.metrics_summary || {};
 
       const savedCampaign = await prisma.adCampaign.upsert({
         where: { accountId_campaignId: { accountId: account.id, campaignId: campId } },
-        update: { campaignName: campName, status: camp.status },
+        update: { campaignName: campName, status: camp.status || "unknown" },
         create: {
           accountId: account.id, platform: "MERCADO_LIVRE",
-          campaignId: campId, campaignName: campName, status: camp.status || "unknown",
-          dailyBudget: Number(camp.daily_budget || 0),
-          totalBudget: Number(camp.total_budget || 0),
+          campaignId: campId, campaignName: campName,
+          status: camp.status || "unknown",
+          dailyBudget: Number(camp.daily_budget || camp.budget || 0),
         },
       });
 
-      // Busca metricas: /advertising/product_ads/campaigns/{seller_id}/{campaign_id}/metrics
+      // Busca metricas detalhadas da campanha
       try {
-        const dateFrom = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
-        const dateTo = new Date().toISOString().split("T")[0];
-
-        const metricsData = await mlApiCall(
-          `/advertising/product_ads/campaigns/${sellerId}/${campId}/metrics?date_from=${dateFrom}&date_to=${dateTo}`,
+        const metricsData = await mlAdsApiCall(
+          `/marketplace/advertising/product_ads/campaigns/${campId}/metrics?date_from=${dateFrom}&date_to=${dateTo}`,
           accessToken
         );
 
-        // Pode retornar um objeto unico ou array
-        const metricsList = Array.isArray(metricsData) ? metricsData :
-          metricsData.results ? metricsData.results :
-          metricsData.daily ? metricsData.daily : [metricsData];
+        const m = metricsData.metrics || metricsData;
+        const impressions = Number(m.prints || m.impressions || 0);
+        const clicks = Number(m.clicks || 0);
+        const spend = Number(m.cost || m.spend || 0);
+        const revenue = Number(m.total_amount || m.revenue || m.direct_amount || 0) + Number(m.indirect_amount || 0);
+        const orders = Number(m.advertising_items_quantity || m.direct_items_quantity || 0) + Number(m.indirect_items_quantity || 0);
 
-        for (const dm of metricsList) {
-          if (!dm) continue;
-          const date = dm.date || dateTo;
-          const impressions = Number(dm.impressions || dm.prints || 0);
-          const clicks = Number(dm.clicks || 0);
-          const spend = Number(dm.cost || dm.spend || dm.amount || 0);
-          const revenue = Number(dm.revenue || dm.total_amount || 0);
-          const orders = Number(dm.orders || dm.sales || dm.conversions || 0);
-
-          if (spend > 0 || clicks > 0 || impressions > 0) {
-            await prisma.adMetric.upsert({
-              where: { campaignId_date: { campaignId: savedCampaign.id, date: new Date(date) } },
-              update: {
-                impressions, clicks, spend, revenue, orders,
-                cpc: clicks > 0 ? spend / clicks : 0,
-                ctr: impressions > 0 ? (clicks / impressions) * 100 : 0,
-                acos: revenue > 0 ? (spend / revenue) * 100 : 0,
-                roas: spend > 0 ? revenue / spend : 0,
-              },
-              create: {
-                campaignId: savedCampaign.id, date: new Date(date),
-                impressions, clicks, spend, revenue, orders,
-                cpc: clicks > 0 ? spend / clicks : 0,
-                ctr: impressions > 0 ? (clicks / impressions) * 100 : 0,
-                acos: revenue > 0 ? (spend / revenue) * 100 : 0,
-                roas: spend > 0 ? revenue / spend : 0,
-              },
-            });
-            totalSynced++;
-          }
+        if (spend > 0 || clicks > 0 || impressions > 0) {
+          await prisma.adMetric.upsert({
+            where: { campaignId_date: { campaignId: savedCampaign.id, date: new Date(dateTo) } },
+            update: {
+              impressions, clicks, spend, revenue, orders,
+              cpc: clicks > 0 ? spend / clicks : 0,
+              ctr: impressions > 0 ? (clicks / impressions) * 100 : 0,
+              acos: revenue > 0 ? (spend / revenue) * 100 : 0,
+              roas: spend > 0 ? revenue / spend : 0,
+            },
+            create: {
+              campaignId: savedCampaign.id, date: new Date(dateTo),
+              impressions, clicks, spend, revenue, orders,
+              cpc: clicks > 0 ? spend / clicks : 0,
+              ctr: impressions > 0 ? (clicks / impressions) * 100 : 0,
+              acos: revenue > 0 ? (spend / revenue) * 100 : 0,
+              roas: spend > 0 ? revenue / spend : 0,
+            },
+          });
+          totalSynced++;
         }
-      } catch (metricsError) {
-        debugInfo.push({ campaign: campId, metricsError: String(metricsError) });
+      } catch (metricsErr) {
+        // Se nao conseguiu metricas detalhadas, usa do campaign
+        if (campMetrics && (campMetrics.clicks > 0 || campMetrics.cost > 0)) {
+          const impressions = Number(campMetrics.prints || 0);
+          const clicks = Number(campMetrics.clicks || 0);
+          const spend = Number(campMetrics.cost || 0);
+          const revenue = Number(campMetrics.total_amount || 0);
+          const orders = Number(campMetrics.advertising_items_quantity || 0);
+
+          await prisma.adMetric.upsert({
+            where: { campaignId_date: { campaignId: savedCampaign.id, date: new Date(dateTo) } },
+            update: { impressions, clicks, spend, revenue, orders,
+              cpc: clicks > 0 ? spend / clicks : 0, acos: revenue > 0 ? (spend / revenue) * 100 : 0, roas: spend > 0 ? revenue / spend : 0 },
+            create: { campaignId: savedCampaign.id, date: new Date(dateTo),
+              impressions, clicks, spend, revenue, orders,
+              cpc: clicks > 0 ? spend / clicks : 0, acos: revenue > 0 ? (spend / revenue) * 100 : 0, roas: spend > 0 ? revenue / spend : 0 },
+          });
+          totalSynced++;
+        }
+        debugInfo.push({ campaign: campId, metricsErr: String(metricsErr) });
       }
 
-      // Busca ads (itens) da campanha com metricas por SKU
+      // Busca ads por item com metricas
       try {
-        const adsData = await mlApiCall(
-          `/advertising/product_ads/campaigns/${sellerId}/${campId}/ads/metrics?date_from=${new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split("T")[0]}&date_to=${new Date().toISOString().split("T")[0]}`,
+        const adsData = await mlAdsApiCall(
+          `/marketplace/advertising/product_ads/campaigns/${campId}/ads/metrics?date_from=${dateFrom}&date_to=${dateTo}&offset=0&limit=100`,
           accessToken
         );
 
-        const ads = Array.isArray(adsData) ? adsData : adsData.results || [];
+        const ads = adsData.results || (Array.isArray(adsData) ? adsData : []);
         for (const ad of ads) {
-          if (ad.item_id && (ad.spend > 0 || ad.clicks > 0)) {
-            // Cria metrica vinculada ao SKU/item
-            const adCampId = `${campId}-${ad.item_id}`;
+          const itemId = ad.item_id || ad.id;
+          if (!itemId) continue;
+          const adMetrics = ad.metrics || ad.metrics_summary || ad;
+          const adSpend = Number(adMetrics.cost || adMetrics.spend || 0);
+          const adClicks = Number(adMetrics.clicks || 0);
+          const adImpressions = Number(adMetrics.prints || adMetrics.impressions || 0);
+          const adRevenue = Number(adMetrics.total_amount || adMetrics.revenue || 0);
+          const adOrders = Number(adMetrics.advertising_items_quantity || adMetrics.orders || 0);
+
+          if (adSpend > 0 || adClicks > 0) {
+            const adCampId = `${campId}-${itemId}`;
             const adCampaign = await prisma.adCampaign.upsert({
               where: { accountId_campaignId: { accountId: account.id, campaignId: adCampId } },
-              update: { campaignName: `${campName} | ${ad.title || ad.item_id}` },
-              create: {
-                accountId: account.id, platform: "MERCADO_LIVRE",
-                campaignId: adCampId, campaignName: `${campName} | ${ad.title || ad.item_id}`,
-                status: ad.status || "active",
-              },
+              update: { campaignName: `${campName} | ${ad.title || itemId}` },
+              create: { accountId: account.id, platform: "MERCADO_LIVRE", campaignId: adCampId,
+                campaignName: `${campName} | ${ad.title || itemId}`, status: ad.status || "active" },
             });
 
             await prisma.adMetric.upsert({
-              where: { campaignId_date: { campaignId: adCampaign.id, date: new Date() } },
-              update: {
-                impressions: Number(ad.impressions || 0), clicks: Number(ad.clicks || 0),
-                spend: Number(ad.cost || ad.spend || 0), revenue: Number(ad.revenue || 0),
-                orders: Number(ad.orders || ad.sales || 0), sku: ad.item_id,
-              },
-              create: {
-                campaignId: adCampaign.id, date: new Date(),
-                impressions: Number(ad.impressions || 0), clicks: Number(ad.clicks || 0),
-                spend: Number(ad.cost || ad.spend || 0), revenue: Number(ad.revenue || 0),
-                orders: Number(ad.orders || ad.sales || 0), sku: ad.item_id, itemId: ad.item_id,
-              },
+              where: { campaignId_date: { campaignId: adCampaign.id, date: new Date(dateTo) } },
+              update: { impressions: adImpressions, clicks: adClicks, spend: adSpend, revenue: adRevenue, orders: adOrders, sku: itemId, itemId },
+              create: { campaignId: adCampaign.id, date: new Date(dateTo),
+                impressions: adImpressions, clicks: adClicks, spend: adSpend, revenue: adRevenue, orders: adOrders, sku: itemId, itemId },
             });
             totalSynced++;
           }
         }
       } catch {
-        // Ads por item nao disponiveis
+        // Ads por item nao disponiveis para esta campanha
       }
 
-      await new Promise((r) => setTimeout(r, 500));
+      await new Promise((r) => setTimeout(r, 300));
     }
   } catch (e) {
     return NextResponse.json({
-      error: "Erro ao acessar API de Ads do ML: " + String(e),
+      error: "Erro ao acessar API de Ads: " + String(e),
       debug: debugInfo,
       totalSynced,
-      hint: "Verifique se a permissao 'Publicidade de um produto' esta ativada e re-autorize o app",
     });
   }
 

@@ -24,6 +24,8 @@ export default function AdsPage() {
   const [campaigns, setCampaigns] = useState<CampaignData[]>([]);
   const [skuData, setSkuData] = useState<SkuData[]>([]);
   const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
+  const [syncMsg, setSyncMsg] = useState("");
   const [importing, setImporting] = useState(false);
   const [importMsg, setImportMsg] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
@@ -48,6 +50,25 @@ export default function AdsPage() {
     const from = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     fetchAds(from.toISOString().split("T")[0], now.toISOString().split("T")[0]);
   }, [fetchAds]);
+
+  async function syncAds() {
+    setSyncing(true); setSyncMsg("");
+    try {
+      const res = await fetch("/api/ads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ platform: "MERCADO_LIVRE" }),
+      });
+      const data = await res.json();
+      if (data.error) {
+        setSyncMsg(`Erro: ${data.error}`);
+      } else {
+        setSyncMsg(`Sincronizado! ${data.totalSynced} metricas importadas`);
+        fetchAds();
+      }
+    } catch (e) { setSyncMsg(`Erro: ${e}`); }
+    finally { setSyncing(false); setTimeout(() => setSyncMsg(""), 15000); }
+  }
 
   async function importAdsCSV(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -90,6 +111,13 @@ export default function AdsPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Anuncios Patrocinados (ADS)</h1>
           <p className="text-sm text-gray-500">Metricas de publicidade ML, Shopee, TikTok</p>
+        </div>
+        <div className="flex flex-col gap-2 items-end">
+          <button onClick={syncAds} disabled={syncing}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:bg-gray-400">
+            {syncing ? "Sincronizando..." : "Sincronizar ADS ML"}
+          </button>
+          {syncMsg && <span className={`text-sm max-w-md ${syncMsg.includes("Erro") ? "text-red-500" : "text-green-600"}`}>{syncMsg}</span>}
         </div>
       </div>
 
