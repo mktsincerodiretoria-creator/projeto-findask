@@ -60,7 +60,9 @@ export default function AdsPage() {
         body: JSON.stringify({ platform: "MERCADO_LIVRE" }),
       });
       const data = await res.json();
-      if (data.error) {
+if (data.status === "no_ads_account") {
+            setSyncMsg(data.message || "Anuncios de Produto nao habilitado. Acesse o Mercado Livre e ative Product Ads na sua conta.");
+} else if (data.error) {
         setSyncMsg(`Erro: ${data.error}`);
       } else {
         setSyncMsg(`Sincronizado! ${data.totalSynced} metricas importadas`);
