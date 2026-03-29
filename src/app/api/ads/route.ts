@@ -257,3 +257,4 @@ async function syncMLAds() {
 
   return NextResponse.json({ status: "success", totalSynced, campanhas: campaigns.length, diag });
 }
+
