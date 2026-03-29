@@ -165,60 +165,66 @@ async function syncMLAds() {
     });
   }
 
+  const sellerId = account.platformId;
   let totalSynced = 0;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const debugInfo: any[] = [];
 
   try {
-    // Busca campanhas de Product Ads do ML
+    // Endpoint correto: /advertising/product_ads/campaigns/{seller_id}
     const campaignsData = await mlApiCall(
-      `/advertising/product_ads/campaigns?advertiser_id=${account.platformId}&limit=50`,
+      `/advertising/product_ads/campaigns/${sellerId}`,
       accessToken
     );
 
-    const campaigns = campaignsData.results || campaignsData || [];
+    debugInfo.push({ endpoint: "campaigns", response: typeof campaignsData === "object" ? Object.keys(campaignsData) : typeof campaignsData });
 
-    for (const camp of (Array.isArray(campaigns) ? campaigns : [])) {
-      const campId = String(camp.id || camp.campaign_id);
-      const campName = camp.name || camp.title || `Campanha ${campId}`;
+    const campaigns = campaignsData.results || (Array.isArray(campaignsData) ? campaignsData : [campaignsData]);
 
-      // Upsert campanha
+    for (const camp of campaigns) {
+      if (!camp || !camp.campaign_id) continue;
+
+      const campId = String(camp.campaign_id);
+      const campName = camp.name || `Campanha ${campId}`;
+
       const savedCampaign = await prisma.adCampaign.upsert({
-        where: {
-          accountId_campaignId: { accountId: account.id, campaignId: campId },
-        },
+        where: { accountId_campaignId: { accountId: account.id, campaignId: campId } },
         update: { campaignName: campName, status: camp.status },
         create: {
           accountId: account.id, platform: "MERCADO_LIVRE",
-          campaignId: campId, campaignName: campName, status: camp.status,
+          campaignId: campId, campaignName: campName, status: camp.status || "unknown",
           dailyBudget: Number(camp.daily_budget || 0),
           totalBudget: Number(camp.total_budget || 0),
         },
       });
 
-      // Busca metricas da campanha (ultimos 30 dias)
+      // Busca metricas: /advertising/product_ads/campaigns/{seller_id}/{campaign_id}/metrics
       try {
-        const dateFrom = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+        const dateFrom = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
         const dateTo = new Date().toISOString().split("T")[0];
 
         const metricsData = await mlApiCall(
-          `/advertising/product_ads/campaigns/${campId}/metrics?date_from=${dateFrom}&date_to=${dateTo}&advertiser_id=${account.platformId}`,
+          `/advertising/product_ads/campaigns/${sellerId}/${campId}/metrics?date_from=${dateFrom}&date_to=${dateTo}`,
           accessToken
         );
 
-        const dailyMetrics = metricsData.results || metricsData.daily || [];
+        // Pode retornar um objeto unico ou array
+        const metricsList = Array.isArray(metricsData) ? metricsData :
+          metricsData.results ? metricsData.results :
+          metricsData.daily ? metricsData.daily : [metricsData];
 
-        for (const dm of (Array.isArray(dailyMetrics) ? dailyMetrics : [metricsData])) {
+        for (const dm of metricsList) {
+          if (!dm) continue;
           const date = dm.date || dateTo;
           const impressions = Number(dm.impressions || dm.prints || 0);
           const clicks = Number(dm.clicks || 0);
           const spend = Number(dm.cost || dm.spend || dm.amount || 0);
           const revenue = Number(dm.revenue || dm.total_amount || 0);
-          const orders = Number(dm.orders || dm.conversions || 0);
+          const orders = Number(dm.orders || dm.sales || dm.conversions || 0);
 
           if (spend > 0 || clicks > 0 || impressions > 0) {
             await prisma.adMetric.upsert({
-              where: {
-                campaignId_date: { campaignId: savedCampaign.id, date: new Date(date) },
-              },
+              where: { campaignId_date: { campaignId: savedCampaign.id, date: new Date(date) } },
               update: {
                 impressions, clicks, spend, revenue, orders,
                 cpc: clicks > 0 ? spend / clicks : 0,
@@ -233,27 +239,68 @@ async function syncMLAds() {
                 ctr: impressions > 0 ? (clicks / impressions) * 100 : 0,
                 acos: revenue > 0 ? (spend / revenue) * 100 : 0,
                 roas: spend > 0 ? revenue / spend : 0,
-                sku: dm.item_id || dm.sku || null,
-                itemId: dm.item_id || null,
               },
             });
             totalSynced++;
           }
         }
-      } catch (e) {
-        console.error(`Error syncing metrics for campaign ${campId}:`, e);
+      } catch (metricsError) {
+        debugInfo.push({ campaign: campId, metricsError: String(metricsError) });
+      }
+
+      // Busca ads (itens) da campanha com metricas por SKU
+      try {
+        const adsData = await mlApiCall(
+          `/advertising/product_ads/campaigns/${sellerId}/${campId}/ads/metrics?date_from=${new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split("T")[0]}&date_to=${new Date().toISOString().split("T")[0]}`,
+          accessToken
+        );
+
+        const ads = Array.isArray(adsData) ? adsData : adsData.results || [];
+        for (const ad of ads) {
+          if (ad.item_id && (ad.spend > 0 || ad.clicks > 0)) {
+            // Cria metrica vinculada ao SKU/item
+            const adCampId = `${campId}-${ad.item_id}`;
+            const adCampaign = await prisma.adCampaign.upsert({
+              where: { accountId_campaignId: { accountId: account.id, campaignId: adCampId } },
+              update: { campaignName: `${campName} | ${ad.title || ad.item_id}` },
+              create: {
+                accountId: account.id, platform: "MERCADO_LIVRE",
+                campaignId: adCampId, campaignName: `${campName} | ${ad.title || ad.item_id}`,
+                status: ad.status || "active",
+              },
+            });
+
+            await prisma.adMetric.upsert({
+              where: { campaignId_date: { campaignId: adCampaign.id, date: new Date() } },
+              update: {
+                impressions: Number(ad.impressions || 0), clicks: Number(ad.clicks || 0),
+                spend: Number(ad.cost || ad.spend || 0), revenue: Number(ad.revenue || 0),
+                orders: Number(ad.orders || ad.sales || 0), sku: ad.item_id,
+              },
+              create: {
+                campaignId: adCampaign.id, date: new Date(),
+                impressions: Number(ad.impressions || 0), clicks: Number(ad.clicks || 0),
+                spend: Number(ad.cost || ad.spend || 0), revenue: Number(ad.revenue || 0),
+                orders: Number(ad.orders || ad.sales || 0), sku: ad.item_id, itemId: ad.item_id,
+              },
+            });
+            totalSynced++;
+          }
+        }
+      } catch {
+        // Ads por item nao disponiveis
       }
 
       await new Promise((r) => setTimeout(r, 500));
     }
   } catch (e) {
-    // Se nao tem acesso a API de ads, retorna info
     return NextResponse.json({
-      error: "Nao foi possivel acessar a API de Ads do ML. Verifique se a permissao 'Publicidade de um produto' esta ativada.",
-      details: String(e),
-      totalSynced: 0,
+      error: "Erro ao acessar API de Ads do ML: " + String(e),
+      debug: debugInfo,
+      totalSynced,
+      hint: "Verifique se a permissao 'Publicidade de um produto' esta ativada e re-autorize o app",
     });
   }
 
-  return NextResponse.json({ status: "success", totalSynced });
+  return NextResponse.json({ status: "success", totalSynced, debug: debugInfo });
 }
