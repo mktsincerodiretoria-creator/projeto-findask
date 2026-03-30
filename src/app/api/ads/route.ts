@@ -173,10 +173,10 @@ async function syncMLAds() {
 
   // Testa multiplos endpoints de campanhas do Product Ads
   const [r1, r2, r3, r4, r5, r6] = await Promise.all([
-                // Endpoint oficial v2 com api-version header
-                                                         rawCall(`${BASE}/marketplace/advertising/MLB/advertisers/${advertiserId}/product_ads/campaigns/search`, token, "2"),
-                // Endpoint sem api-version
-                rawCall(`${BASE}/marketplace/advertising/MLB/advertisers/${advertiserId}/product_ads/campaigns/search`, token),
+                // Endpoint SEM MLB (confirmado que funciona via debug/ads2)
+                                                         rawCall(`${BASE}/marketplace/advertising/advertisers/${advertiserId}/product_ads/campaigns/search`, token, "2"),
+                // Endpoint com MLB (fallback)
+                rawCall(`${BASE}/marketplace/advertising/MLB/advertisers/${advertiserId}/product_ads/campaigns/search`, token, "2"),
                 // Endpoint via users
                 rawCall(`${BASE}/users/${sellerId}/advertising/product_ads/v2/campaigns`, token),
                 // Endpoint de busca de advertisers
