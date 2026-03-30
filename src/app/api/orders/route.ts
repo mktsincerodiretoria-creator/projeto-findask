@@ -36,8 +36,8 @@ export async function GET(request: NextRequest) {
     if (status && status !== "Todos") {
       where.status = status;
     } else {
-      // Por padrao, exclui pedidos cancelados (como o Mercado Turbo faz)
-      where.status = { not: "cancelled" };
+      // Exclui cancelados e devolvidos das metricas
+      where.status = { notIn: ["cancelled", "returned", "refunded", "devolvido", "cancelado", "CANCELLED", "RETURNED", "IN_CANCEL"] };
     }
 
     if (sku) {
@@ -98,10 +98,43 @@ export async function GET(request: NextRequest) {
       };
     });
 
+    // Busca devolucoes/cancelamentos separadamente
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const returnWhere: any = {};
+    if (accountId) returnWhere.accountId = accountId;
+    else if (platform) returnWhere.account = { platform };
+    if (from || to) {
+      returnWhere.orderDate = {};
+      if (from) returnWhere.orderDate.gte = new Date(from);
+      if (to) { const td = new Date(to); td.setHours(23,59,59,999); returnWhere.orderDate.lte = td; }
+    }
+    returnWhere.status = { in: ["cancelled", "returned", "refunded", "devolvido", "cancelado", "CANCELLED", "RETURNED", "IN_CANCEL"] };
+
+    const returnedOrders = await prisma.order.findMany({
+      where: returnWhere,
+      include: { items: true },
+      orderBy: { orderDate: "desc" },
+      take: 100,
+    });
+
+    const returnsTotals = {
+      count: returnedOrders.length,
+      totalAmount: returnedOrders.reduce((s, o) => s + o.totalAmount, 0),
+      orders: returnedOrders.map(o => ({
+        id: o.id,
+        platformOrderId: o.platformOrderId,
+        status: o.status,
+        totalAmount: o.totalAmount,
+        orderDate: o.orderDate,
+        items: o.items.map(i => ({ title: i.title, sku: i.sku, quantity: i.quantity, unitPrice: i.unitPrice })),
+      })),
+    };
+
     return NextResponse.json({
       orders: enrichedOrders,
       total: enrichedOrders.length,
       taxRate,
+      returns: returnsTotals,
     });
   } catch (error) {
     return NextResponse.json({ error: String(error) }, { status: 500 });

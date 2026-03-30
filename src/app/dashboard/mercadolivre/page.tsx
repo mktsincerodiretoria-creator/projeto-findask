@@ -80,6 +80,7 @@ export default function MercadoLivrePage() {
   const [selectedAccount, setSelectedAccount] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState<SortKey>("dateObj");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [returns, setReturns] = useState<{count:number;totalAmount:number;orders:Array<{platformOrderId:string;status:string;totalAmount:number;orderDate:string;items:Array<{title:string;sku:string|null;quantity:number}>}>}>({count:0,totalAmount:0,orders:[]});
   const [adsTotals, setAdsTotals] = useState<{spend:number;revenue:number;clicks:number;impressions:number;orders:number;cpc:number;acos:number;tacos:number;roas:number}>({spend:0,revenue:0,clicks:0,impressions:0,orders:0,cpc:0,acos:0,tacos:0,roas:0});
   const [adsCampaigns, setAdsCampaigns] = useState<Array<{campaignName:string;spend:number;revenue:number;clicks:number;impressions:number;orders:number}>>([]);
   const [importingAds, setImportingAds] = useState(false);
@@ -114,6 +115,7 @@ export default function MercadoLivrePage() {
       setMetrics(metricsData);
       setOrders(ordersData.orders || []);
       setTaxRate(ordersData.taxRate || 0);
+      if (ordersData.returns) setReturns(ordersData.returns);
       if (adsData.totals) setAdsTotals(adsData.totals);
       if (adsData.byCampaign) setAdsCampaigns(adsData.byCampaign);
     } catch (e) {
@@ -406,6 +408,54 @@ export default function MercadoLivrePage() {
               </table>
             </div>
           </div>
+
+          {/* ===== DEVOLUCOES E CANCELAMENTOS ===== */}
+          {returns.count > 0 && (
+            <div className="border-t-2 border-red-400 pt-6">
+              <h2 className="text-xl font-bold text-gray-900 mb-3">Devolucoes e Cancelamentos</h2>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
+                <div className="bg-red-50 rounded-lg border border-red-200 p-3">
+                  <p className="text-xs text-red-700 font-medium">Total Devolvido/Cancelado</p>
+                  <p className="text-xl font-bold text-red-700">{returns.count} pedidos</p>
+                </div>
+                <div className="bg-red-50 rounded-lg border border-red-200 p-3">
+                  <p className="text-xs text-red-700 font-medium">Valor Perdido</p>
+                  <p className="text-xl font-bold text-red-700">{formatCurrency(returns.totalAmount)}</p>
+                </div>
+                <div className="bg-red-50 rounded-lg border border-red-200 p-3">
+                  <p className="text-xs text-red-700 font-medium">% do Faturamento</p>
+                  <p className="text-xl font-bold text-red-700">{formatPercent(salesTotals.revenue > 0 ? (returns.totalAmount / (salesTotals.revenue + returns.totalAmount)) * 100 : 0)}</p>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-lg border overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-red-50">
+                    <tr>
+                      <th className="text-left px-3 py-2 font-medium text-red-700">N. Pedido</th>
+                      <th className="text-left px-3 py-2 font-medium text-red-700">Produto</th>
+                      <th className="text-left px-3 py-2 font-medium text-red-700">SKU</th>
+                      <th className="text-left px-3 py-2 font-medium text-red-700">Data</th>
+                      <th className="text-left px-3 py-2 font-medium text-red-700">Status</th>
+                      <th className="text-right px-3 py-2 font-medium text-red-700">Valor</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {returns.orders.map((o, i) => (
+                      <tr key={i} className="border-t hover:bg-red-50">
+                        <td className="px-3 py-2 font-mono text-xs">{o.platformOrderId}</td>
+                        <td className="px-3 py-2 max-w-[200px] truncate">{o.items[0]?.title || "-"}</td>
+                        <td className="px-3 py-2 font-mono text-xs">{o.items[0]?.sku || "-"}</td>
+                        <td className="px-3 py-2 whitespace-nowrap">{new Date(o.orderDate).toLocaleDateString("pt-BR")}</td>
+                        <td className="px-3 py-2"><span className="px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">{o.status}</span></td>
+                        <td className="px-3 py-2 text-right font-medium text-red-600">{formatCurrency(o.totalAmount)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </>
       )}
     </div>
