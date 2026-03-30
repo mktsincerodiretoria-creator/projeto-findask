@@ -195,6 +195,51 @@ model ProductCost {
 }
 
 // ========================
+// ESTOQUE & COMPRAS
+// ========================
+model StockItem {
+  id              String   @id @default(cuid())
+  sku             String   @unique
+  title           String?
+  currentStock    Int      @default(0)
+  cost            Float    @default(0)
+  salePrice       Float    @default(0)
+  leadTimeDays    Int      @default(7)    // Tempo do fornecedor (dias)
+  safetyStockDays Int      @default(30)   // Estoque de seguranca (dias de reserva)
+  minStock        Int      @default(0)    // Estoque minimo calculado
+  reorderPoint    Int      @default(0)    // Ponto de reposicao
+  avgDailySales   Float    @default(0)    // Media de vendas/dia
+  abcClass        String?  // A, B ou C
+  supplier        String?  // Nome do fornecedor
+  category        String?
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  purchases       Purchase[]
+
+  @@map("stock_items")
+}
+
+model Purchase {
+  id            String    @id @default(cuid())
+  stockItemId   String
+  stockItem     StockItem @relation(fields: [stockItemId], references: [id], onDelete: Cascade)
+  quantity      Int
+  unitCost      Float
+  totalCost     Float
+  supplier      String?
+  notes         String?
+  status        String    @default("pending") // pending, received, cancelled
+  orderDate     DateTime  @default(now())
+  receivedDate  DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@map("purchases")
+}
+
+// ========================
 // CAMPANHAS DE ADS
 // ========================
 model AdCampaign {
