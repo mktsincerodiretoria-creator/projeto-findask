@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
 import Navbar from "@/components/Navbar";
@@ -17,6 +17,24 @@ const geistMono = localFont({
 export const metadata: Metadata = {
   title: "FinDash - Dashboard Financeiro Multi-Plataforma",
   description: "Dashboard financeiro para Mercado Livre, Shopee, TikTok Shop e Amazon",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "FinDash",
+  },
+  icons: {
+    icon: "/icon-192.png",
+    apple: "/apple-touch-icon.png",
+  },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  themeColor: "#111827",
 };
 
 export default function RootLayout({
@@ -30,7 +48,7 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-gray-50`}
       >
         <Navbar />
-        <main className="w-full px-4 py-6">{children}</main>
+        <main className="w-full px-4 py-6 pb-20">{children}</main>
       </body>
     </html>
   );
