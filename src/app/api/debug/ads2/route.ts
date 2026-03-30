@@ -26,26 +26,17 @@ export async function GET() {
   const results: Record<string, any> = { sellerId };
 
   // Primeiro: descobre se o usuario tem acesso a ads
-  const endpoints = [
-    // Formato v2 com MLB
-    { url: `/marketplace/advertising/MLB/advertisers/${sellerId}/product_ads/campaigns/search`, headers: { "api-version": "2" } },
-    // Sem o /search
-    { url: `/marketplace/advertising/MLB/advertisers/${sellerId}/product_ads/campaigns`, headers: { "api-version": "2" } },
-    // Busca o advertiser_id do usuario
-    { url: `/marketplace/advertising/MLB/advertisers/${sellerId}`, headers: { "api-version": "2" } },
-    // Tenta sem MLB (site_id pode ser diferente)
+  // Testa o endpoint que retornou 200 com diferentes parametros
+  const workingEndpoints = [
     { url: `/marketplace/advertising/advertisers/${sellerId}/product_ads/campaigns/search`, headers: { "api-version": "2" } },
-    // Tenta endpoint de user info para ver se tem ads
-    { url: `/users/${sellerId}`, headers: {} },
-    // Tenta pegar info do advertiser
-    { url: `/advertising/advertisers/${sellerId}`, headers: {} },
-    // Endpoint antigo que pode ainda funcionar
-    { url: `/advertising/product_ads/campaigns/${sellerId}`, headers: {} },
-    // Tenta listar com caller.id
-    { url: `/marketplace/advertising/MLB/product_ads/campaigns/search?user_id=${sellerId}`, headers: { "api-version": "2" } },
+    { url: `/marketplace/advertising/advertisers/${sellerId}/product_ads/campaigns/search?status=active`, headers: { "api-version": "2" } },
+    { url: `/marketplace/advertising/advertisers/${sellerId}/product_ads/campaigns/search?limit=50`, headers: { "api-version": "2" } },
+    { url: `/marketplace/advertising/advertisers/${sellerId}/product_ads/campaigns/search?status=active&limit=50`, headers: {} },
+    { url: `/marketplace/advertising/advertisers/${sellerId}/product_ads/ads/search`, headers: { "api-version": "2" } },
+    { url: `/marketplace/advertising/advertisers/${sellerId}/product_ads/ads/search?limit=10`, headers: { "api-version": "2" } },
   ];
 
-  for (const ep of endpoints) {
+  for (const ep of workingEndpoints) {
     try {
       const hdrs: Record<string, string> = {
           Authorization: `Bearer ${accessToken}`,
