@@ -221,66 +221,130 @@ export default function EstoquePage() {
         </div>
       )}
 
-      {/* Tabela */}
+      {/* Lista de produtos */}
       {loading ? (
         <div className="flex items-center justify-center h-32"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" /></div>
-      ) : (
-        <div className="bg-white rounded-lg border overflow-x-auto">
-          <table className="w-full text-sm min-w-[1400px]">
-            <thead className="bg-gray-50 sticky top-0">
-              <tr>
-                <SortTh label="Status" field="status" sk={sk} sd={sd} onSort={handleSort} align="left" />
-                <SortTh label="ABC" field="abcClass" sk={sk} sd={sd} onSort={handleSort} align="left" />
-                <SortTh label="SKU" field="sku" sk={sk} sd={sd} onSort={handleSort} align="left" />
-                <th className="text-left px-3 py-2 font-medium text-gray-600">Produto</th>
-                <SortTh label="Estoque" field="currentStock" sk={sk} sd={sd} onSort={handleSort} />
-                <SortTh label="Vendas/dia" field="avgDailySales" sk={sk} sd={sd} onSort={handleSort} />
-                <SortTh label="Cobertura" field="coverageDays" sk={sk} sd={sd} onSort={handleSort} />
-                <SortTh label="Ponto Repos." field="reorderPoint" sk={sk} sd={sd} onSort={handleSort} />
-                <SortTh label="Sugestao Compra" field="suggestedPurchase" sk={sk} sd={sd} onSort={handleSort} />
-                <SortTh label="Custo" field="capitalTied" sk={sk} sd={sd} onSort={handleSort} />
-                <SortTh label="Margem" field="margin" sk={sk} sd={sd} onSort={handleSort} />
-                <th className="text-center px-3 py-2 font-medium text-gray-600">Acao</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((item) => (
-                <tr key={item.id} className="border-t hover:bg-gray-50">
-                  <td className="px-3 py-2">
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusColors[item.status]}`}>{statusLabels[item.status]}</span>
-                  </td>
-                  <td className="px-3 py-2">
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${item.abcClass === "A" ? "bg-green-100 text-green-700" : item.abcClass === "B" ? "bg-blue-100 text-blue-700" : "bg-gray-100 text-gray-600"}`}>{item.abcClass || "-"}</span>
-                  </td>
-                  <td className="px-3 py-2 font-mono text-xs">{item.sku}</td>
-                  <td className="px-3 py-2 max-w-[200px] truncate">{item.title || "-"}</td>
-                  <td className={`px-3 py-2 text-right font-medium ${item.currentStock <= 0 ? "text-red-600" : ""}`}>{item.currentStock}</td>
-                  <td className="px-3 py-2 text-right">{item.avgDailySales}</td>
-                  <td className={`px-3 py-2 text-right ${item.coverageDays <= 7 ? "text-red-600 font-bold" : item.coverageDays <= 15 ? "text-yellow-600" : ""}`}>
-                    {item.coverageDays >= 999 ? "-" : `${item.coverageDays}d`}
-                  </td>
-                  <td className="px-3 py-2 text-right">{item.reorderPoint}</td>
-                  <td className={`px-3 py-2 text-right font-medium ${item.suggestedPurchase > 0 ? "text-red-600" : "text-green-600"}`}>
-                    {item.suggestedPurchase > 0 ? item.suggestedPurchase : "-"}
-                  </td>
-                  <td className="px-3 py-2 text-right">{formatCurrency(item.capitalTied)}</td>
-                  <td className={`px-3 py-2 text-right ${item.margin >= 30 ? "text-green-600" : item.margin >= 15 ? "text-yellow-600" : "text-red-600"}`}>{formatPercent(item.margin)}</td>
-                  <td className="px-3 py-2 text-center">
-                    {item.suggestedPurchase > 0 && (
-                      <button onClick={() => registerPurchase(item.sku, item.suggestedPurchase, item.cost)}
-                        className="px-2 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700">
-                        Comprar {item.suggestedPurchase}
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-              {filtered.length === 0 && (
-                <tr><td colSpan={12} className="px-3 py-8 text-center text-gray-500">Nenhum produto cadastrado. Clique em &quot;+ Adicionar Produto&quot; para comecar.</td></tr>
-              )}
-            </tbody>
-          </table>
+      ) : filtered.length === 0 ? (
+        <div className="bg-white rounded-lg border p-8 text-center text-gray-500">
+          Nenhum produto. Clique em &quot;Sincronizar com Vendas&quot; ou &quot;+ Adicionar Produto&quot;.
         </div>
+      ) : (
+        <>
+          {/* Mobile: Cards */}
+          <div className="md:hidden space-y-3">
+            {filtered.map((item) => (
+              <div key={item.id} className={`rounded-lg border-2 p-4 ${item.status === "ruptura" ? "border-red-300 bg-red-50" : item.status === "critico" ? "border-orange-300 bg-orange-50" : item.status === "comprar" ? "border-yellow-300 bg-yellow-50" : "border-gray-200 bg-white"}`}>
+                <div className="flex justify-between items-start mb-2">
+                  <div>
+                    <p className="font-bold text-gray-900">{item.title || item.sku}</p>
+                    <p className="text-sm text-gray-600 font-mono">{item.sku}</p>
+                  </div>
+                  <div className="flex gap-1.5">
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${statusColors[item.status]}`}>{statusLabels[item.status]}</span>
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${item.abcClass === "A" ? "bg-green-200 text-green-800" : item.abcClass === "B" ? "bg-blue-200 text-blue-800" : "bg-gray-200 text-gray-700"}`}>{item.abcClass || "-"}</span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2 text-sm mb-3">
+                  <div>
+                    <p className="text-gray-500 text-xs">Estoque</p>
+                    <p className={`font-bold ${item.currentStock <= 0 ? "text-red-600" : "text-gray-900"}`}>{item.currentStock} un</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500 text-xs">Vendas/dia</p>
+                    <p className="font-bold text-gray-900">{item.avgDailySales}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500 text-xs">Cobertura</p>
+                    <p className={`font-bold ${item.coverageDays <= 7 ? "text-red-600" : item.coverageDays <= 15 ? "text-yellow-600" : "text-gray-900"}`}>
+                      {item.coverageDays >= 999 ? "∞" : `${item.coverageDays} dias`}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500 text-xs">Ponto Repos.</p>
+                    <p className="font-bold text-gray-900">{item.reorderPoint} un</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500 text-xs">Capital</p>
+                    <p className="font-bold text-gray-900">{formatCurrency(item.capitalTied)}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500 text-xs">Margem</p>
+                    <p className={`font-bold ${item.margin >= 30 ? "text-green-600" : item.margin >= 15 ? "text-yellow-600" : "text-red-600"}`}>{formatPercent(item.margin)}</p>
+                  </div>
+                </div>
+
+                {item.suggestedPurchase > 0 && (
+                  <div className="flex justify-between items-center bg-white rounded-lg p-2 border">
+                    <div>
+                      <p className="text-xs text-red-600 font-medium">Comprar {item.suggestedPurchase} unidades</p>
+                      <p className="text-xs text-gray-500">Custo: {formatCurrency(item.suggestedPurchase * item.cost)}</p>
+                    </div>
+                    <button onClick={() => registerPurchase(item.sku, item.suggestedPurchase, item.cost)}
+                      className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium">
+                      Comprar
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Desktop: Tabela */}
+          <div className="hidden md:block bg-white rounded-lg border overflow-x-auto">
+            <table className="w-full text-sm min-w-[1400px]">
+              <thead className="bg-gray-50 sticky top-0">
+                <tr>
+                  <SortTh label="Status" field="status" sk={sk} sd={sd} onSort={handleSort} align="left" />
+                  <SortTh label="ABC" field="abcClass" sk={sk} sd={sd} onSort={handleSort} align="left" />
+                  <SortTh label="SKU" field="sku" sk={sk} sd={sd} onSort={handleSort} align="left" />
+                  <th className="text-left px-3 py-2 font-medium text-gray-600">Produto</th>
+                  <SortTh label="Estoque" field="currentStock" sk={sk} sd={sd} onSort={handleSort} />
+                  <SortTh label="Vendas/dia" field="avgDailySales" sk={sk} sd={sd} onSort={handleSort} />
+                  <SortTh label="Cobertura" field="coverageDays" sk={sk} sd={sd} onSort={handleSort} />
+                  <SortTh label="Ponto Repos." field="reorderPoint" sk={sk} sd={sd} onSort={handleSort} />
+                  <SortTh label="Sugestao Compra" field="suggestedPurchase" sk={sk} sd={sd} onSort={handleSort} />
+                  <SortTh label="Capital" field="capitalTied" sk={sk} sd={sd} onSort={handleSort} />
+                  <SortTh label="Margem" field="margin" sk={sk} sd={sd} onSort={handleSort} />
+                  <th className="text-center px-3 py-2 font-medium text-gray-600">Acao</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((item) => (
+                  <tr key={item.id} className="border-t hover:bg-gray-50">
+                    <td className="px-3 py-2">
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusColors[item.status]}`}>{statusLabels[item.status]}</span>
+                    </td>
+                    <td className="px-3 py-2">
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${item.abcClass === "A" ? "bg-green-100 text-green-700" : item.abcClass === "B" ? "bg-blue-100 text-blue-700" : "bg-gray-100 text-gray-600"}`}>{item.abcClass || "-"}</span>
+                    </td>
+                    <td className="px-3 py-2 font-mono text-xs text-gray-800">{item.sku}</td>
+                    <td className="px-3 py-2 max-w-[200px] truncate text-gray-900 font-medium">{item.title || "-"}</td>
+                    <td className={`px-3 py-2 text-right font-bold ${item.currentStock <= 0 ? "text-red-600" : "text-gray-900"}`}>{item.currentStock}</td>
+                    <td className="px-3 py-2 text-right text-gray-900">{item.avgDailySales}</td>
+                    <td className={`px-3 py-2 text-right font-medium ${item.coverageDays <= 7 ? "text-red-600" : item.coverageDays <= 15 ? "text-yellow-600" : "text-gray-900"}`}>
+                      {item.coverageDays >= 999 ? "-" : `${item.coverageDays}d`}
+                    </td>
+                    <td className="px-3 py-2 text-right text-gray-900">{item.reorderPoint}</td>
+                    <td className={`px-3 py-2 text-right font-bold ${item.suggestedPurchase > 0 ? "text-red-600" : "text-green-600"}`}>
+                      {item.suggestedPurchase > 0 ? item.suggestedPurchase : "-"}
+                    </td>
+                    <td className="px-3 py-2 text-right text-gray-900">{formatCurrency(item.capitalTied)}</td>
+                    <td className={`px-3 py-2 text-right font-medium ${item.margin >= 30 ? "text-green-600" : item.margin >= 15 ? "text-yellow-600" : "text-red-600"}`}>{formatPercent(item.margin)}</td>
+                    <td className="px-3 py-2 text-center">
+                      {item.suggestedPurchase > 0 && (
+                        <button onClick={() => registerPurchase(item.sku, item.suggestedPurchase, item.cost)}
+                          className="px-2 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700">
+                          Comprar {item.suggestedPurchase}
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
     </div>
   );
