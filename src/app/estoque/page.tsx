@@ -50,6 +50,7 @@ export default function EstoquePage() {
   const [sd, setSd] = useState<SortDir>("asc");
   const [filter, setFilter] = useState("all");
   const [showForm, setShowForm] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [form, setForm] = useState({ sku: "", title: "", currentStock: "", cost: "", salePrice: "", leadTimeDays: "7", safetyStockDays: "30", supplier: "" });
   const [msg, setMsg] = useState("");
 
@@ -109,6 +110,19 @@ export default function EstoquePage() {
     setTimeout(() => setMsg(""), 3000);
   }
 
+  async function syncFromSales() {
+    setSyncing(true); setMsg("");
+    try {
+      const res = await fetch("/api/stock/sync", { method: "POST" });
+      const data = await res.json();
+      if (data.success) {
+        setMsg(`${data.created} novos SKUs + ${data.updated} atualizados das vendas!`);
+        fetchStock();
+      } else { setMsg(`Erro: ${data.error}`); }
+    } catch (e) { setMsg(`Erro: ${e}`); }
+    finally { setSyncing(false); setTimeout(() => setMsg(""), 8000); }
+  }
+
   async function registerPurchase(sku: string, qty: number, cost: number) {
     await fetch("/api/purchases", {
       method: "POST", headers: { "Content-Type": "application/json" },
@@ -123,7 +137,13 @@ export default function EstoquePage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-gray-900">Estoque & Compras</h1>
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <h1 className="text-2xl font-bold text-gray-900">Estoque & Compras</h1>
+        <button onClick={syncFromSales} disabled={syncing}
+          className="px-4 py-2 bg-teal-600 text-white rounded-lg text-sm font-medium hover:bg-teal-700 disabled:bg-gray-400">
+          {syncing ? "Sincronizando..." : "Sincronizar com Vendas"}
+        </button>
+      </div>
 
       {/* Dashboard cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
