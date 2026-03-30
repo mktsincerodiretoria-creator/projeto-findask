@@ -138,7 +138,7 @@ export default function EstoquePage() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <h1 className="text-2xl font-bold text-gray-900">Estoque & Compras</h1>
+        <h1 className="text-2xl font-bold text-gray-900">Gestao de Compras</h1>
         <button onClick={syncFromSales} disabled={syncing}
           className="px-4 py-2 bg-teal-600 text-white rounded-lg text-sm font-medium hover:bg-teal-700 disabled:bg-gray-400">
           {syncing ? "Sincronizando..." : "Sincronizar com Vendas"}
