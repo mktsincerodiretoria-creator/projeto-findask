@@ -10,13 +10,16 @@ export async function GET(request: NextRequest) {
     const from = searchParams.get("from");
     const to = searchParams.get("to");
     const platform = searchParams.get("platform");
+    const accountId = searchParams.get("accountId");
     const sku = searchParams.get("sku");
     const status = searchParams.get("status");
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const where: any = {};
 
-    if (platform) {
+    if (accountId) {
+      where.accountId = accountId;
+    } else if (platform) {
       where.account = { platform };
     }
 

@@ -156,9 +156,26 @@ export default function ContasPage() {
                         {account.tokenStatus === "valid" ? "Conectado" : "Token Expirado"}
                       </span>
                     </div>
-                    <p className="text-sm text-gray-600">
-                      {account.nickname || account.email || account.platformId}
-                    </p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm text-gray-600 font-medium">
+                        {account.nickname || account.email || account.platformId}
+                      </p>
+                      <button
+                        onClick={() => {
+                          const newName = prompt("Nome da loja:", account.nickname || "");
+                          if (newName) {
+                            fetch("/api/accounts", {
+                              method: "PUT",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ id: account.id, nickname: newName }),
+                            }).then(() => fetchAccounts());
+                          }
+                        }}
+                        className="text-blue-500 hover:text-blue-700 text-xs"
+                      >
+                        Editar nome
+                      </button>
+                    </div>
                     <div className="flex gap-4 mt-2 text-sm text-gray-500">
                       <span>{account.ordersCount} pedidos</span>
                       <span>{account.productsCount} produtos</span>

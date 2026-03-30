@@ -7,6 +7,7 @@ import DateFilter from "@/components/DateFilter";
 import SyncButton from "@/components/SyncButton";
 import RevenueChart from "@/components/RevenueChart";
 import ImportPlanilha from "@/components/ImportPlanilha";
+import StoreFilter from "@/components/StoreFilter";
 
 // ======= TYPES =======
 interface OrderItem {
@@ -76,6 +77,7 @@ export default function MercadoLivrePage() {
   const [loading, setLoading] = useState(true);
   const [dateRange, setDateRange] = useState({ from: "", to: "" });
   const [taxRate, setTaxRate] = useState(0);
+  const [selectedAccount, setSelectedAccount] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState<SortKey>("dateObj");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [adsTotals, setAdsTotals] = useState<{spend:number;revenue:number;clicks:number;impressions:number;orders:number;cpc:number;acos:number;tacos:number;roas:number}>({spend:0,revenue:0,clicks:0,impressions:0,orders:0,cpc:0,acos:0,tacos:0,roas:0});
@@ -84,7 +86,7 @@ export default function MercadoLivrePage() {
   const [adsMsg, setAdsMsg] = useState("");
   const adsFileRef = useRef<HTMLInputElement>(null);
 
-  const fetchData = useCallback(async (from?: string, to?: string) => {
+  const fetchData = useCallback(async (from?: string, to?: string, accId?: string | null) => {
     setLoading(true);
     try {
       const params = new URLSearchParams({ platform: "MERCADO_LIVRE" });
@@ -93,7 +95,11 @@ export default function MercadoLivrePage() {
       const ordParams = new URLSearchParams();
       if (from) ordParams.set("from", from);
       if (to) ordParams.set("to", to);
-      ordParams.set("platform", "MERCADO_LIVRE");
+      if (accId) {
+        ordParams.set("accountId", accId);
+      } else {
+        ordParams.set("platform", "MERCADO_LIVRE");
+      }
 
       const adsParams = new URLSearchParams({ platform: "MERCADO_LIVRE" });
       if (from) adsParams.set("from", from);
@@ -126,10 +132,7 @@ export default function MercadoLivrePage() {
     fetchData(f, t);
   }, [fetchData]);
 
-  function handleFilter(from: string, to: string) {
-    setDateRange({ from, to });
-    fetchData(from, to);
-  }
+  // handleFilter removido - inline no DateFilter
   function handleSort(key: SortKey) {
     if (sortKey === key) setSortDir(sortDir === "asc" ? "desc" : "asc");
     else { setSortKey(key); setSortDir("desc"); }
@@ -173,10 +176,13 @@ export default function MercadoLivrePage() {
             {dateRange.from && dateRange.to ? `${new Date(dateRange.from).toLocaleDateString("pt-BR")} - ${new Date(dateRange.to).toLocaleDateString("pt-BR")}` : "Ultimos 30 dias"}
           </p>
         </div>
-        <SyncButton onSyncComplete={() => fetchData(dateRange.from, dateRange.to)} />
+        <SyncButton onSyncComplete={() => fetchData(dateRange.from, dateRange.to, selectedAccount)} />
       </div>
 
-      <DateFilter onFilter={handleFilter} />
+      <div className="flex flex-wrap gap-3 items-center">
+        <DateFilter onFilter={(from, to) => { setDateRange({ from, to }); fetchData(from, to, selectedAccount); }} />
+        <StoreFilter platform="MERCADO_LIVRE" onFilterChange={(accId) => { setSelectedAccount(accId); fetchData(dateRange.from, dateRange.to, accId); }} />
+      </div>
 
       {loading ? (
         <div className="flex items-center justify-center h-64">

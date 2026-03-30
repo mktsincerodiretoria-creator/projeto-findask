@@ -6,6 +6,7 @@ import MetricCard from "@/components/MetricCard";
 import DateFilter from "@/components/DateFilter";
 import ImportPlanilha from "@/components/ImportPlanilha";
 import AdsSection from "@/components/AdsSection";
+import StoreFilter from "@/components/StoreFilter";
 
 interface OrderItem {
   title: string; quantity: number; unitPrice: number; totalPrice: number;
@@ -142,7 +143,10 @@ export default function ShopeePage() {
         )}
       </div>
 
-      <DateFilter onFilter={handleFilter} />
+      <div className="flex flex-wrap gap-3 items-center">
+        <DateFilter onFilter={handleFilter} />
+        <StoreFilter platform="SHOPEE" onFilterChange={() => { fetchData(dateRange.from, dateRange.to); }} />
+      </div>
 
       {!hasAccount && hasAccount !== null ? (
         <div className="bg-orange-50 border border-orange-200 rounded-lg p-6 text-center">

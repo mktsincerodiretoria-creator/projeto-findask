@@ -1,9 +1,9 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
-// GET /api/accounts - Lista todas as contas conectadas
+// GET /api/accounts
 export async function GET() {
   try {
     const accounts = await prisma.account.findMany({
@@ -51,5 +51,26 @@ export async function GET() {
   } catch (error) {
     console.error("Accounts error:", error);
     return NextResponse.json({ error: "Erro ao buscar contas" }, { status: 500 });
+  }
+}
+
+// PUT /api/accounts - Editar nickname da conta
+export async function PUT(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const { id, nickname } = body;
+
+    if (!id || !nickname) {
+      return NextResponse.json({ error: "ID e nickname obrigatorios" }, { status: 400 });
+    }
+
+    const updated = await prisma.account.update({
+      where: { id },
+      data: { nickname },
+    });
+
+    return NextResponse.json(updated);
+  } catch (error) {
+    return NextResponse.json({ error: String(error) }, { status: 500 });
   }
 }
