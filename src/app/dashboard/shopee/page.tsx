@@ -5,6 +5,7 @@ import { formatCurrency, formatPercent } from "@/lib/utils";
 import MetricCard from "@/components/MetricCard";
 import DateFilter from "@/components/DateFilter";
 import ImportPlanilha from "@/components/ImportPlanilha";
+import AdsSection from "@/components/AdsSection";
 
 interface OrderItem {
   title: string; quantity: number; unitPrice: number; totalPrice: number;
@@ -47,6 +48,8 @@ export default function ShopeePage() {
   const [dateRange, setDateRange] = useState({ from: "", to: "" });
   const [sortKey, setSortKey] = useState<SortKey>("dateObj");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [adsTotals, setAdsTotals] = useState<{spend:number;revenue:number;clicks:number;impressions:number;orders:number;cpc:number;acos:number;tacos:number;roas:number}>({spend:0,revenue:0,clicks:0,impressions:0,orders:0,cpc:0,acos:0,tacos:0,roas:0});
+  const [adsCampaigns, setAdsCampaigns] = useState<Array<{campaignName:string;spend:number;revenue:number;clicks:number;impressions:number;orders:number}>>([]);
   const [hasAccount, setHasAccount] = useState<boolean | null>(null);
 
   const fetchData = useCallback(async (from?: string, to?: string) => {
@@ -55,13 +58,19 @@ export default function ShopeePage() {
       const params = new URLSearchParams({ platform: "SHOPEE" });
       if (from) params.set("from", from);
       if (to) params.set("to", to);
-      const [ordersRes, accountsRes] = await Promise.all([
+      const adsParams = new URLSearchParams({ platform: "SHOPEE" });
+      if (from) adsParams.set("from", from);
+      if (to) adsParams.set("to", to);
+      const [ordersRes, accountsRes, adsRes] = await Promise.all([
         fetch(`/api/orders?${params.toString()}`),
         fetch("/api/accounts"),
+        fetch(`/api/ads?${adsParams.toString()}`),
       ]);
-      const [ordersData, accountsData] = await Promise.all([ordersRes.json(), accountsRes.json()]);
+      const [ordersData, accountsData, adsData] = await Promise.all([ordersRes.json(), accountsRes.json(), adsRes.json()]);
       setOrders(ordersData.orders || []);
       setTaxRate(ordersData.taxRate || 0);
+      if (adsData.totals) setAdsTotals(adsData.totals);
+      if (adsData.byCampaign) setAdsCampaigns(adsData.byCampaign);
       const shopeeAccounts = Array.isArray(accountsData) ? accountsData.filter((a: { platform: string }) => a.platform === "SHOPEE") : [];
       setHasAccount(shopeeAccounts.length > 0);
     } catch (e) { console.error("Error:", e); }
@@ -167,6 +176,9 @@ export default function ShopeePage() {
               <MetricCard title="= Margem Liquida" value={totals.margin} icon="✅" color={totals.margin >= 0 ? "text-green-600" : "text-red-600"} />
             </div>
           </div>
+
+          {/* ADS */}
+          <AdsSection platform="SHOPEE" platformLabel="Shopee" borderColor="border-orange-400" totals={adsTotals} campaigns={adsCampaigns} onImportComplete={() => fetchData(dateRange.from, dateRange.to)} />
 
           {/* Importar planilha */}
           <ImportPlanilha platform="SHOPEE" onImportComplete={() => fetchData(dateRange.from, dateRange.to)} />
