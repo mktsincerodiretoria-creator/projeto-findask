@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { formatCurrency, formatPercent } from "@/lib/utils";
 import MetricCard from "@/components/MetricCard";
 import DateFilter from "@/components/DateFilter";
@@ -78,6 +78,11 @@ export default function MercadoLivrePage() {
   const [taxRate, setTaxRate] = useState(0);
   const [sortKey, setSortKey] = useState<SortKey>("dateObj");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [adsTotals, setAdsTotals] = useState<{spend:number;revenue:number;clicks:number;impressions:number;orders:number;cpc:number;acos:number;tacos:number;roas:number}>({spend:0,revenue:0,clicks:0,impressions:0,orders:0,cpc:0,acos:0,tacos:0,roas:0});
+  const [adsCampaigns, setAdsCampaigns] = useState<Array<{campaignName:string;spend:number;revenue:number;clicks:number;impressions:number;orders:number}>>([]);
+  const [importingAds, setImportingAds] = useState(false);
+  const [adsMsg, setAdsMsg] = useState("");
+  const adsFileRef = useRef<HTMLInputElement>(null);
 
   const fetchData = useCallback(async (from?: string, to?: string) => {
     setLoading(true);
@@ -90,14 +95,21 @@ export default function MercadoLivrePage() {
       if (to) ordParams.set("to", to);
       ordParams.set("platform", "MERCADO_LIVRE");
 
-      const [metricsRes, ordersRes] = await Promise.all([
+      const adsParams = new URLSearchParams({ platform: "MERCADO_LIVRE" });
+      if (from) adsParams.set("from", from);
+      if (to) adsParams.set("to", to);
+
+      const [metricsRes, ordersRes, adsRes] = await Promise.all([
         fetch(`/api/metrics?${params.toString()}`),
         fetch(`/api/orders?${ordParams.toString()}`),
+        fetch(`/api/ads?${adsParams.toString()}`),
       ]);
-      const [metricsData, ordersData] = await Promise.all([metricsRes.json(), ordersRes.json()]);
+      const [metricsData, ordersData, adsData] = await Promise.all([metricsRes.json(), ordersRes.json(), adsRes.json()]);
       setMetrics(metricsData);
       setOrders(ordersData.orders || []);
       setTaxRate(ordersData.taxRate || 0);
+      if (adsData.totals) setAdsTotals(adsData.totals);
+      if (adsData.byCampaign) setAdsCampaigns(adsData.byCampaign);
     } catch (e) {
       console.error("Error:", e);
     } finally {
@@ -203,7 +215,106 @@ export default function MercadoLivrePage() {
 
           <RevenueChart data={metrics?.daily || []} />
 
-          {/* Importar planilha */}
+          {/* ===== ADS / ANUNCIOS PATROCINADOS ===== */}
+          <div className="border-t-2 border-blue-400 pt-6">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-bold text-gray-900">Anuncios Patrocinados (ADS)</h2>
+              <div className="flex items-center gap-3">
+                <label className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700 cursor-pointer">
+                  Importar CSV ADS
+                  <input ref={adsFileRef} type="file" accept=".csv,.txt,.tsv,.xlsx,.xls" className="hidden" disabled={importingAds}
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0]; if (!file) return;
+                      setImportingAds(true); setAdsMsg("");
+                      try {
+                        let csvText: string;
+                        if (file.name.endsWith(".xlsx") || file.name.endsWith(".xls")) {
+                          const XLSX = (await import("xlsx")).default;
+                          const buf = await file.arrayBuffer();
+                          const wb = XLSX.read(buf, { type: "array" });
+                          csvText = XLSX.utils.sheet_to_csv(wb.Sheets[wb.SheetNames[0]], { FS: "\t" });
+                        } else { csvText = await file.text(); }
+                        const res = await fetch("/api/ads/import", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ csvText, platform: "MERCADO_LIVRE" }) });
+                        const data = await res.json();
+                        if (data.success) { setAdsMsg(`${data.imported} campanhas importadas`); fetchData(dateRange.from, dateRange.to); }
+                        else setAdsMsg(`Erro: ${data.error}`);
+                      } catch (err) { setAdsMsg(`Erro: ${err}`); }
+                      finally { setImportingAds(false); if (adsFileRef.current) adsFileRef.current.value = ""; }
+                    }}
+                  />
+                </label>
+                {importingAds && <span className="text-sm text-blue-600">Importando...</span>}
+                {adsMsg && <span className={`text-sm ${adsMsg.includes("Erro") ? "text-red-500" : "text-green-600"}`}>{adsMsg}</span>}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
+              <div className="bg-white rounded-lg border p-3">
+                <p className="text-xs text-gray-500">Investimento</p>
+                <p className="text-lg font-bold text-red-600">{formatCurrency(adsTotals.spend)}</p>
+              </div>
+              <div className="bg-white rounded-lg border p-3">
+                <p className="text-xs text-gray-500">Receita Ads</p>
+                <p className="text-lg font-bold text-green-600">{formatCurrency(adsTotals.revenue)}</p>
+              </div>
+              <div className="bg-white rounded-lg border p-3">
+                <p className="text-xs text-gray-500">Custo por Clique</p>
+                <p className="text-lg font-bold">{formatCurrency(adsTotals.cpc)}</p>
+              </div>
+              <div className="bg-white rounded-lg border p-3">
+                <p className="text-xs text-gray-500">Vendas Ads</p>
+                <p className="text-lg font-bold">{adsTotals.orders}</p>
+              </div>
+              <div className="bg-white rounded-lg border p-3">
+                <p className="text-xs text-gray-500">ACOS</p>
+                <p className={`text-lg font-bold ${adsTotals.acos <= 15 ? "text-green-600" : adsTotals.acos <= 30 ? "text-yellow-600" : "text-red-600"}`}>{formatPercent(adsTotals.acos)}</p>
+              </div>
+              <div className="bg-white rounded-lg border p-3">
+                <p className="text-xs text-gray-500">TACOS</p>
+                <p className={`text-lg font-bold ${adsTotals.tacos <= 10 ? "text-green-600" : adsTotals.tacos <= 20 ? "text-yellow-600" : "text-red-600"}`}>{formatPercent(adsTotals.tacos)}</p>
+              </div>
+            </div>
+
+            {adsCampaigns.length > 0 && (
+              <div className="bg-white rounded-lg border overflow-x-auto mb-4">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="text-left px-3 py-2 font-medium text-gray-600">Campanha</th>
+                      <th className="text-right px-3 py-2 font-medium text-gray-600">Investimento</th>
+                      <th className="text-right px-3 py-2 font-medium text-gray-600">Receita</th>
+                      <th className="text-right px-3 py-2 font-medium text-gray-600">Cliques</th>
+                      <th className="text-right px-3 py-2 font-medium text-gray-600">Vendas</th>
+                      <th className="text-right px-3 py-2 font-medium text-gray-600">CPC</th>
+                      <th className="text-right px-3 py-2 font-medium text-gray-600">ACOS</th>
+                      <th className="text-right px-3 py-2 font-medium text-gray-600">ROAS</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {adsCampaigns.map((c, i) => {
+                      const cCpc = c.clicks > 0 ? c.spend / c.clicks : 0;
+                      const cAcos = c.revenue > 0 ? (c.spend / c.revenue) * 100 : 0;
+                      const cRoas = c.spend > 0 ? c.revenue / c.spend : 0;
+                      return (
+                        <tr key={i} className="border-t hover:bg-gray-50">
+                          <td className="px-3 py-2 font-medium max-w-[250px] truncate">{c.campaignName}</td>
+                          <td className="px-3 py-2 text-right text-red-600">{formatCurrency(c.spend)}</td>
+                          <td className="px-3 py-2 text-right text-green-600">{formatCurrency(c.revenue)}</td>
+                          <td className="px-3 py-2 text-right">{c.clicks}</td>
+                          <td className="px-3 py-2 text-right">{c.orders}</td>
+                          <td className="px-3 py-2 text-right">{formatCurrency(cCpc)}</td>
+                          <td className={`px-3 py-2 text-right ${cAcos <= 15 ? "text-green-600" : "text-red-600"}`}>{formatPercent(cAcos)}</td>
+                          <td className="px-3 py-2 text-right text-blue-600">{cRoas.toFixed(2)}x</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {/* Importar planilha de vendas */}
           <ImportPlanilha platform="MERCADO_LIVRE" onImportComplete={() => fetchData(dateRange.from, dateRange.to)} />
 
           {/* ===== VENDAS (na mesma aba) ===== */}
