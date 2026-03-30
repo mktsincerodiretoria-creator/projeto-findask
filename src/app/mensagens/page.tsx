@@ -7,6 +7,8 @@ interface Question {
   text: string;
   date: string;
   itemId: string;
+  accountId: string;
+  storeName: string;
   itemTitle: string;
   itemPrice: number;
   status: string;
@@ -55,7 +57,7 @@ export default function MensagensPage() {
       const res = await fetch("/api/messages/mercadolivre", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "answer", questionId }),
+        body: JSON.stringify({ action: "answer", questionId, accountId: questions.find(q => q.id === questionId)?.accountId }),
       });
       const data = await res.json();
       if (data.status === "answered") {
@@ -180,6 +182,7 @@ export default function MensagensPage() {
                         Produto: {q.itemTitle}
                       </span>
                       {q.itemPrice > 0 && <span>R$ {q.itemPrice.toFixed(2)}</span>}
+                      <span className="px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-800 font-medium">{q.storeName}</span>
                       <span>{new Date(q.date).toLocaleString("pt-BR")}</span>
                       <span className="font-mono text-gray-400">#{q.id}</span>
                     </div>
