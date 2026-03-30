@@ -148,15 +148,15 @@ export default function EstoquePage() {
       {/* Dashboard cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
         <div className="bg-white rounded-lg border p-3">
-          <p className="text-xs text-gray-500">SKUs</p>
-          <p className="text-xl font-bold">{t.totalSkus}</p>
+          <p className="text-xs text-gray-700 font-medium">SKUs</p>
+          <p className="text-xl font-bold text-gray-900">{t.totalSkus}</p>
         </div>
         <div className="bg-white rounded-lg border p-3">
-          <p className="text-xs text-gray-500">Unidades</p>
-          <p className="text-xl font-bold">{t.totalStock}</p>
+          <p className="text-xs text-gray-700 font-medium">Unidades</p>
+          <p className="text-xl font-bold text-gray-900">{t.totalStock}</p>
         </div>
         <div className="bg-white rounded-lg border p-3">
-          <p className="text-xs text-gray-500">Capital Parado</p>
+          <p className="text-xs text-gray-700 font-medium">Capital Parado</p>
           <p className="text-xl font-bold text-red-600">{formatCurrency(t.totalCapital)}</p>
         </div>
         <div className="bg-red-50 rounded-lg border border-red-200 p-3">
@@ -237,7 +237,7 @@ export default function EstoquePage() {
                 <div className="flex justify-between items-start mb-2">
                   <div>
                     <p className="font-bold text-gray-900">{item.title || item.sku}</p>
-                    <p className="text-sm text-gray-600 font-mono">{item.sku}</p>
+                    <p className="text-sm text-gray-900 font-mono font-bold">{item.sku}</p>
                   </div>
                   <div className="flex gap-1.5">
                     <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${statusColors[item.status]}`}>{statusLabels[item.status]}</span>
@@ -247,29 +247,29 @@ export default function EstoquePage() {
 
                 <div className="grid grid-cols-3 gap-2 text-sm mb-3">
                   <div>
-                    <p className="text-gray-500 text-xs">Estoque</p>
+                    <p className="text-gray-700 text-xs font-medium">Estoque</p>
                     <p className={`font-bold ${item.currentStock <= 0 ? "text-red-600" : "text-gray-900"}`}>{item.currentStock} un</p>
                   </div>
                   <div>
-                    <p className="text-gray-500 text-xs">Vendas/dia</p>
+                    <p className="text-gray-700 text-xs font-medium">Vendas/dia</p>
                     <p className="font-bold text-gray-900">{item.avgDailySales}</p>
                   </div>
                   <div>
-                    <p className="text-gray-500 text-xs">Cobertura</p>
+                    <p className="text-gray-700 text-xs font-medium">Cobertura</p>
                     <p className={`font-bold ${item.coverageDays <= 7 ? "text-red-600" : item.coverageDays <= 15 ? "text-yellow-600" : "text-gray-900"}`}>
                       {item.coverageDays >= 999 ? "∞" : `${item.coverageDays} dias`}
                     </p>
                   </div>
                   <div>
-                    <p className="text-gray-500 text-xs">Ponto Repos.</p>
+                    <p className="text-gray-700 text-xs font-medium">Ponto Repos.</p>
                     <p className="font-bold text-gray-900">{item.reorderPoint} un</p>
                   </div>
                   <div>
-                    <p className="text-gray-500 text-xs">Capital</p>
+                    <p className="text-gray-700 text-xs font-medium">Capital</p>
                     <p className="font-bold text-gray-900">{formatCurrency(item.capitalTied)}</p>
                   </div>
                   <div>
-                    <p className="text-gray-500 text-xs">Margem</p>
+                    <p className="text-gray-700 text-xs font-medium">Margem</p>
                     <p className={`font-bold ${item.margin >= 30 ? "text-green-600" : item.margin >= 15 ? "text-yellow-600" : "text-red-600"}`}>{formatPercent(item.margin)}</p>
                   </div>
                 </div>
@@ -277,8 +277,8 @@ export default function EstoquePage() {
                 {item.suggestedPurchase > 0 && (
                   <div className="flex justify-between items-center bg-white rounded-lg p-2 border">
                     <div>
-                      <p className="text-xs text-red-600 font-medium">Comprar {item.suggestedPurchase} unidades</p>
-                      <p className="text-xs text-gray-500">Custo: {formatCurrency(item.suggestedPurchase * item.cost)}</p>
+                      <p className="text-sm text-red-700 font-bold">Comprar {item.suggestedPurchase} unidades</p>
+                      <p className="text-xs text-gray-800 font-medium">Custo: {formatCurrency(item.suggestedPurchase * item.cost)}</p>
                     </div>
                     <button onClick={() => registerPurchase(item.sku, item.suggestedPurchase, item.cost)}
                       className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium">
