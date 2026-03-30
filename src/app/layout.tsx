@@ -45,10 +45,11 @@ export default function RootLayout({
   return (
     <html lang="pt-BR">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-gray-50`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-gray-100`}
       >
         <Navbar />
-        <main className="w-full px-4 py-6 pb-20">{children}</main>
+        {/* Desktop: conteudo ao lado da sidebar. Mobile: full width */}
+        <main className="md:ml-56 px-6 py-6 pb-20 min-h-screen">{children}</main>
       </body>
     </html>
   );
