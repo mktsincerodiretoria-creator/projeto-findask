@@ -1,3 +1,4 @@
+const CLAUDE_API_URL = "https://api.anthropic.com/v1/messages";
 const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
 
 const SALES_AGENT_PROMPT = `Você é um agente de vendas especializado em marketplace. Sua função é responder perguntas de clientes para FECHAR VENDAS e gerar LUCRO.
@@ -31,6 +32,7 @@ const SALES_AGENT_PROMPT = `Você é um agente de vendas especializado em market
 - Máximo 300 caracteres (limite de marketplaces)
 - Linguagem informal brasileira, amigável e vendedora`;
 
+// Tenta Claude primeiro, se falhar usa Gemini como fallback
 export async function generateAIResponse(
   question: string,
   productTitle: string,
@@ -38,9 +40,6 @@ export async function generateAIResponse(
   platform: string = "MERCADO_LIVRE",
   context: string = "pergunta_anuncio"
 ): Promise<string> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) throw new Error("GEMINI_API_KEY não configurada");
-
   let contextPrompt = "";
   if (context === "pergunta_anuncio") {
     contextPrompt = `\n\nCONTEXTO: Pergunta de um cliente no ANÚNCIO do produto (pré-venda). O cliente ainda NÃO comprou. Seu objetivo é CONVENCER ele a comprar.`;
@@ -60,21 +59,45 @@ Pergunta/Mensagem do cliente: "${question}"
 
 Responda como vendedor:`;
 
-  const response = await fetch(`${GEMINI_API_URL}?key=${apiKey}`, {
+  // Tenta Claude API primeiro
+  const anthropicKey = process.env.ANTHROPIC_API_KEY;
+  if (anthropicKey) {
+    try {
+      const response = await fetch(CLAUDE_API_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": anthropicKey,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          model: "claude-haiku-4-5-20251001",
+          max_tokens: 200,
+          system: SALES_AGENT_PROMPT,
+          messages: [{ role: "user", content: userMessage }],
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const text = data.content?.[0]?.text || "";
+        return text.trim().slice(0, 350);
+      }
+    } catch {
+      // Fallback para Gemini
+    }
+  }
+
+  // Fallback: Gemini
+  const geminiKey = process.env.GEMINI_API_KEY;
+  if (!geminiKey) throw new Error("Nenhuma API de IA configurada (ANTHROPIC_API_KEY ou GEMINI_API_KEY)");
+
+  const response = await fetch(`${GEMINI_API_URL}?key=${geminiKey}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      contents: [
-        {
-          role: "user",
-          parts: [{ text: SALES_AGENT_PROMPT + "\n\n" + userMessage }],
-        },
-      ],
-      generationConfig: {
-        temperature: 0.7,
-        maxOutputTokens: 200,
-        topP: 0.9,
-      },
+      contents: [{ role: "user", parts: [{ text: SALES_AGENT_PROMPT + "\n\n" + userMessage }] }],
+      generationConfig: { temperature: 0.7, maxOutputTokens: 200, topP: 0.9 },
     }),
   });
 
@@ -85,7 +108,5 @@ Responda como vendedor:`;
 
   const data = await response.json();
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
-
-  // Limpa a resposta
   return text.trim().slice(0, 350);
 }
