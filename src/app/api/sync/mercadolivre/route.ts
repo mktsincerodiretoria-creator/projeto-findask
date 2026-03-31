@@ -238,20 +238,23 @@ export async function POST(request: NextRequest) {
       });
 
       try {
-        // Renova token se necessario
+        // SEMPRE tenta renovar o token antes de sincronizar (evita expirar no meio)
         let accessToken = account.accessToken;
-        if (account.tokenExpires && account.tokenExpires < new Date()) {
-          if (!account.refreshToken) throw new Error("Token expirado sem refresh_token");
-          const newToken = await refreshAccessToken(account.refreshToken);
-          accessToken = newToken.access_token;
-          await prisma.account.update({
-            where: { id: account.id },
-            data: {
-              accessToken: newToken.access_token,
-              refreshToken: newToken.refresh_token,
-              tokenExpires: new Date(Date.now() + newToken.expires_in * 1000),
-            },
-          });
+        if (account.refreshToken) {
+          try {
+            const newToken = await refreshAccessToken(account.refreshToken);
+            accessToken = newToken.access_token;
+            await prisma.account.update({
+              where: { id: account.id },
+              data: {
+                accessToken: newToken.access_token,
+                refreshToken: newToken.refresh_token || account.refreshToken,
+                tokenExpires: new Date(Date.now() + (newToken.expires_in || 21600) * 1000),
+              },
+            });
+          } catch {
+            // Se refresh falhar, tenta com o token atual
+          }
         }
 
         let totalSynced = 0;

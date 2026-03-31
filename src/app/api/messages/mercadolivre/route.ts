@@ -6,23 +6,27 @@ import { generateAIResponse } from "@/lib/gemini";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-// Renova token se necessario
+// SEMPRE renova token antes de usar (evita expirar no meio)
 async function getValidToken(account: {
   id: string; accessToken: string; refreshToken: string | null; tokenExpires: Date | null;
 }) {
   let accessToken = account.accessToken;
-  if (account.tokenExpires && account.tokenExpires < new Date()) {
-    if (!account.refreshToken) throw new Error("Token expirado");
-    const newToken = await refreshAccessToken(account.refreshToken);
-    accessToken = newToken.access_token;
-    await prisma.account.update({
-      where: { id: account.id },
-      data: {
-        accessToken: newToken.access_token,
-        refreshToken: newToken.refresh_token,
-        tokenExpires: new Date(Date.now() + newToken.expires_in * 1000),
-      },
-    });
+  // Sempre tenta renovar se tem refresh_token
+  if (account.refreshToken) {
+    try {
+      const newToken = await refreshAccessToken(account.refreshToken);
+      accessToken = newToken.access_token;
+      await prisma.account.update({
+        where: { id: account.id },
+        data: {
+          accessToken: newToken.access_token,
+          refreshToken: newToken.refresh_token || account.refreshToken,
+          tokenExpires: new Date(Date.now() + (newToken.expires_in || 21600) * 1000),
+        },
+      });
+    } catch {
+      // Se refresh falhar, usa token atual
+    }
   }
   return accessToken;
 }
