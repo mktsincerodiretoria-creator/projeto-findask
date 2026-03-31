@@ -240,7 +240,8 @@ export default function AnalistaPage() {
       {/* ===== VOZ DO CLIENTE ===== */}
       {tab === "voz" && (() => {
         const vozData: Array<{sku:string;title:string;returns:number;cancellations:number;totalLost:number;totalSold:number;problemRate:number;totalProblems:number;statuses:string[]}> = data?.vozClienteData || [];
-        const problemTypes: Record<string, number> = data?.problemTypes || {};
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const problemTypes: Record<string, any> = data?.problemTypes || {};
         const totalReturnsCount = vozData.reduce((s,v) => s + v.returns, 0);
         const totalCancellations = vozData.reduce((s,v) => s + v.cancellations, 0);
         const totalLost = vozData.reduce((s,v) => s + v.totalLost, 0);
@@ -301,20 +302,21 @@ export default function AnalistaPage() {
           </div>
 
           {/* Cards de tipos de problema */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-            {Object.entries(problemTypes).filter(([,v]) => v > 0).map(([tipo, count]) => (
-              <div key={tipo} className="bg-white border rounded-lg p-3 text-center">
-                <p className="text-lg font-bold text-gray-800">{count}</p>
-                <p className="text-xs text-gray-600 font-medium">{tipo}</p>
-              </div>
-            ))}
-            {Object.values(problemTypes).every(v => v === 0) && (
-              <>
-                <div className="bg-white border rounded-lg p-3 text-center"><p className="text-lg font-bold text-red-600">{totalCancellations}</p><p className="text-xs text-gray-600">Cancelamentos</p></div>
-                <div className="bg-white border rounded-lg p-3 text-center"><p className="text-lg font-bold text-orange-600">{totalReturnsCount}</p><p className="text-xs text-gray-600">Devolucoes</p></div>
-                <div className="bg-white border rounded-lg p-3 text-center"><p className="text-lg font-bold text-yellow-600">-</p><p className="text-xs text-gray-600">Produto Errado</p></div>
-                <div className="bg-white border rounded-lg p-3 text-center"><p className="text-lg font-bold text-purple-600">-</p><p className="text-xs text-gray-600">Quebra/Defeito</p></div>
-              </>
+          <h3 className="font-semibold text-gray-800">Principais Motivos dos Problemas</h3>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+            {Object.entries(problemTypes).map(([tipo, info]) => {
+              const pt = typeof info === "object" ? info : { count: info, icon: "📋", color: "bg-gray-50 border-gray-200 text-gray-700" };
+              if (pt.count === 0) return null;
+              return (
+                <div key={tipo} className={`${pt.color || "bg-gray-50 border-gray-200 text-gray-700"} border-2 rounded-lg p-3 text-center`}>
+                  <p className="text-xl mb-1">{pt.icon || "📋"}</p>
+                  <p className="text-2xl font-bold">{pt.count}</p>
+                  <p className="text-xs font-medium mt-1">{tipo}</p>
+                </div>
+              );
+            })}
+            {Object.values(problemTypes).every((v) => (typeof v === "object" ? v.count : v) === 0) && (
+              <></>
             )}
           </div>
 
