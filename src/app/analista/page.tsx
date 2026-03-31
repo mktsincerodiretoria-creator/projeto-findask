@@ -30,6 +30,8 @@ export default function AnalistaPage() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [progress, setProgress] = useState(0);
+  const [bcgFilter, setBcgFilter] = useState<string | null>(null); // quadrant filter for BCG
+  const [bcgPlatform, setBcgPlatform] = useState(""); // platform filter for BCG
   const [aiLoading, setAiLoading] = useState(false);
   const [aiProgress, setAiProgress] = useState(0);
   const [aiResult, setAiResult] = useState<Record<string, string>>({});
@@ -145,35 +147,77 @@ export default function AnalistaPage() {
       )}
 
       {/* ===== MATRIZ BCG ===== */}
-      {tab === "bcg" && (
+      {tab === "bcg" && (() => {
+        // Filtra BCG por plataforma e conta
+        const filteredBcg = bcg.filter((s: BcgRow & {platforms?: string[]}) => {
+          if (bcgPlatform && s.platforms && !s.platforms.includes(bcgPlatform)) return false;
+          return true;
+        });
+        const visibleBcg = bcgFilter ? filteredBcg.filter((s: BcgRow) => s.quadrant === bcgFilter) : filteredBcg;
+
+        return (
         <div className="space-y-4">
+          {/* Filtros */}
           <div className="flex justify-between items-center flex-wrap gap-2">
             <h2 className="text-lg font-bold">Matriz BCG</h2>
-            <div className="flex gap-2 items-center">
+            <div className="flex gap-2 items-center flex-wrap">
+              <select value={bcgPlatform} onChange={e => setBcgPlatform(e.target.value)} className="border rounded-lg px-3 py-1.5 text-sm bg-white">
+                <option value="">Todas as plataformas</option>
+                <option value="MERCADO_LIVRE">Mercado Livre</option>
+                <option value="SHOPEE">Shopee</option>
+                <option value="AMAZON">Amazon</option>
+                <option value="TIKTOK_SHOP">TikTok Shop</option>
+              </select>
               <AccountFilter />
               <button onClick={() => runAI("bcg", "Analise a matriz BCG dos meus produtos. Quais sao Estrela, Vaca Leiteira, Interrogacao e Abacaxi? O que fazer com cada um?")} disabled={aiLoading} className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-medium disabled:bg-gray-400">{aiLoading ? "..." : "Analisar com IA"}</button>
             </div>
           </div>
+
+          {/* Cards clicaveis */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {[{q:"Estrela",icon:"⭐",color:"bg-yellow-50 border-yellow-200",text:"text-yellow-700"},{q:"Vaca Leiteira",icon:"🐄",color:"bg-green-50 border-green-200",text:"text-green-700"},{q:"Interrogacao",icon:"❓",color:"bg-blue-50 border-blue-200",text:"text-blue-700"},{q:"Abacaxi",icon:"🍍",color:"bg-red-50 border-red-200",text:"text-red-700"}].map(({q,icon,color,text})=>(
-              <div key={q} className={`${color} border rounded-lg p-3 text-center`}><p className="text-2xl">{icon}</p><p className={`text-2xl font-bold ${text}`}>{bcg.filter(s=>s.quadrant===q).length}</p><p className={`text-xs font-medium ${text}`}>{q}</p></div>
+            {[
+              {q:"Estrela",icon:"⭐",color:"bg-yellow-50 border-yellow-200 hover:bg-yellow-100",text:"text-yellow-700",ring:"ring-yellow-400"},
+              {q:"Vaca Leiteira",icon:"🐄",color:"bg-green-50 border-green-200 hover:bg-green-100",text:"text-green-700",ring:"ring-green-400"},
+              {q:"Interrogacao",icon:"❓",color:"bg-blue-50 border-blue-200 hover:bg-blue-100",text:"text-blue-700",ring:"ring-blue-400"},
+              {q:"Abacaxi",icon:"🍍",color:"bg-red-50 border-red-200 hover:bg-red-100",text:"text-red-700",ring:"ring-red-400"},
+            ].map(({q,icon,color,text,ring})=>(
+              <button key={q} onClick={() => setBcgFilter(bcgFilter === q ? null : q)}
+                className={`${color} border-2 rounded-lg p-3 text-center cursor-pointer transition-all ${bcgFilter === q ? `ring-2 ${ring} shadow-lg scale-105` : ""}`}>
+                <p className="text-2xl">{icon}</p>
+                <p className={`text-2xl font-bold ${text}`}>{filteredBcg.filter((s: BcgRow) => s.quadrant === q).length}</p>
+                <p className={`text-xs font-medium ${text}`}>{q}</p>
+                {bcgFilter === q && <p className="text-xs mt-1 text-gray-500">Clique para limpar filtro</p>}
+              </button>
             ))}
           </div>
+
+          {bcgFilter && (
+            <div className="bg-gray-100 rounded-lg px-3 py-2 flex items-center justify-between">
+              <span className="text-sm font-medium text-gray-700">Filtrando: <strong>{bcgFilter}</strong> ({visibleBcg.length} produtos)</span>
+              <button onClick={() => setBcgFilter(null)} className="text-xs text-blue-600 hover:underline">Limpar filtro</button>
+            </div>
+          )}
+
+          {/* Grafico scatter */}
           <div className="bg-white rounded-lg border p-4">
             <h3 className="font-semibold mb-2">Crescimento vs Participacao</h3>
             <ResponsiveContainer width="100%" height={300}>
               <ScatterChart><CartesianGrid/><XAxis type="number" dataKey="share" name="Participacao %" fontSize={10}/><YAxis type="number" dataKey="growth" name="Crescimento %" fontSize={10}/>
               <Tooltip cursor={{strokeDasharray:"3 3"}} formatter={(v)=>`${Number(v).toFixed(1)}%`}/>
-              {["Estrela","Vaca Leiteira","Interrogacao","Abacaxi"].map(q=>(<Scatter key={q} name={q} data={bcg.filter(s=>s.quadrant===q)} fill={BCG_COLORS[q]}/>))}</ScatterChart>
+              {["Estrela","Vaca Leiteira","Interrogacao","Abacaxi"].map(q=>(<Scatter key={q} name={q} data={visibleBcg.filter((s: BcgRow) => s.quadrant === q)} fill={BCG_COLORS[q]}/>))}</ScatterChart>
             </ResponsiveContainer>
           </div>
+
+          {/* Tabela filtrada */}
           <div className="bg-white rounded-lg border overflow-x-auto">
+            <div className="p-3 border-b"><h3 className="font-semibold">{bcgFilter ? `Produtos: ${bcgFilter}` : "Todos os Produtos"} ({visibleBcg.filter((s: BcgRow) => s.revenue30d > 0).length})</h3></div>
             <table className="w-full text-sm min-w-[700px]"><thead className="bg-gray-50"><tr><th className="text-left px-3 py-2">Quadrante</th><th className="text-left px-3 py-2">SKU</th><th className="text-left px-3 py-2">Produto</th><th className="text-right px-3 py-2">Receita 30d</th><th className="text-right px-3 py-2">Crescimento</th><th className="text-right px-3 py-2">Participacao</th><th className="text-right px-3 py-2">Margem</th></tr></thead>
-            <tbody>{bcg.filter(s=>s.revenue30d>0).slice(0,20).map((s,i)=>(<tr key={i} className="border-t hover:bg-gray-50"><td className="px-3 py-1.5"><span className="px-2 py-0.5 rounded-full text-xs font-bold text-white" style={{backgroundColor:BCG_COLORS[s.quadrant]}}>{s.quadrant}</span></td><td className="px-3 py-1.5 font-mono text-xs">{s.sku}</td><td className="px-3 py-1.5 max-w-[150px] truncate">{s.title}</td><td className="px-3 py-1.5 text-right">{formatCurrency(s.revenue30d)}</td><td className={`px-3 py-1.5 text-right font-bold ${s.growth>0?"text-green-600":"text-red-600"}`}>{s.growth>0?"+":""}{s.growth}%</td><td className="px-3 py-1.5 text-right">{s.share}%</td><td className={`px-3 py-1.5 text-right ${s.marginPct>=0?"text-green-600":"text-red-600"}`}>{s.marginPct}%</td></tr>))}</tbody></table>
+            <tbody>{visibleBcg.filter((s: BcgRow) => s.revenue30d > 0).map((s: BcgRow, i: number)=>(<tr key={i} className="border-t hover:bg-gray-50"><td className="px-3 py-1.5"><span className="px-2 py-0.5 rounded-full text-xs font-bold text-white" style={{backgroundColor:BCG_COLORS[s.quadrant]}}>{s.quadrant}</span></td><td className="px-3 py-1.5 font-mono text-xs">{s.sku}</td><td className="px-3 py-1.5 max-w-[150px] truncate">{s.title}</td><td className="px-3 py-1.5 text-right">{formatCurrency(s.revenue30d)}</td><td className={`px-3 py-1.5 text-right font-bold ${s.growth>0?"text-green-600":"text-red-600"}`}>{s.growth>0?"+":""}{s.growth}%</td><td className="px-3 py-1.5 text-right">{s.share}%</td><td className={`px-3 py-1.5 text-right ${s.marginPct>=0?"text-green-600":"text-red-600"}`}>{s.marginPct}%</td></tr>))}</tbody></table>
           </div>
           {aiResult.bcg && <div className="bg-indigo-50 rounded-lg border border-indigo-200 p-4 whitespace-pre-wrap text-sm">{aiResult.bcg}</div>}
         </div>
-      )}
+        );
+      })()}
 
       {/* ===== ENTRE CONTAS ===== */}
       {tab === "contas" && (

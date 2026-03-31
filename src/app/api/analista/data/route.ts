@@ -141,7 +141,9 @@ export async function GET(request: NextRequest) {
       if (growth > 0 && share > 5) quadrant = "Estrela";
       else if (growth > 0 && share <= 5) quadrant = "Interrogacao";
       else if (growth <= 0 && share > 5) quadrant = "Vaca Leiteira";
-      return { sku: s.sku, title: s.title, revenue30d: Math.round(rev30 * 100) / 100, growth: Math.round(growth * 10) / 10, share: Math.round(share * 10) / 10, quadrant, margin: s.margin, marginPct: s.marginPct };
+      const skuAccounts = s.accounts || [];
+      const platforms = Array.from(new Set(skuAccounts.map((a: {platform:string}) => a.platform)));
+      return { sku: s.sku, title: s.title, revenue30d: Math.round(rev30 * 100) / 100, growth: Math.round(growth * 10) / 10, share: Math.round(share * 10) / 10, quadrant, margin: s.margin, marginPct: s.marginPct, platforms };
     });
 
     // Problematicos: SKUs com margem negativa ou queda forte
