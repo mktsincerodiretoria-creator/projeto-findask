@@ -35,6 +35,11 @@ export default function AnalistaPage() {
   const [aiLoading, setAiLoading] = useState(false);
   const [aiProgress, setAiProgress] = useState(0);
   const [aiResult, setAiResult] = useState<Record<string, string>>({});
+  const [stpSku, setStpSku] = useState("");
+  const [stpDetail, setStpDetail] = useState("");
+  const [vozFilter, setVozFilter] = useState("");
+  const [vozSort, setVozSort] = useState("totalProblems");
+  const [vozSortDir, setVozSortDir] = useState("desc");
   const [query, setQuery] = useState("");
   const [error, setError] = useState("");
   const [selectedAccount, setSelectedAccount] = useState("");
@@ -239,10 +244,6 @@ export default function AnalistaPage() {
         const totalReturnsCount = vozData.reduce((s,v) => s + v.returns, 0);
         const totalCancellations = vozData.reduce((s,v) => s + v.cancellations, 0);
         const totalLost = vozData.reduce((s,v) => s + v.totalLost, 0);
-        const [vozFilter, setVozFilter] = [aiResult._vozFilter || "", (v: string) => setAiResult(prev => ({...prev, _vozFilter: v}))];
-        const [vozSort, setVozSort] = [aiResult._vozSort || "totalProblems", (v: string) => setAiResult(prev => ({...prev, _vozSort: v}))];
-        const [vozSortDir, setVozSortDir] = [aiResult._vozSortDir || "desc", (v: string) => setAiResult(prev => ({...prev, _vozSortDir: v}))];
-
         const filteredVoz = vozFilter === "returns" ? vozData.filter(v => v.returns > 0) :
           vozFilter === "cancellations" ? vozData.filter(v => v.cancellations > 0) : vozData;
 
@@ -372,9 +373,6 @@ export default function AnalistaPage() {
 
       {/* ===== STP ===== */}
       {tab === "stp" && (() => {
-        const [stpDetail, setStpDetail] = [aiResult._stpDetail || "", (v: string) => setAiResult(prev => ({...prev, _stpDetail: v}))];
-        const [stpSku, setStpSku] = [aiResult._stpSku || "", (v: string) => setAiResult(prev => ({...prev, _stpSku: v}))];
-
         async function loadSkuDetail(sku: string, title: string) {
           setStpSku(sku);
           setStpDetail("");
