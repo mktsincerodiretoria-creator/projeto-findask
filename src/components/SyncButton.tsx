@@ -107,7 +107,7 @@ export default function SyncButton({ accountId, onSyncComplete }: SyncButtonProp
                         }`}
                       >
                 {syncing ? "Sincronizando..." : "Sincronizar Vendas"}
-              </button>button>
+              </button>
           {status && (
                   <span
                               className={`text-sm max-w-md break-words ${
@@ -115,8 +115,8 @@ export default function SyncButton({ accountId, onSyncComplete }: SyncButtonProp
                               }`}
                             >
                     {status}
-                  </span>span>
+                  </span>
               )}
-        </div>div>
+        </div>
       );
-}</div>
+}
