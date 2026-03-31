@@ -146,8 +146,36 @@ export async function GET(request: NextRequest) {
       return { sku: s.sku, title: s.title, revenue30d: Math.round(rev30 * 100) / 100, growth: Math.round(growth * 10) / 10, share: Math.round(share * 10) / 10, quadrant, margin: s.margin, marginPct: s.marginPct, platforms };
     });
 
-    // Problematicos: SKUs com margem negativa ou queda forte
-    const problematic = bcgData.filter(s => s.marginPct < 0 || s.growth < -30).sort((a, b) => a.marginPct - b.marginPct);
+    // Problematicos: SKUs com mais DEVOLUCOES e CANCELAMENTOS (Voz do Cliente real)
+    const returnOrders = await prisma.order.findMany({
+      where: { orderDate: { gte: sixtyDaysAgo }, status: { in: ["cancelled", "returned", "refunded", "devolvido", "cancelado", "CANCELLED", "RETURNED", "IN_CANCEL"] } },
+      include: { items: true },
+    });
+
+    const returnsBySku: Record<string, { sku: string; title: string; returns: number; cancellations: number; totalLost: number }> = {};
+    for (const order of returnOrders) {
+      for (const item of order.items) {
+        const sku = item.sku || "SEM_SKU";
+        if (!returnsBySku[sku]) returnsBySku[sku] = { sku, title: item.title, returns: 0, cancellations: 0, totalLost: 0 };
+        const r = returnsBySku[sku];
+        if (order.status.toLowerCase().includes("return") || order.status.toLowerCase().includes("refund") || order.status.toLowerCase().includes("devolv")) {
+          r.returns += item.quantity;
+        } else {
+          r.cancellations += item.quantity;
+        }
+        r.totalLost += item.totalPrice;
+      }
+    }
+
+    // Calcula taxa de problema por SKU (devolucoes+cancelamentos / total vendido)
+    const vozClienteData = Object.values(returnsBySku).map(r => {
+      const skuInfo = skuData[r.sku];
+      const totalSold = skuInfo ? skuInfo.sold : 0;
+      const problemRate = totalSold > 0 ? ((r.returns + r.cancellations) / (totalSold + r.returns + r.cancellations)) * 100 : 100;
+      return { ...r, totalSold, problemRate: Math.round(problemRate * 10) / 10, totalProblems: r.returns + r.cancellations };
+    }).sort((a, b) => b.totalProblems - a.totalProblems);
+
+    const problematic = bcgData.filter((s: {marginPct: number; growth: number}) => s.marginPct < 0 || s.growth < -30).sort((a: {marginPct: number}, b: {marginPct: number}) => a.marginPct - b.marginPct);
 
     // Tendencias: SKUs em alta vs queda
     const trending = bcgData.filter(s => s.revenue30d > 0).sort((a, b) => b.growth - a.growth);
@@ -164,6 +192,7 @@ export async function GET(request: NextRequest) {
       abcData,
       abcSummary,
       bcgData,
+      vozClienteData,
       problematic,
       rising,
       falling,

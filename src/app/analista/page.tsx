@@ -73,7 +73,7 @@ export default function AnalistaPage() {
   const abc: SkuRow[] = data?.abcData || [];
   const abcS = data?.abcSummary || {};
   const bcg: BcgRow[] = data?.bcgData || [];
-  const problematic: BcgRow[] = data?.problematic || [];
+  // problematic not used in UI anymore (replaced by vozClienteData)
   const rising: BcgRow[] = data?.rising || [];
   const falling: BcgRow[] = data?.falling || [];
   const accs = data?.accounts || [];
@@ -233,19 +233,93 @@ export default function AnalistaPage() {
       )}
 
       {/* ===== VOZ DO CLIENTE ===== */}
-      {tab === "voz" && (
+      {tab === "voz" && (() => {
+        const vozData: Array<{sku:string;title:string;returns:number;cancellations:number;totalLost:number;totalSold:number;problemRate:number;totalProblems:number}> = data?.vozClienteData || [];
+        const totalReturns = vozData.reduce((s,v) => s + v.returns, 0);
+        const totalCancellations = vozData.reduce((s,v) => s + v.cancellations, 0);
+        const totalLost = vozData.reduce((s,v) => s + v.totalLost, 0);
+        return (
         <div className="space-y-4">
-          <div className="flex justify-between items-center flex-wrap gap-2"><h2 className="text-lg font-bold">Voz do Cliente - SKUs Problematicos</h2><div className="flex gap-2"><AccountFilter/><button onClick={() => runAI("voz", "Analise voz do cliente. Reclamacoes, melhorias, objecoes.")} disabled={aiLoading} className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-medium disabled:bg-gray-400">{aiLoading?"...":"Analisar"}</button></div></div>
-          <div className="bg-white rounded-lg border p-4"><h3 className="font-semibold mb-2">Ranking SKUs Problematicos (margem negativa ou queda forte)</h3>
-            <ResponsiveContainer width="100%" height={250}>
-              <BarChart data={problematic.slice(0,10)} layout="vertical"><CartesianGrid strokeDasharray="3 3"/><XAxis type="number" fontSize={9}/><YAxis type="category" dataKey="sku" fontSize={9} width={80}/><Tooltip formatter={(v)=>`${Number(v).toFixed(1)}%`}/><Bar dataKey="marginPct" name="Margem %" fill="#ef4444"/></BarChart>
-            </ResponsiveContainer>
+          <div className="flex justify-between items-center flex-wrap gap-2">
+            <h2 className="text-lg font-bold">Voz do Cliente - Devolucoes e Reclamacoes</h2>
+            <div className="flex gap-2"><AccountFilter/><button onClick={() => runAI("voz", "Analise os produtos com mais devolucoes e cancelamentos. Quais tem mais problemas? O que fazer para reduzir?")} disabled={aiLoading} className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-medium disabled:bg-gray-400">{aiLoading?"...":"Analisar com IA"}</button></div>
           </div>
-          <div className="bg-white rounded-lg border overflow-x-auto"><table className="w-full text-sm"><thead className="bg-red-50"><tr><th className="text-left px-3 py-2 text-red-700">SKU</th><th className="text-left px-3 py-2 text-red-700">Produto</th><th className="text-right px-3 py-2 text-red-700">Margem</th><th className="text-right px-3 py-2 text-red-700">Crescimento</th><th className="text-left px-3 py-2 text-red-700">Problema</th></tr></thead>
-          <tbody>{problematic.map((s,i)=>(<tr key={i} className="border-t"><td className="px-3 py-1.5 font-mono text-xs">{s.sku}</td><td className="px-3 py-1.5 max-w-[150px] truncate">{s.title}</td><td className={`px-3 py-1.5 text-right font-bold ${s.marginPct<0?"text-red-600":"text-yellow-600"}`}>{s.marginPct}%</td><td className={`px-3 py-1.5 text-right ${s.growth<0?"text-red-600":"text-green-600"}`}>{s.growth>0?"+":""}{s.growth}%</td><td className="px-3 py-1.5 text-xs">{s.marginPct<0?"Margem negativa":""}{s.growth<-30?" Queda forte":""}</td></tr>))}</tbody></table></div>
-          {aiResult.voz && <div className="bg-indigo-50 rounded-lg p-4 whitespace-pre-wrap text-sm">{aiResult.voz}</div>}
+
+          {/* Cards resumo */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-center">
+              <p className="text-3xl font-bold text-red-700">{totalReturns}</p>
+              <p className="text-sm text-red-600 font-medium">Devolucoes</p>
+            </div>
+            <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 text-center">
+              <p className="text-3xl font-bold text-orange-700">{totalCancellations}</p>
+              <p className="text-sm text-orange-600 font-medium">Cancelamentos</p>
+            </div>
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-center">
+              <p className="text-xl font-bold text-red-700">{formatCurrency(totalLost)}</p>
+              <p className="text-sm text-red-600 font-medium">Valor Perdido</p>
+            </div>
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-center">
+              <p className="text-3xl font-bold text-yellow-700">{vozData.length}</p>
+              <p className="text-sm text-yellow-600 font-medium">SKUs com Problema</p>
+            </div>
+          </div>
+
+          {/* Grafico: ranking de problemas */}
+          {vozData.length > 0 && (
+            <div className="bg-white rounded-lg border p-4">
+              <h3 className="font-semibold mb-2 text-red-700">Ranking: SKUs com mais Devolucoes + Cancelamentos</h3>
+              <ResponsiveContainer width="100%" height={Math.max(200, vozData.slice(0,12).length * 35)}>
+                <BarChart data={vozData.slice(0,12)} layout="vertical">
+                  <CartesianGrid strokeDasharray="3 3"/>
+                  <XAxis type="number" fontSize={9}/>
+                  <YAxis type="category" dataKey="sku" fontSize={9} width={90}/>
+                  <Tooltip/>
+                  <Legend/>
+                  <Bar dataKey="returns" name="Devolucoes" fill="#ef4444" stackId="a"/>
+                  <Bar dataKey="cancellations" name="Cancelamentos" fill="#f97316" stackId="a"/>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+
+          {/* Tabela detalhada */}
+          <div className="bg-white rounded-lg border overflow-x-auto">
+            <div className="p-3 border-b"><h3 className="font-semibold text-red-700">Detalhamento por SKU ({vozData.length} produtos)</h3></div>
+            <table className="w-full text-sm">
+              <thead className="bg-red-50">
+                <tr>
+                  <th className="text-left px-3 py-2 text-red-700">SKU</th>
+                  <th className="text-left px-3 py-2 text-red-700">Produto</th>
+                  <th className="text-right px-3 py-2 text-red-700">Devolucoes</th>
+                  <th className="text-right px-3 py-2 text-red-700">Cancelamentos</th>
+                  <th className="text-right px-3 py-2 text-red-700">Total Problemas</th>
+                  <th className="text-right px-3 py-2 text-red-700">Vendas OK</th>
+                  <th className="text-right px-3 py-2 text-red-700">Taxa Problema</th>
+                  <th className="text-right px-3 py-2 text-red-700">Valor Perdido</th>
+                </tr>
+              </thead>
+              <tbody>
+                {vozData.map((v,i) => (
+                  <tr key={i} className="border-t hover:bg-red-50">
+                    <td className="px-3 py-1.5 font-mono text-xs font-bold">{v.sku}</td>
+                    <td className="px-3 py-1.5 max-w-[180px] truncate">{v.title}</td>
+                    <td className="px-3 py-1.5 text-right font-bold text-red-600">{v.returns}</td>
+                    <td className="px-3 py-1.5 text-right font-bold text-orange-600">{v.cancellations}</td>
+                    <td className="px-3 py-1.5 text-right font-bold text-red-700">{v.totalProblems}</td>
+                    <td className="px-3 py-1.5 text-right text-green-600">{v.totalSold}</td>
+                    <td className={`px-3 py-1.5 text-right font-bold ${v.problemRate > 20 ? "text-red-600" : v.problemRate > 10 ? "text-orange-600" : "text-yellow-600"}`}>{v.problemRate}%</td>
+                    <td className="px-3 py-1.5 text-right text-red-600">{formatCurrency(v.totalLost)}</td>
+                  </tr>
+                ))}
+                {vozData.length === 0 && <tr><td colSpan={8} className="px-3 py-8 text-center text-gray-500">Nenhuma devolucao ou cancelamento encontrado nos ultimos 60 dias</td></tr>}
+              </tbody>
+            </table>
+          </div>
+          {aiResult.voz && <div className="bg-indigo-50 rounded-lg border border-indigo-200 p-4 whitespace-pre-wrap text-sm">{aiResult.voz}</div>}
         </div>
-      )}
+        );
+      })()}
 
       {/* ===== STP ===== */}
       {tab === "stp" && (
