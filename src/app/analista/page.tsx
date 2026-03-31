@@ -322,35 +322,126 @@ export default function AnalistaPage() {
       })()}
 
       {/* ===== STP ===== */}
-      {tab === "stp" && (
+      {tab === "stp" && (() => {
+        const [stpDetail, setStpDetail] = [aiResult._stpDetail || "", (v: string) => setAiResult(prev => ({...prev, _stpDetail: v}))];
+        const [stpSku, setStpSku] = [aiResult._stpSku || "", (v: string) => setAiResult(prev => ({...prev, _stpSku: v}))];
+
+        async function loadSkuDetail(sku: string, title: string) {
+          setStpSku(sku);
+          setStpDetail("");
+          setAiLoading(true); setAiProgress(5);
+          const iv = setInterval(() => setAiProgress(p => Math.min(p + Math.random() * 10, 88)), 400);
+          try {
+            const skuInfo = abc.find((s: SkuRow) => s.sku === sku);
+            const bcgInfo = bcg.find((s: BcgRow) => s.sku === sku);
+            const q = `Analise STP detalhada para o produto "${title}" (SKU: ${sku}).
+Dados reais: vendas ${skuInfo?.sold || 0} un, receita ${formatCurrency(skuInfo?.revenue || 0)}, margem ${skuInfo?.marginPct || 0}%, crescimento ${bcgInfo?.growth || 0}%.
+
+Me retorne EXATAMENTE neste formato:
+
+SEGMENTACAO:
+- Qual segmento de publico compra esse produto? (ex: "Mulheres 25-45 que organizam casa")
+- Tamanho do segmento (grande/medio/pequeno) e poder de compra
+- Comportamento de compra (impulsiva/planejada, frequencia)
+
+TARGET (ALVO):
+- Potencial de lucro deste segmento (alto/medio/baixo)
+- Volume de busca estimado no marketplace
+- Perfil ideal do comprador
+
+POSICIONAMENTO:
+- Como este produto esta posicionado vs concorrentes
+- Nivel de concorrencia (saturado/moderado/pouco explorado)
+- Sugestao de angulo de venda diferente (titulo, imagem, descricao)
+
+ACOES RECOMENDADAS:
+- 3 acoes praticas e imediatas para melhorar vendas deste SKU`;
+
+            const res = await fetch("/api/analista", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ query: q }) });
+            const d = await res.json();
+            clearInterval(iv); setAiProgress(100);
+            if (d.response) setStpDetail(d.response);
+          } catch { clearInterval(iv); }
+          finally { setTimeout(() => { setAiLoading(false); setAiProgress(0); }, 400); }
+        }
+
+        return (
         <div className="space-y-4">
-          <div className="flex justify-between items-center flex-wrap gap-2"><h2 className="text-lg font-bold">Analise STP</h2><div className="flex gap-2"><AccountFilter/><button onClick={() => runAI("stp", "Analise STP: segmentos de clientes, reposicionamentos, angulos de venda por produto.")} disabled={aiLoading} className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-medium disabled:bg-gray-400">{aiLoading?"...":"Analisar STP"}</button></div></div>
+          <div className="flex justify-between items-center flex-wrap gap-2">
+            <h2 className="text-lg font-bold">Analise STP - Segmentacao, Target e Posicionamento</h2>
+            <div className="flex gap-2"><AccountFilter/><button onClick={() => runAI("stp", "Faca analise STP de TODOS os meus produtos. Para cada um: segmento de publico, atratividade do segmento, nivel de concorrencia, e sugestao de posicionamento.")} disabled={aiLoading} className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-medium disabled:bg-gray-400">{aiLoading?"...":"Analisar Todos"}</button></div>
+          </div>
+
+          {/* Graficos oportunidade e queda */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="bg-white rounded-lg border p-4"><h3 className="font-semibold mb-2 text-green-700">📈 SKUs em Alta (oportunidade)</h3>
+            <div className="bg-white rounded-lg border p-4"><h3 className="font-semibold mb-2 text-green-700">📈 Oportunidade - SKUs em Alta</h3>
               <ResponsiveContainer width="100%" height={220}><BarChart data={rising}><CartesianGrid strokeDasharray="3 3"/><XAxis dataKey="sku" fontSize={9}/><YAxis fontSize={9}/><Tooltip formatter={(v)=>`${Number(v).toFixed(1)}%`}/><Bar dataKey="growth" name="Crescimento %" fill="#22c55e"/></BarChart></ResponsiveContainer>
             </div>
-            <div className="bg-white rounded-lg border p-4"><h3 className="font-semibold mb-2 text-red-700">📉 SKUs em Queda (atencao)</h3>
+            <div className="bg-white rounded-lg border p-4"><h3 className="font-semibold mb-2 text-red-700">📉 Atencao - SKUs em Queda</h3>
               <ResponsiveContainer width="100%" height={220}><BarChart data={falling}><CartesianGrid strokeDasharray="3 3"/><XAxis dataKey="sku" fontSize={9}/><YAxis fontSize={9}/><Tooltip formatter={(v)=>`${Number(v).toFixed(1)}%`}/><Bar dataKey="growth" name="Queda %" fill="#ef4444"/></BarChart></ResponsiveContainer>
             </div>
           </div>
-          {/* Blocos STP por SKU */}
-          <h3 className="font-semibold text-gray-800">Segmentacao + Target + Posicionamento por SKU</h3>
+
+          {/* Blocos STP clicaveis */}
+          <h3 className="font-semibold text-gray-800">Clique no SKU para analise detalhada</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {abc.filter(s=>s.abc==="A"||s.abc==="B").slice(0,9).map((s,i)=>(
-              <div key={i} className="bg-white rounded-lg border p-4">
+            {abc.filter((s: SkuRow) => s.abc === "A" || s.abc === "B").slice(0, 12).map((s: SkuRow, i: number) => {
+              const bcgInfo = bcg.find((b: BcgRow) => b.sku === s.sku);
+              const growth = bcgInfo?.growth || 0;
+              const concLevel = s.sold > 50 ? "Alto volume" : s.sold > 20 ? "Medio volume" : "Baixo volume";
+              const segment = s.title.toLowerCase().includes("gaveteiro") ? "Organizacao e casa" :
+                s.title.toLowerCase().includes("pipa") || s.title.toLowerCase().includes("rabiola") || s.title.toLowerCase().includes("bambu") ? "Lazer e brinquedos" :
+                s.title.toLowerCase().includes("cozinha") || s.title.toLowerCase().includes("kit") ? "Brinquedos infantis" :
+                s.title.toLowerCase().includes("carrinho") || s.title.toLowerCase().includes("boneca") ? "Brinquedos infantis" : "Utilidades domesticas";
+
+              return (
+              <button key={i} onClick={() => loadSkuDetail(s.sku, s.title)}
+                className={`bg-white rounded-lg border-2 p-4 text-left transition-all hover:shadow-lg hover:border-indigo-300 ${stpSku === s.sku ? "border-indigo-500 ring-2 ring-indigo-200" : "border-gray-200"}`}>
                 <div className="flex justify-between items-start mb-2"><span className="font-mono text-xs font-bold text-indigo-600">{s.sku}</span><span className="px-2 py-0.5 rounded-full text-xs font-bold text-white" style={{backgroundColor:ABC_COLORS[s.abc]}}>{s.abc}</span></div>
-                <p className="text-sm font-medium text-gray-900 mb-3">{s.title}</p>
+                <p className="text-sm font-bold text-gray-900 mb-3">{s.title}</p>
                 <div className="space-y-2">
-                  <div className="bg-blue-50 rounded p-2"><p className="text-xs font-bold text-blue-700">SEGMENTACAO</p><p className="text-xs text-blue-600">Vendas: {s.sold} un | Receita: {formatCurrency(s.revenue)}</p></div>
-                  <div className="bg-green-50 rounded p-2"><p className="text-xs font-bold text-green-700">TARGET (ALVO)</p><p className="text-xs text-green-600">Margem: {formatCurrency(s.margin)} ({s.marginPct}%)</p></div>
-                  <div className="bg-purple-50 rounded p-2"><p className="text-xs font-bold text-purple-700">POSICIONAMENTO</p><p className="text-xs text-purple-600">{s.marginPct>30?"Premium - margem alta":s.marginPct>15?"Competitivo - margem saudavel":s.marginPct>0?"Volume - margem baixa":"Rever - margem negativa"}</p></div>
+                  <div className="bg-blue-50 rounded p-2.5">
+                    <p className="text-xs font-bold text-blue-700 mb-1">SEGMENTACAO</p>
+                    <p className="text-xs text-blue-800 font-medium">{segment}</p>
+                    <p className="text-xs text-blue-600">{concLevel} | {s.sold} vendas/mes</p>
+                  </div>
+                  <div className="bg-green-50 rounded p-2.5">
+                    <p className="text-xs font-bold text-green-700 mb-1">TARGET (ALVO)</p>
+                    <p className="text-xs text-green-800 font-medium">{s.marginPct > 20 ? "Alta atratividade" : s.marginPct > 10 ? "Media atratividade" : "Baixa atratividade"}</p>
+                    <p className="text-xs text-green-600">{growth > 0 ? `Crescendo ${growth}%` : `Caindo ${growth}%`}</p>
+                  </div>
+                  <div className="bg-purple-50 rounded p-2.5">
+                    <p className="text-xs font-bold text-purple-700 mb-1">POSICIONAMENTO</p>
+                    <p className="text-xs text-purple-800 font-medium">{s.sold > 50 ? "Mercado competitivo" : s.sold > 20 ? "Moderadamente explorado" : "Pouco explorado"}</p>
+                  </div>
                 </div>
-              </div>
-            ))}
+                <p className="text-xs text-indigo-500 mt-2 text-center font-medium">Clique para analise completa →</p>
+              </button>
+              );
+            })}
           </div>
-          {aiResult.stp && <div className="bg-indigo-50 rounded-lg p-4 whitespace-pre-wrap text-sm">{aiResult.stp}</div>}
+
+          {/* Detalhe do SKU selecionado */}
+          {stpSku && stpDetail && (
+            <div className="bg-white rounded-lg border-2 border-indigo-300 p-6 shadow-lg">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="font-bold text-lg text-indigo-700">Analise Detalhada: {stpSku}</h3>
+                <button onClick={() => { setStpSku(""); setStpDetail(""); }} className="text-gray-400 hover:text-gray-600 text-sm">Fechar x</button>
+              </div>
+              <div className="whitespace-pre-wrap text-sm text-gray-800 leading-relaxed">{stpDetail}</div>
+            </div>
+          )}
+          {stpSku && !stpDetail && aiLoading && (
+            <div className="bg-indigo-50 rounded-lg border border-indigo-200 p-6 text-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto mb-3" />
+              <p className="text-indigo-700 font-medium">Analisando {stpSku}...</p>
+            </div>
+          )}
+
+          {aiResult.stp && <div className="bg-indigo-50 rounded-lg border border-indigo-200 p-4 whitespace-pre-wrap text-sm">{aiResult.stp}</div>}
         </div>
-      )}
+        );
+      })()}
 
       {/* ===== PRECO ===== */}
       {tab === "preco" && (
