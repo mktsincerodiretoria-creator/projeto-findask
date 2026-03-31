@@ -80,14 +80,18 @@ export default function AnalistaPage() {
         <h3 className="font-semibold text-gray-800 mb-3">Perguntas sugeridas</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
           {[
-            "Qual produto tem a melhor margem de contribuicao?",
-            "Quais SKUs devo parar de vender?",
+            "Faz a Curva ABC dos meus SKUs e me diz quais cortar",
+            "Quais produtos devo replicar entre minhas contas?",
+            "Analise a elasticidade de preco dos meus top 5 produtos",
+            "Qual plataforma esta mais lucrativa e por que?",
+            "Faz a analise SWOT do meu nicho principal",
+            "Quais SKUs tem margem negativa? O que fazer?",
             "Onde estou perdendo dinheiro com frete?",
-            "Qual plataforma esta mais lucrativa?",
-            "Devo investir mais em ads? Qual campanha?",
-            "Qual produto tem maior giro de estoque?",
-            "Onde posso cortar custos?",
-            "Qual o ticket medio ideal para escalar?",
+            "Qual produto devo escalar primeiro e como?",
+            "Compare a performance entre minhas contas",
+            "Quais oportunidades ocultas voce ve nos meus dados?",
+            "Me da um plano de acao para a proxima semana",
+            "Analise meu investimento em ADS - esta valendo?",
           ].map((suggestion, i) => (
             <button
               key={i}
