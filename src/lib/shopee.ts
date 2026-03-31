@@ -1,6 +1,7 @@
 import crypto from "crypto";
 
-const SHOPEE_API_URL = "https://partner.shopeemobile.com";
+// Host correto para Brasil (producao). Test usa partner.test-stable.shopeemobile.com
+const SHOPEE_API_URL = "https://openplatform.shopee.com.br";
 const SHOPEE_AUTH_PATH = "/api/v2/shop/auth_partner";
 const SHOPEE_TOKEN_PATH = "/api/v2/auth/token/get";
 const SHOPEE_REFRESH_PATH = "/api/v2/auth/access_token/get";
