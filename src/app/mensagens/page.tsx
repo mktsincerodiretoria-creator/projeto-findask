@@ -97,9 +97,9 @@ export default function MensagensPage() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Central de Mensagens</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Closer IA</h1>
           <p className="text-sm text-gray-500">
-            Respostas automaticas com IA para fechar vendas
+            Agente de vendas inteligente - respostas automaticas para fechar vendas
           </p>
         </div>
         <div className="flex gap-3">
@@ -219,7 +219,7 @@ export default function MensagensPage() {
 
       {/* Info do Agente */}
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-        <h3 className="font-semibold text-blue-800 mb-2">Sobre o Agente de Vendas IA</h3>
+        <h3 className="font-semibold text-blue-800 mb-2">Sobre o Closer IA</h3>
         <ul className="text-sm text-blue-700 space-y-1">
           <li>Usa Google Gemini para gerar respostas inteligentes</li>
           <li>Treinado com taticas de vendas para fechar negocios</li>
