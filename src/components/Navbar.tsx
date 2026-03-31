@@ -25,6 +25,7 @@ const menuGroups = [
     label: "Ferramentas",
     items: [
       { name: "Closer IA", href: "/mensagens", icon: "💬" },
+      { name: "Analista Senior", href: "/analista", icon: "🧠" },
       { name: "Gestao de Compras", href: "/estoque", icon: "🛒" },
       { name: "Custos / SKU", href: "/custos", icon: "💰" },
     ],
