@@ -42,8 +42,12 @@ export async function GET() {
       const safetyStock = Math.ceil(avgDailySales * item.safetyStockDays);
       const reorderPoint = minStock + safetyStock;
 
-      // Quantidade sugerida de compra (1 mes de reserva)
-      const suggestedPurchase = Math.max(0, reorderPoint - item.currentStock);
+      // Quantidade sugerida de compra = sempre 1 mes de vendas (30 dias)
+      // Quando estoque < ponto de reposicao, sugere comprar 1 mes completo
+      const oneMonthSales = Math.ceil(avgDailySales * 30);
+      const suggestedPurchase = item.currentStock <= reorderPoint && avgDailySales > 0
+        ? Math.max(oneMonthSales, reorderPoint - item.currentStock)
+        : 0;
 
       // Status
       let status = "ok";
