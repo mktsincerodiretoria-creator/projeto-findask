@@ -142,151 +142,89 @@ export async function GET() {
   }
 }
 
-// POST /api/messages/mercadolivre - Responde perguntas automaticamente com IA
+// POST /api/messages/mercadolivre
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { action, questionId, autoReplyAll, accountId } = body;
+    const { action, accountId } = body;
 
-    // Responder automaticamente TODAS as perguntas de TODAS as contas
-    if (autoReplyAll) {
-      const accounts = await prisma.account.findMany({
-        where: { platform: "MERCADO_LIVRE", isActive: true },
-      });
-      if (accounts.length === 0) return NextResponse.json({ error: "Sem conta ML" }, { status: 404 });
-
-      const results = [];
-
-      for (const account of accounts) {
-        try {
-          const accessToken = await getValidToken(account);
-          const questionsData = await mlApiCall(
-            `/questions/search?seller_id=${account.platformId}&status=UNANSWERED&api_version=4`,
-            accessToken
-          );
-
-          const questions = questionsData.questions || [];
-
-          for (const q of questions) {
-            try {
-              let itemTitle = "Produto";
-              let itemPrice = 0;
-              try {
-                const item = await mlApiCall(`/items/${q.item_id}`, accessToken);
-                itemTitle = item.title || "Produto";
-                itemPrice = item.price || 0;
-              } catch { /* */ }
-
-              const aiResponse = await generateAIResponse(q.text, itemTitle, itemPrice, "MERCADO_LIVRE", "pergunta_anuncio");
-
-              const answerResponse = await fetch("https://api.mercadolibre.com/answers", {
-                method: "POST",
-                headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-                body: JSON.stringify({ question_id: q.id, text: aiResponse }),
-              });
-
-              if (!answerResponse.ok) {
-                const err = await answerResponse.text();
-                results.push({ questionId: q.id, status: "error", error: err, question: q.text, answer: aiResponse, store: account.nickname });
-              } else {
-                results.push({ questionId: q.id, status: "answered", question: q.text, answer: aiResponse, item: itemTitle, store: account.nickname });
-              }
-              await new Promise((r) => setTimeout(r, 1000));
-            } catch (e) {
-              results.push({ questionId: q.id, status: "error", error: String(e), store: account.nickname });
-            }
-          }
-        } catch (e) {
-          console.error(`Error auto-replying for ${account.nickname}:`, e);
-        }
-      }
-
-      return NextResponse.json({ results, totalAnswered: results.filter(r => r.status === "answered").length });
-    }
-
-    // Responder uma pergunta especifica (precisa do accountId)
-    if (action === "answer" && questionId) {
-      // Encontra a conta certa
+    // === GERAR resposta com IA (nao envia, so retorna) ===
+    if (action === "generate_only") {
       const account = accountId
         ? await prisma.account.findFirst({ where: { id: accountId, platform: "MERCADO_LIVRE" } })
         : await prisma.account.findFirst({ where: { platform: "MERCADO_LIVRE", isActive: true } });
-
       if (!account) return NextResponse.json({ error: "Conta nao encontrada" }, { status: 404 });
 
       const accessToken = await getValidToken(account);
-      const question = await mlApiCall(`/questions/${questionId}`, accessToken);
+      let itemTitle = body.itemTitle || "Produto";
+      let itemPrice = body.totalAmount || 0;
+      const context = body.context || "pergunta_anuncio";
 
-      let itemTitle = "Produto";
-      let itemPrice = 0;
-      try {
-        const item = await mlApiCall(`/items/${question.item_id}`, accessToken);
-        itemTitle = item.title || "Produto";
-        itemPrice = item.price || 0;
-      } catch { /* */ }
+      // Se e pergunta, busca detalhes do item
+      if (body.questionId) {
+        try {
+          const question = await mlApiCall(`/questions/${body.questionId}`, accessToken);
+          const item = await mlApiCall(`/items/${question.item_id}`, accessToken);
+          itemTitle = item.title || itemTitle;
+          itemPrice = item.price || itemPrice;
+        } catch { /* usa o que veio */ }
+      }
 
-      const aiResponse = await generateAIResponse(question.text, itemTitle, itemPrice, "MERCADO_LIVRE", "pergunta_anuncio");
+      const customerMsg = body.customerMessage || "";
+      const aiResponse = await generateAIResponse(customerMsg, itemTitle, itemPrice, "MERCADO_LIVRE", context);
 
+      return NextResponse.json({ aiResponse });
+    }
+
+    // === ENVIAR resposta a pergunta (ja aprovada) ===
+    if (action === "send_answer" && body.questionId) {
+      const account = accountId
+        ? await prisma.account.findFirst({ where: { id: accountId, platform: "MERCADO_LIVRE" } })
+        : await prisma.account.findFirst({ where: { platform: "MERCADO_LIVRE", isActive: true } });
+      if (!account) return NextResponse.json({ error: "Conta nao encontrada" }, { status: 404 });
+
+      const accessToken = await getValidToken(account);
       const answerResponse = await fetch("https://api.mercadolibre.com/answers", {
         method: "POST",
         headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ question_id: questionId, text: aiResponse }),
+        body: JSON.stringify({ question_id: body.questionId, text: body.text }),
       });
 
       if (!answerResponse.ok) {
         const err = await answerResponse.text();
-        return NextResponse.json({ error: err, aiResponse }, { status: 400 });
+        return NextResponse.json({ error: err }, { status: 400 });
       }
 
-      return NextResponse.json({ status: "answered", question: question.text, answer: aiResponse });
+      return NextResponse.json({ status: "sent" });
     }
 
-    // Responder mensagem pos-venda
-    if (action === "reply_message" && body.packId) {
+    // === ENVIAR mensagem pos-venda (ja aprovada) ===
+    if (action === "send_message" && body.packId) {
       const account = accountId
         ? await prisma.account.findFirst({ where: { id: accountId, platform: "MERCADO_LIVRE" } })
         : await prisma.account.findFirst({ where: { platform: "MERCADO_LIVRE", isActive: true } });
-
       if (!account) return NextResponse.json({ error: "Conta nao encontrada" }, { status: 404 });
 
       const accessToken = await getValidToken(account);
-      const messageText = body.text || "";
-      const itemTitle = body.itemTitle || "Produto";
-
-      // Se nao tem texto, gera com IA
-      let replyText = messageText;
-      if (!replyText) {
-        replyText = await generateAIResponse(
-          body.customerMessage || "",
-          itemTitle,
-          body.totalAmount,
-          "MERCADO_LIVRE",
-          "mensagem_posvenda"
-        );
-      }
-
-      // Envia resposta via API de mensagens do ML
       const response = await fetch(
         `https://api.mercadolibre.com/messages/packs/${body.packId}/sellers/${account.platformId}?tag=post_sale`,
         {
           method: "POST",
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            "Content-Type": "application/json",
-          },
+          headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
           body: JSON.stringify({
             from: { user_id: Number(account.platformId) },
             to: { user_id: Number(body.buyerId) },
-            text: { plain: replyText },
+            text: { plain: body.text },
           }),
         }
       );
 
       if (!response.ok) {
         const err = await response.text();
-        return NextResponse.json({ error: err, aiResponse: replyText }, { status: 400 });
+        return NextResponse.json({ error: err }, { status: 400 });
       }
 
-      return NextResponse.json({ status: "replied", message: replyText });
+      return NextResponse.json({ status: "sent" });
     }
 
     return NextResponse.json({ error: "Acao invalida" }, { status: 400 });
