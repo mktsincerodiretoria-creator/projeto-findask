@@ -3,12 +3,27 @@ import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
-// GET /api/analista/data?accountId=xxx - Retorna dados para graficos (filtro por conta opcional)
+// GET /api/analista/data?accountId=xxx&days=30 - Retorna dados para graficos
 export async function GET(request: NextRequest) {
   try {
     const accountId = request.nextUrl.searchParams.get("accountId");
-    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-    const sixtyDaysAgo = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000);
+    const daysParam = request.nextUrl.searchParams.get("days");
+    const monthParam = request.nextUrl.searchParams.get("month"); // ex: "2026-01" para janeiro 2026
+
+    let dateFrom: Date;
+    let dateTo = new Date();
+
+    if (monthParam) {
+      // Filtro por mes especifico
+      const [year, month] = monthParam.split("-").map(Number);
+      dateFrom = new Date(year, month - 1, 1);
+      dateTo = new Date(year, month, 0, 23, 59, 59);
+    } else {
+      const days = daysParam ? parseInt(daysParam) : 30;
+      dateFrom = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    }
+
+    const sixtyDaysAgo = new Date(dateFrom.getTime() - 30 * 24 * 60 * 60 * 1000); // periodo anterior para comparacao
     const taxSetting = await prisma.setting.findUnique({ where: { key: "tax_rate" } });
     const taxRate = taxSetting ? parseFloat(taxSetting.value) : 0;
 
@@ -22,8 +37,8 @@ export async function GET(request: NextRequest) {
     });
 
     // Separa ultimos 30d e 30-60d para calcular tendencia
-    const orders30d = orders.filter(o => o.orderDate >= thirtyDaysAgo);
-    const orders60to30d = orders.filter(o => o.orderDate < thirtyDaysAgo);
+    const orders30d = orders.filter(o => o.orderDate >= dateFrom);
+    const orders60to30d = orders.filter(o => o.orderDate < dateFrom);
 
     const productCosts = await prisma.productCost.findMany();
     const costMap: Record<string, number> = {};
@@ -146,19 +161,31 @@ export async function GET(request: NextRequest) {
       return { sku: s.sku, title: s.title, revenue30d: Math.round(rev30 * 100) / 100, growth: Math.round(growth * 10) / 10, share: Math.round(share * 10) / 10, quadrant, margin: s.margin, marginPct: s.marginPct, platforms };
     });
 
-    // Problematicos: SKUs com mais DEVOLUCOES e CANCELAMENTOS (Voz do Cliente real)
+    // Problematicos: busca TODOS pedidos com problemas (devolucoes, cancelamentos, reclamacoes)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const returnWhere: any = { orderDate: { gte: dateFrom, lte: dateTo } };
+    if (accountId) returnWhere.accountId = accountId;
+    // Busca tudo que NAO e venda normal (paid/shipped/delivered/completed)
+    returnWhere.status = { notIn: ["paid", "shipped", "delivered", "completed", "COMPLETED", "Shipped", "Delivered"] };
+
     const returnOrders = await prisma.order.findMany({
-      where: { orderDate: { gte: sixtyDaysAgo }, status: { in: ["cancelled", "returned", "refunded", "devolvido", "cancelado", "CANCELLED", "RETURNED", "IN_CANCEL"] } },
+      where: returnWhere,
       include: { items: true },
     });
 
-    const returnsBySku: Record<string, { sku: string; title: string; returns: number; cancellations: number; totalLost: number }> = {};
+    // Tambem busca pedidos normais do periodo para comparar
+    const normalWhere = { ...returnWhere, status: { notIn: Object.keys(returnWhere.status) } };
+    delete normalWhere.status;
+
+    const returnsBySku: Record<string, { sku: string; title: string; returns: number; cancellations: number; totalLost: number; statuses: Set<string> }> = {};
     for (const order of returnOrders) {
       for (const item of order.items) {
         const sku = item.sku || "SEM_SKU";
-        if (!returnsBySku[sku]) returnsBySku[sku] = { sku, title: item.title, returns: 0, cancellations: 0, totalLost: 0 };
+        if (!returnsBySku[sku]) returnsBySku[sku] = { sku, title: item.title, returns: 0, cancellations: 0, totalLost: 0, statuses: new Set() };
         const r = returnsBySku[sku];
-        if (order.status.toLowerCase().includes("return") || order.status.toLowerCase().includes("refund") || order.status.toLowerCase().includes("devolv")) {
+        r.statuses.add(order.status);
+        const st = order.status.toLowerCase();
+        if (st.includes("return") || st.includes("refund") || st.includes("devolv")) {
           r.returns += item.quantity;
         } else {
           r.cancellations += item.quantity;
@@ -167,13 +194,40 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Calcula taxa de problema por SKU (devolucoes+cancelamentos / total vendido)
+    // Calcula taxa de problema por SKU
     const vozClienteData = Object.values(returnsBySku).map(r => {
       const skuInfo = skuData[r.sku];
       const totalSold = skuInfo ? skuInfo.sold : 0;
       const problemRate = totalSold > 0 ? ((r.returns + r.cancellations) / (totalSold + r.returns + r.cancellations)) * 100 : 100;
-      return { ...r, totalSold, problemRate: Math.round(problemRate * 10) / 10, totalProblems: r.returns + r.cancellations };
+      return { ...r, statuses: Array.from(r.statuses), totalSold, problemRate: Math.round(problemRate * 10) / 10, totalProblems: r.returns + r.cancellations };
     }).sort((a, b) => b.totalProblems - a.totalProblems);
+
+    // Resumo por tipo de problema (motivos comuns)
+    const problemTypes: Record<string, number> = {
+      "Cancelamento pelo comprador": 0,
+      "Cancelamento pelo vendedor": 0,
+      "Devolucao/Reembolso": 0,
+      "Produto com defeito": 0,
+      "Produto errado": 0,
+      "Nao recebido": 0,
+      "Arrependimento": 0,
+      "Outros": 0,
+    };
+    for (const order of returnOrders) {
+      const st = order.status.toLowerCase();
+      const reason = (order.buyerNickname || "").toLowerCase(); // placeholder - ML nao retorna motivo diretamente
+      if (st.includes("cancel")) {
+        if (st.includes("buyer") || reason.includes("buyer")) problemTypes["Cancelamento pelo comprador"]++;
+        else problemTypes["Cancelamento pelo vendedor"]++;
+      } else if (st.includes("return") || st.includes("refund") || st.includes("devolv")) {
+        problemTypes["Devolucao/Reembolso"]++;
+      } else {
+        problemTypes["Outros"]++;
+      }
+    }
+
+    // Status unicos encontrados (para debug)
+    const uniqueStatuses = Array.from(new Set(returnOrders.map(o => o.status)));
 
     const problematic = bcgData.filter((s: {marginPct: number; growth: number}) => s.marginPct < 0 || s.growth < -30).sort((a: {marginPct: number}, b: {marginPct: number}) => a.marginPct - b.marginPct);
 
@@ -193,6 +247,9 @@ export async function GET(request: NextRequest) {
       abcSummary,
       bcgData,
       vozClienteData,
+      problemTypes,
+      uniqueStatuses,
+      totalReturns: returnOrders.length,
       problematic,
       rising,
       falling,

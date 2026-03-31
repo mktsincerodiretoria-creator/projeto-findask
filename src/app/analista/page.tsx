@@ -234,27 +234,61 @@ export default function AnalistaPage() {
 
       {/* ===== VOZ DO CLIENTE ===== */}
       {tab === "voz" && (() => {
-        const vozData: Array<{sku:string;title:string;returns:number;cancellations:number;totalLost:number;totalSold:number;problemRate:number;totalProblems:number}> = data?.vozClienteData || [];
-        const totalReturns = vozData.reduce((s,v) => s + v.returns, 0);
+        const vozData: Array<{sku:string;title:string;returns:number;cancellations:number;totalLost:number;totalSold:number;problemRate:number;totalProblems:number;statuses:string[]}> = data?.vozClienteData || [];
+        const problemTypes: Record<string, number> = data?.problemTypes || {};
+        const totalReturnsCount = vozData.reduce((s,v) => s + v.returns, 0);
         const totalCancellations = vozData.reduce((s,v) => s + v.cancellations, 0);
         const totalLost = vozData.reduce((s,v) => s + v.totalLost, 0);
+        const [vozFilter, setVozFilter] = [aiResult._vozFilter || "", (v: string) => setAiResult(prev => ({...prev, _vozFilter: v}))];
+        const [vozSort, setVozSort] = [aiResult._vozSort || "totalProblems", (v: string) => setAiResult(prev => ({...prev, _vozSort: v}))];
+        const [vozSortDir, setVozSortDir] = [aiResult._vozSortDir || "desc", (v: string) => setAiResult(prev => ({...prev, _vozSortDir: v}))];
+
+        const filteredVoz = vozFilter === "returns" ? vozData.filter(v => v.returns > 0) :
+          vozFilter === "cancellations" ? vozData.filter(v => v.cancellations > 0) : vozData;
+
+        const sortedVoz = [...filteredVoz].sort((a, b) => {
+          const key = vozSort as keyof typeof a;
+          const av = Number(a[key]) || 0, bv = Number(b[key]) || 0;
+          return vozSortDir === "desc" ? bv - av : av - bv;
+        });
+
+        function toggleSort(key: string) {
+          if (vozSort === key) setVozSortDir(vozSortDir === "desc" ? "asc" : "desc");
+          else { setVozSort(key); setVozSortDir("desc"); }
+        }
+        const arrow = (key: string) => vozSort === key ? (vozSortDir === "asc" ? " ▲" : " ▼") : " ▴▾";
+
         return (
         <div className="space-y-4">
           <div className="flex justify-between items-center flex-wrap gap-2">
             <h2 className="text-lg font-bold">Voz do Cliente - Devolucoes e Reclamacoes</h2>
-            <div className="flex gap-2"><AccountFilter/><button onClick={() => runAI("voz", "Analise os produtos com mais devolucoes e cancelamentos. Quais tem mais problemas? O que fazer para reduzir?")} disabled={aiLoading} className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-medium disabled:bg-gray-400">{aiLoading?"...":"Analisar com IA"}</button></div>
+            <div className="flex gap-2 flex-wrap items-center">
+              {/* Filtro de periodo */}
+              <select onChange={e => { const v = e.target.value; if (v.startsWith("m-")) fetchData(selectedAccount || undefined); else fetchData(selectedAccount || undefined); }} className="border rounded-lg px-2 py-1.5 text-xs bg-white">
+                <option value="30">Ultimos 30 dias</option>
+                <option value="7">Ultimos 7 dias</option>
+                <option value="15">Ultimos 15 dias</option>
+                <option value="90">Ultimos 3 meses</option>
+              </select>
+              <AccountFilter/>
+              <button onClick={() => runAI("voz", `Analise os ${vozData.length} produtos com devolucoes/cancelamentos. Top problematicos: ${vozData.slice(0,5).map(v=>`${v.sku}(${v.totalProblems} problemas)`).join(", ")}. O que fazer para reduzir?`)} disabled={aiLoading} className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-medium disabled:bg-gray-400">{aiLoading?"...":"Analisar com IA"}</button>
+            </div>
           </div>
 
-          {/* Cards resumo */}
+          {/* Cards clicaveis */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-center">
-              <p className="text-3xl font-bold text-red-700">{totalReturns}</p>
+            <button onClick={() => setVozFilter(vozFilter === "returns" ? "" : "returns")}
+              className={`bg-red-50 border-2 rounded-lg p-4 text-center transition-all hover:shadow-md ${vozFilter === "returns" ? "border-red-500 ring-2 ring-red-200 scale-105" : "border-red-200"}`}>
+              <p className="text-3xl font-bold text-red-700">{totalReturnsCount}</p>
               <p className="text-sm text-red-600 font-medium">Devolucoes</p>
-            </div>
-            <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 text-center">
+              {vozFilter === "returns" && <p className="text-xs text-gray-500 mt-1">Clique p/ limpar</p>}
+            </button>
+            <button onClick={() => setVozFilter(vozFilter === "cancellations" ? "" : "cancellations")}
+              className={`bg-orange-50 border-2 rounded-lg p-4 text-center transition-all hover:shadow-md ${vozFilter === "cancellations" ? "border-orange-500 ring-2 ring-orange-200 scale-105" : "border-orange-200"}`}>
               <p className="text-3xl font-bold text-orange-700">{totalCancellations}</p>
               <p className="text-sm text-orange-600 font-medium">Cancelamentos</p>
-            </div>
+              {vozFilter === "cancellations" && <p className="text-xs text-gray-500 mt-1">Clique p/ limpar</p>}
+            </button>
             <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-center">
               <p className="text-xl font-bold text-red-700">{formatCurrency(totalLost)}</p>
               <p className="text-sm text-red-600 font-medium">Valor Perdido</p>
@@ -265,42 +299,57 @@ export default function AnalistaPage() {
             </div>
           </div>
 
-          {/* Grafico: ranking de problemas */}
-          {vozData.length > 0 && (
+          {/* Cards de tipos de problema */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            {Object.entries(problemTypes).filter(([,v]) => v > 0).map(([tipo, count]) => (
+              <div key={tipo} className="bg-white border rounded-lg p-3 text-center">
+                <p className="text-lg font-bold text-gray-800">{count}</p>
+                <p className="text-xs text-gray-600 font-medium">{tipo}</p>
+              </div>
+            ))}
+            {Object.values(problemTypes).every(v => v === 0) && (
+              <>
+                <div className="bg-white border rounded-lg p-3 text-center"><p className="text-lg font-bold text-red-600">{totalCancellations}</p><p className="text-xs text-gray-600">Cancelamentos</p></div>
+                <div className="bg-white border rounded-lg p-3 text-center"><p className="text-lg font-bold text-orange-600">{totalReturnsCount}</p><p className="text-xs text-gray-600">Devolucoes</p></div>
+                <div className="bg-white border rounded-lg p-3 text-center"><p className="text-lg font-bold text-yellow-600">-</p><p className="text-xs text-gray-600">Produto Errado</p></div>
+                <div className="bg-white border rounded-lg p-3 text-center"><p className="text-lg font-bold text-purple-600">-</p><p className="text-xs text-gray-600">Quebra/Defeito</p></div>
+              </>
+            )}
+          </div>
+
+          {vozFilter && <div className="bg-gray-100 rounded-lg px-3 py-2 flex justify-between items-center"><span className="text-sm">Filtrando: <strong>{vozFilter === "returns" ? "Devolucoes" : "Cancelamentos"}</strong> ({filteredVoz.length} SKUs)</span><button onClick={() => setVozFilter("")} className="text-xs text-blue-600">Limpar</button></div>}
+
+          {/* Grafico */}
+          {sortedVoz.length > 0 && (
             <div className="bg-white rounded-lg border p-4">
-              <h3 className="font-semibold mb-2 text-red-700">Ranking: SKUs com mais Devolucoes + Cancelamentos</h3>
-              <ResponsiveContainer width="100%" height={Math.max(200, vozData.slice(0,12).length * 35)}>
-                <BarChart data={vozData.slice(0,12)} layout="vertical">
-                  <CartesianGrid strokeDasharray="3 3"/>
-                  <XAxis type="number" fontSize={9}/>
-                  <YAxis type="category" dataKey="sku" fontSize={9} width={90}/>
-                  <Tooltip/>
-                  <Legend/>
-                  <Bar dataKey="returns" name="Devolucoes" fill="#ef4444" stackId="a"/>
-                  <Bar dataKey="cancellations" name="Cancelamentos" fill="#f97316" stackId="a"/>
+              <h3 className="font-semibold mb-2 text-red-700">Ranking: SKUs com mais Problemas</h3>
+              <ResponsiveContainer width="100%" height={Math.max(200, sortedVoz.slice(0,12).length * 35)}>
+                <BarChart data={sortedVoz.slice(0,12)} layout="vertical">
+                  <CartesianGrid strokeDasharray="3 3"/><XAxis type="number" fontSize={9}/><YAxis type="category" dataKey="sku" fontSize={9} width={90}/><Tooltip/><Legend/>
+                  <Bar dataKey="returns" name="Devolucoes" fill="#ef4444" stackId="a"/><Bar dataKey="cancellations" name="Cancelamentos" fill="#f97316" stackId="a"/>
                 </BarChart>
               </ResponsiveContainer>
             </div>
           )}
 
-          {/* Tabela detalhada */}
+          {/* Tabela com ordenacao */}
           <div className="bg-white rounded-lg border overflow-x-auto">
-            <div className="p-3 border-b"><h3 className="font-semibold text-red-700">Detalhamento por SKU ({vozData.length} produtos)</h3></div>
+            <div className="p-3 border-b"><h3 className="font-semibold text-red-700">Detalhamento por SKU ({sortedVoz.length} produtos)</h3></div>
             <table className="w-full text-sm">
               <thead className="bg-red-50">
                 <tr>
-                  <th className="text-left px-3 py-2 text-red-700">SKU</th>
+                  <th className="text-left px-3 py-2 text-red-700 cursor-pointer" onClick={() => toggleSort("sku")}>SKU{arrow("sku")}</th>
                   <th className="text-left px-3 py-2 text-red-700">Produto</th>
-                  <th className="text-right px-3 py-2 text-red-700">Devolucoes</th>
-                  <th className="text-right px-3 py-2 text-red-700">Cancelamentos</th>
-                  <th className="text-right px-3 py-2 text-red-700">Total Problemas</th>
-                  <th className="text-right px-3 py-2 text-red-700">Vendas OK</th>
-                  <th className="text-right px-3 py-2 text-red-700">Taxa Problema</th>
-                  <th className="text-right px-3 py-2 text-red-700">Valor Perdido</th>
+                  <th className="text-right px-3 py-2 text-red-700 cursor-pointer" onClick={() => toggleSort("returns")}>Devolucoes{arrow("returns")}</th>
+                  <th className="text-right px-3 py-2 text-red-700 cursor-pointer" onClick={() => toggleSort("cancellations")}>Cancelamentos{arrow("cancellations")}</th>
+                  <th className="text-right px-3 py-2 text-red-700 cursor-pointer" onClick={() => toggleSort("totalProblems")}>Total{arrow("totalProblems")}</th>
+                  <th className="text-right px-3 py-2 text-red-700 cursor-pointer" onClick={() => toggleSort("totalSold")}>Vendas OK{arrow("totalSold")}</th>
+                  <th className="text-right px-3 py-2 text-red-700 cursor-pointer" onClick={() => toggleSort("problemRate")}>Taxa %{arrow("problemRate")}</th>
+                  <th className="text-right px-3 py-2 text-red-700 cursor-pointer" onClick={() => toggleSort("totalLost")}>Valor Perdido{arrow("totalLost")}</th>
                 </tr>
               </thead>
               <tbody>
-                {vozData.map((v,i) => (
+                {sortedVoz.map((v,i) => (
                   <tr key={i} className="border-t hover:bg-red-50">
                     <td className="px-3 py-1.5 font-mono text-xs font-bold">{v.sku}</td>
                     <td className="px-3 py-1.5 max-w-[180px] truncate">{v.title}</td>
@@ -312,7 +361,7 @@ export default function AnalistaPage() {
                     <td className="px-3 py-1.5 text-right text-red-600">{formatCurrency(v.totalLost)}</td>
                   </tr>
                 ))}
-                {vozData.length === 0 && <tr><td colSpan={8} className="px-3 py-8 text-center text-gray-500">Nenhuma devolucao ou cancelamento encontrado nos ultimos 60 dias</td></tr>}
+                {sortedVoz.length === 0 && <tr><td colSpan={8} className="px-3 py-8 text-center text-gray-500">Nenhuma devolucao ou cancelamento no periodo</td></tr>}
               </tbody>
             </table>
           </div>
