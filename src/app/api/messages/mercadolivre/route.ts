@@ -206,22 +206,62 @@ export async function POST(request: NextRequest) {
       if (!account) return NextResponse.json({ error: "Conta nao encontrada" }, { status: 404 });
 
       const accessToken = await getValidToken(account);
-      const response = await fetch(
-        `https://api.mercadolibre.com/messages/packs/${body.packId}/sellers/${account.platformId}?tag=post_sale`,
+      const sellerId = Number(account.platformId);
+      const buyerId = Number(body.buyerId);
+      const packId = body.packId;
+      const msgText = String(body.text || "");
+
+      // Tenta formato 1: /messages/packs/{pack_id}/sellers/{seller_id}
+      let response = await fetch(
+        `https://api.mercadolibre.com/messages/packs/${packId}/sellers/${sellerId}?tag=post_sale`,
         {
           method: "POST",
           headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
           body: JSON.stringify({
-            from: { user_id: Number(account.platformId) },
-            to: { user_id: Number(body.buyerId) },
-            text: { plain: body.text },
+            from: { user_id: sellerId },
+            to: { user_id: buyerId },
+            text: msgText,
           }),
         }
       );
 
+      // Se falhar, tenta formato 2: text como objeto
+      if (!response.ok) {
+        response = await fetch(
+          `https://api.mercadolibre.com/messages/packs/${packId}/sellers/${sellerId}?tag=post_sale`,
+          {
+            method: "POST",
+            headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              from: { user_id: sellerId },
+              to: { user_id: buyerId },
+              text: { plain: msgText },
+            }),
+          }
+        );
+      }
+
+      // Se falhar, tenta formato 3: /messages com resource
+      if (!response.ok) {
+        response = await fetch(
+          `https://api.mercadolibre.com/messages`,
+          {
+            method: "POST",
+            headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              from: { user_id: sellerId },
+              to: { user_id: buyerId },
+              text: { plain: msgText },
+              resource: "packs",
+              resource_id: packId,
+            }),
+          }
+        );
+      }
+
       if (!response.ok) {
         const err = await response.text();
-        return NextResponse.json({ error: err }, { status: 400 });
+        return NextResponse.json({ error: `Erro ao enviar mensagem: ${err}` }, { status: 400 });
       }
 
       return NextResponse.json({ status: "sent" });
