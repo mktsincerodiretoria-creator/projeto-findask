@@ -77,27 +77,54 @@ export async function GET() {
           });
         }
 
-        // Busca mensagens pos-venda
+        // Busca mensagens pos-venda (packs recentes com mensagens nao lidas)
         try {
-          const msgsData = await mlApiCall(
-            `/messages/unread?seller_id=${account.platformId}&api_version=2`,
+          // Busca pedidos recentes para verificar mensagens
+          const recentOrders = await mlApiCall(
+            `/orders/search?seller=${account.platformId}&sort=date_desc&limit=20`,
             accessToken
           );
-          if (msgsData.results) {
-            for (const msg of msgsData.results.slice(0, 10)) {
-              allMessages.push({
-                id: msg.id,
-                text: msg.text?.plain || msg.text || "",
-                date: msg.date,
-                from: msg.from?.user_id,
-                orderId: msg.resource_id,
-                type: "message",
-                accountId: account.id,
-                storeName,
-              });
-            }
+
+          for (const order of (recentOrders.results || []).slice(0, 15)) {
+            try {
+              const packId = order.pack_id || order.id;
+              // Busca mensagens do pack/order
+              const msgsData = await mlApiCall(
+                `/messages/packs/${packId}/sellers/${account.platformId}?tag=post_sale`,
+                accessToken
+              );
+
+              const messages = msgsData.messages || [];
+              // Filtra mensagens nao lidas do comprador
+              for (const msg of messages) {
+                if (msg.from?.user_id !== Number(account.platformId) && !msg.read) {
+                  // Busca info do item
+                  let itemTitle = "";
+                  try {
+                    if (order.order_items?.[0]?.item?.title) {
+                      itemTitle = order.order_items[0].item.title;
+                    }
+                  } catch { /* */ }
+
+                  allMessages.push({
+                    id: msg.id,
+                    text: msg.text?.plain || msg.text || "",
+                    date: msg.date_created || msg.date,
+                    from: msg.from?.user_id,
+                    fromName: order.buyer?.nickname || "Comprador",
+                    orderId: String(order.id),
+                    packId: String(packId),
+                    itemTitle,
+                    totalAmount: order.total_amount,
+                    type: "posvenda",
+                    accountId: account.id,
+                    storeName,
+                  });
+                }
+              }
+            } catch { /* sem mensagens para este pedido */ }
           }
-        } catch { /* sem mensagens */ }
+        } catch { /* endpoint de mensagens nao disponivel */ }
       } catch (e) {
         console.error(`Error fetching messages for account ${account.nickname}:`, e);
       }
@@ -211,6 +238,55 @@ export async function POST(request: NextRequest) {
       }
 
       return NextResponse.json({ status: "answered", question: question.text, answer: aiResponse });
+    }
+
+    // Responder mensagem pos-venda
+    if (action === "reply_message" && body.packId) {
+      const account = accountId
+        ? await prisma.account.findFirst({ where: { id: accountId, platform: "MERCADO_LIVRE" } })
+        : await prisma.account.findFirst({ where: { platform: "MERCADO_LIVRE", isActive: true } });
+
+      if (!account) return NextResponse.json({ error: "Conta nao encontrada" }, { status: 404 });
+
+      const accessToken = await getValidToken(account);
+      const messageText = body.text || "";
+      const itemTitle = body.itemTitle || "Produto";
+
+      // Se nao tem texto, gera com IA
+      let replyText = messageText;
+      if (!replyText) {
+        replyText = await generateAIResponse(
+          body.customerMessage || "",
+          itemTitle,
+          body.totalAmount,
+          "MERCADO_LIVRE",
+          "mensagem_posvenda"
+        );
+      }
+
+      // Envia resposta via API de mensagens do ML
+      const response = await fetch(
+        `https://api.mercadolibre.com/messages/packs/${body.packId}/sellers/${account.platformId}?tag=post_sale`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            from: { user_id: Number(account.platformId) },
+            to: { user_id: Number(body.buyerId) },
+            text: { plain: replyText },
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        const err = await response.text();
+        return NextResponse.json({ error: err, aiResponse: replyText }, { status: 400 });
+      }
+
+      return NextResponse.json({ status: "replied", message: replyText });
     }
 
     return NextResponse.json({ error: "Acao invalida" }, { status: 400 });

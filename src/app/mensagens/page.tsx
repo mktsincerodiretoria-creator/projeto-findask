@@ -14,6 +14,20 @@ interface Question {
   status: string;
 }
 
+interface PostSaleMessage {
+  id: string;
+  text: string;
+  date: string;
+  fromName: string;
+  from: number;
+  orderId: string;
+  packId: string;
+  itemTitle: string;
+  totalAmount: number;
+  accountId: string;
+  storeName: string;
+}
+
 interface AnswerResult {
   questionId: number;
   status: string;
@@ -25,11 +39,13 @@ interface AnswerResult {
 
 export default function MensagensPage() {
   const [questions, setQuestions] = useState<Question[]>([]);
+  const [postSaleMessages, setPostSaleMessages] = useState<PostSaleMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [answering, setAnswering] = useState(false);
   const [autoReplying, setAutoReplying] = useState(false);
   const [results, setResults] = useState<AnswerResult[]>([]);
   const [error, setError] = useState("");
+  const [replyingTo, setReplyingTo] = useState<string | null>(null);
 
   const fetchMessages = useCallback(async () => {
     setLoading(true);
@@ -41,6 +57,7 @@ export default function MensagensPage() {
         setError(data.error);
       } else {
         setQuestions(data.questions || []);
+        setPostSaleMessages(data.messages || []);
       }
     } catch (e) {
       setError(String(e));
@@ -70,6 +87,36 @@ export default function MensagensPage() {
       setError(String(e));
     } finally {
       setAnswering(false);
+    }
+  }
+
+  async function replyPostSale(msg: PostSaleMessage) {
+    setReplyingTo(msg.id);
+    try {
+      const res = await fetch("/api/messages/mercadolivre", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "reply_message",
+          accountId: msg.accountId,
+          packId: msg.packId,
+          buyerId: msg.from,
+          customerMessage: msg.text,
+          itemTitle: msg.itemTitle,
+          totalAmount: msg.totalAmount,
+        }),
+      });
+      const data = await res.json();
+      if (data.status === "replied") {
+        setResults((prev) => [...prev, { questionId: 0, status: "answered", question: msg.text, answer: data.message, item: msg.itemTitle }]);
+        setPostSaleMessages((prev) => prev.filter((m) => m.id !== msg.id));
+      } else {
+        setError(data.error || "Erro ao responder");
+      }
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setReplyingTo(null);
     }
   }
 
@@ -193,6 +240,55 @@ export default function MensagensPage() {
                     className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-medium hover:bg-green-700 disabled:bg-gray-400 whitespace-nowrap"
                   >
                     {answering ? "..." : "Responder com IA"}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Mercado Livre - Mensagens Pos-Venda */}
+      <div className="bg-white rounded-lg border">
+        <div className="p-4 border-b flex items-center justify-between">
+          <div>
+            <h2 className="font-semibold text-gray-800">Mercado Livre - Mensagens Pos-Venda</h2>
+            <p className="text-sm text-gray-500">{postSaleMessages.length} mensagens pendentes</p>
+          </div>
+          <span className="bg-orange-100 text-orange-800 px-3 py-1 rounded-full text-sm font-medium">
+            Pos-Venda
+          </span>
+        </div>
+
+        {postSaleMessages.length === 0 ? (
+          <div className="p-8 text-center text-gray-500">
+            <p className="text-lg mb-1">Nenhuma mensagem pos-venda pendente</p>
+            <p className="text-sm">Mensagens de compradores aparecerão aqui</p>
+          </div>
+        ) : (
+          <div className="divide-y">
+            {postSaleMessages.map((msg) => (
+              <div key={msg.id} className="p-4 hover:bg-gray-50">
+                <div className="flex justify-between items-start gap-4">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="font-semibold text-gray-900">{msg.fromName || "Comprador"}</span>
+                      <span className="px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-800 text-xs font-medium">{msg.storeName}</span>
+                    </div>
+                    <p className="text-gray-900 mb-2 bg-gray-100 rounded-lg p-3">{msg.text}</p>
+                    <div className="flex flex-wrap gap-3 text-xs text-gray-500">
+                      <span>Pedido: #{msg.orderId}</span>
+                      {msg.itemTitle && <span>Produto: {msg.itemTitle}</span>}
+                      {msg.totalAmount > 0 && <span>R$ {msg.totalAmount.toFixed(2)}</span>}
+                      <span>{new Date(msg.date).toLocaleString("pt-BR")}</span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => replyPostSale(msg)}
+                    disabled={replyingTo === msg.id}
+                    className="px-3 py-1.5 bg-orange-500 text-white rounded-lg text-xs font-medium hover:bg-orange-600 disabled:bg-gray-400 whitespace-nowrap"
+                  >
+                    {replyingTo === msg.id ? "Respondendo..." : "Responder com IA"}
                   </button>
                 </div>
               </div>
