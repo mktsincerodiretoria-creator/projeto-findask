@@ -1,19 +1,29 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
-// GET /api/analista/data - Retorna dados estruturados para graficos
-export async function GET() {
+// GET /api/analista/data?accountId=xxx - Retorna dados para graficos (filtro por conta opcional)
+export async function GET(request: NextRequest) {
   try {
+    const accountId = request.nextUrl.searchParams.get("accountId");
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const sixtyDaysAgo = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000);
     const taxSetting = await prisma.setting.findUnique({ where: { key: "tax_rate" } });
     const taxRate = taxSetting ? parseFloat(taxSetting.value) : 0;
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const orderWhere: any = { orderDate: { gte: sixtyDaysAgo }, status: { notIn: ["cancelled", "returned", "refunded", "CANCELLED", "RETURNED"] } };
+    if (accountId) orderWhere.accountId = accountId;
+
     const orders = await prisma.order.findMany({
-      where: { orderDate: { gte: thirtyDaysAgo }, status: { notIn: ["cancelled", "returned", "refunded", "CANCELLED", "RETURNED"] } },
+      where: orderWhere,
       include: { items: true, account: { select: { platform: true, nickname: true, id: true } } },
     });
+
+    // Separa ultimos 30d e 30-60d para calcular tendencia
+    const orders30d = orders.filter(o => o.orderDate >= thirtyDaysAgo);
+    const orders60to30d = orders.filter(o => o.orderDate < thirtyDaysAgo);
 
     const productCosts = await prisma.productCost.findMany();
     const costMap: Record<string, number> = {};
@@ -115,11 +125,49 @@ export async function GET() {
       revenueC: abcData.filter(s => s.abc === "C").reduce((s, i) => s + i.revenue, 0),
     };
 
+    // BCG Matrix: crescimento (30d vs 30-60d) vs participacao de mercado (% receita)
+    const sku30d: Record<string, number> = {};
+    const sku60to30d: Record<string, number> = {};
+    for (const o of orders30d) for (const i of o.items) { const sk = i.sku || "SEM_SKU"; sku30d[sk] = (sku30d[sk] || 0) + i.totalPrice; }
+    for (const o of orders60to30d) for (const i of o.items) { const sk = i.sku || "SEM_SKU"; sku60to30d[sk] = (sku60to30d[sk] || 0) + i.totalPrice; }
+
+    const totalRev30d = Object.values(sku30d).reduce((s, v) => s + v, 0);
+    const bcgData = abcData.map(s => {
+      const rev30 = sku30d[s.sku] || 0;
+      const rev60to30 = sku60to30d[s.sku] || 0;
+      const growth = rev60to30 > 0 ? ((rev30 - rev60to30) / rev60to30) * 100 : (rev30 > 0 ? 100 : 0);
+      const share = totalRev30d > 0 ? (rev30 / totalRev30d) * 100 : 0;
+      let quadrant = "Abacaxi";
+      if (growth > 0 && share > 5) quadrant = "Estrela";
+      else if (growth > 0 && share <= 5) quadrant = "Interrogacao";
+      else if (growth <= 0 && share > 5) quadrant = "Vaca Leiteira";
+      return { sku: s.sku, title: s.title, revenue30d: Math.round(rev30 * 100) / 100, growth: Math.round(growth * 10) / 10, share: Math.round(share * 10) / 10, quadrant, margin: s.margin, marginPct: s.marginPct };
+    });
+
+    // Problematicos: SKUs com margem negativa ou queda forte
+    const problematic = bcgData.filter(s => s.marginPct < 0 || s.growth < -30).sort((a, b) => a.marginPct - b.marginPct);
+
+    // Tendencias: SKUs em alta vs queda
+    const trending = bcgData.filter(s => s.revenue30d > 0).sort((a, b) => b.growth - a.growth);
+    const rising = trending.filter(s => s.growth > 10).slice(0, 10);
+    const falling = trending.filter(s => s.growth < -10).sort((a, b) => a.growth - b.growth).slice(0, 10);
+
+    // Lista de contas para filtro
+    const accountOptions = await prisma.account.findMany({
+      where: { isActive: true },
+      select: { id: true, nickname: true, platform: true },
+    });
+
     return NextResponse.json({
       abcData,
       abcSummary,
+      bcgData,
+      problematic,
+      rising,
+      falling,
       platforms: Object.values(platformData),
       accounts: accountList.map(a => ({ ...a, skus: a.skus.size })),
+      accountOptions,
       crossAccount: crossAccount.slice(0, 20),
       daily: Object.values(dailyData).sort((a, b) => a.date.localeCompare(b.date)),
       totals: { revenue: totalRev, orders: orders.length, taxRate, skus: abcData.length },
