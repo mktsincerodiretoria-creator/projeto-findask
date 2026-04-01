@@ -212,6 +212,13 @@ export default function MensagensPage() {
                 <div key={q.id} className="p-4">
                   <div className="flex justify-between items-start gap-4">
                     <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        {pending ? (
+                          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-green-500 inline-block"></span><span className="text-xs font-bold text-green-600">RESPONDIDA</span></span>
+                        ) : (
+                          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-red-500 inline-block animate-pulse"></span><span className="text-xs font-bold text-red-600">NAO RESPONDIDA</span></span>
+                        )}
+                      </div>
                       <p className="text-gray-900 font-medium mb-1">{q.text}</p>
                       <div className="flex flex-wrap gap-2 text-xs text-gray-500">
                         <span>Produto: {q.itemTitle}</span>
@@ -284,6 +291,11 @@ export default function MensagensPage() {
                   <div className="flex justify-between items-start gap-4">
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1">
+                        {pending ? (
+                          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-green-500 inline-block"></span><span className="text-xs font-bold text-green-600">RESPONDIDA</span></span>
+                        ) : (
+                          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-red-500 inline-block animate-pulse"></span><span className="text-xs font-bold text-red-600">NAO RESPONDIDA</span></span>
+                        )}
                         <span className="font-bold text-gray-900">{msg.fromName || "Comprador"}</span>
                         <span className="px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-800 text-xs font-medium">{msg.storeName}</span>
                       </div>
