@@ -14,8 +14,9 @@ interface StockItemData {
 }
 
 interface Totals {
-  totalSkus: number; totalStock: number; totalCapital: number;
+  totalSkus: number; totalStock: number; totalCapital: number; totalPurchaseCost: number;
   inRupture: number; needPurchase: number; classA: number; classB: number; classC: number;
+  totalSold30d: number; totalSuggested: number;
 }
 
 type SortKey = "sku" | "title" | "currentStock" | "avgDailySales" | "coverageDays" | "reorderPoint" | "suggestedPurchase" | "margin" | "capitalTied" | "abcClass" | "status";
@@ -133,7 +134,7 @@ export default function EstoquePage() {
     setTimeout(() => setMsg(""), 3000);
   }
 
-  const t = totals || { totalSkus: 0, totalStock: 0, totalCapital: 0, inRupture: 0, needPurchase: 0, classA: 0, classB: 0, classC: 0 };
+  const t = totals || { totalSkus: 0, totalStock: 0, totalCapital: 0, totalPurchaseCost: 0, inRupture: 0, needPurchase: 0, classA: 0, classB: 0, classC: 0, totalSold30d: 0, totalSuggested: 0 };
 
   return (
     <div className="space-y-6">
@@ -146,38 +147,31 @@ export default function EstoquePage() {
       </div>
 
       {/* Dashboard cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
         <div className="bg-white rounded-lg border p-3">
-          <p className="text-xs text-gray-700 font-medium">SKUs</p>
+          <p className="text-xs text-gray-700 font-medium">SKUs Vendidos (30d)</p>
           <p className="text-xl font-bold text-gray-900">{t.totalSkus}</p>
         </div>
         <div className="bg-white rounded-lg border p-3">
-          <p className="text-xs text-gray-700 font-medium">Unidades</p>
-          <p className="text-xl font-bold text-gray-900">{t.totalStock}</p>
-        </div>
-        <div className="bg-white rounded-lg border p-3">
-          <p className="text-xs text-gray-700 font-medium">Capital Parado</p>
-          <p className="text-xl font-bold text-red-600">{formatCurrency(t.totalCapital)}</p>
+          <p className="text-xs text-gray-700 font-medium">Vendas 30d (un)</p>
+          <p className="text-xl font-bold text-gray-900">{t.totalSold30d || 0}</p>
         </div>
         <div className="bg-red-50 rounded-lg border border-red-200 p-3">
-          <p className="text-xs text-red-600">Em Ruptura</p>
+          <p className="text-xs text-red-700 font-medium">Sem Estoque</p>
           <p className="text-xl font-bold text-red-700">{t.inRupture}</p>
         </div>
         <div className="bg-yellow-50 rounded-lg border border-yellow-200 p-3">
-          <p className="text-xs text-yellow-600">Precisa Comprar</p>
+          <p className="text-xs text-yellow-700 font-medium">Precisa Comprar</p>
           <p className="text-xl font-bold text-yellow-700">{t.needPurchase}</p>
         </div>
         <div className="bg-green-50 rounded-lg border border-green-200 p-3">
           <p className="text-xs text-green-600">Classe A</p>
           <p className="text-xl font-bold text-green-700">{t.classA}</p>
         </div>
-        <div className="bg-blue-50 rounded-lg border border-blue-200 p-3">
-          <p className="text-xs text-blue-600">Classe B</p>
-          <p className="text-xl font-bold text-blue-700">{t.classB}</p>
-        </div>
-        <div className="bg-gray-50 rounded-lg border p-3">
-          <p className="text-xs text-gray-500">Classe C</p>
-          <p className="text-xl font-bold">{t.classC}</p>
+        <div className="bg-indigo-50 rounded-lg border border-indigo-200 p-3">
+          <p className="text-xs text-indigo-700 font-medium">Compra Sugerida</p>
+          <p className="text-xl font-bold text-indigo-700">{t.totalSuggested || 0} un</p>
+          <p className="text-xs text-indigo-600">{formatCurrency(t.totalPurchaseCost || 0)}</p>
         </div>
       </div>
 
