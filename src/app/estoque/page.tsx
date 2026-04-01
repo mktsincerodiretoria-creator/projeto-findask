@@ -4,13 +4,13 @@ import { useState, useEffect, useMemo } from "react";
 import { formatCurrency, formatPercent } from "@/lib/utils";
 
 interface StockItemData {
-  id: string; sku: string; title: string | null; currentStock: number;
-  cost: number; salePrice: number; leadTimeDays: number; safetyStockDays: number;
-  avgDailySales: number; totalSold30d: number; coverageDays: number;
-  monthlyTurnover: number; minStock: number; safetyStock: number;
-  reorderPoint: number; suggestedPurchase: number; status: string;
-  margin: number; capitalTied: number; abcClass: string | null;
-  supplier: string | null;
+  sku: string; title: string; currentStock: number;
+  unitCost: number; salePrice: number; leadTimeDays: number; safetyStockDays: number;
+  avgDailySales: number; totalSold: number; coverageDays: number;
+  minStock: number; reorderPoint: number; suggestedPurchase: number;
+  oneMonthSales: number; status: string;
+  marginPerUnit: number; marginPct: number; capitalTied: number; purchaseCost: number;
+  abcClass: string; supplier: string | null; platforms: string[];
 }
 
 interface Totals {
@@ -19,7 +19,7 @@ interface Totals {
   totalSold30d: number; totalSuggested: number;
 }
 
-type SortKey = "sku" | "title" | "currentStock" | "avgDailySales" | "coverageDays" | "reorderPoint" | "suggestedPurchase" | "margin" | "capitalTied" | "abcClass" | "status";
+type SortKey = "sku" | "title" | "currentStock" | "avgDailySales" | "coverageDays" | "reorderPoint" | "suggestedPurchase" | "marginPct" | "capitalTied" | "abcClass" | "status" | "totalSold";
 type SortDir = "asc" | "desc";
 
 function SortTh({ label, field, sk, sd, onSort, align = "right" }: {
@@ -227,7 +227,7 @@ export default function EstoquePage() {
           {/* Mobile: Cards */}
           <div className="md:hidden space-y-3">
             {filtered.map((item) => (
-              <div key={item.id} className={`rounded-lg border-2 p-4 ${item.status === "ruptura" ? "border-red-300 bg-red-50" : item.status === "critico" ? "border-orange-300 bg-orange-50" : item.status === "comprar" ? "border-yellow-300 bg-yellow-50" : "border-gray-200 bg-white"}`}>
+              <div key={item.sku} className={`rounded-lg border-2 p-4 ${item.status === "ruptura" ? "border-red-300 bg-red-50" : item.status === "critico" ? "border-orange-300 bg-orange-50" : item.status === "comprar" ? "border-yellow-300 bg-yellow-50" : "border-gray-200 bg-white"}`}>
                 <div className="flex justify-between items-start mb-2">
                   <div>
                     <p className="font-bold text-gray-900">{item.title || item.sku}</p>
@@ -264,7 +264,7 @@ export default function EstoquePage() {
                   </div>
                   <div>
                     <p className="text-gray-700 text-xs font-medium">Margem</p>
-                    <p className={`font-bold ${item.margin >= 30 ? "text-green-600" : item.margin >= 15 ? "text-yellow-600" : "text-red-600"}`}>{formatPercent(item.margin)}</p>
+                    <p className={`font-bold ${item.marginPct >= 30 ? "text-green-600" : item.marginPct >= 15 ? "text-yellow-600" : "text-red-600"}`}>{formatPercent(item.marginPct)}</p>
                   </div>
                 </div>
 
@@ -272,9 +272,9 @@ export default function EstoquePage() {
                   <div className="flex justify-between items-center bg-white rounded-lg p-2 border">
                     <div>
                       <p className="text-sm text-red-700 font-bold">Comprar {item.suggestedPurchase} unidades</p>
-                      <p className="text-xs text-gray-800 font-medium">Custo: {formatCurrency(item.suggestedPurchase * item.cost)}</p>
+                      <p className="text-xs text-gray-800 font-medium">Custo: {formatCurrency(item.suggestedPurchase * item.unitCost)}</p>
                     </div>
-                    <button onClick={() => registerPurchase(item.sku, item.suggestedPurchase, item.cost)}
+                    <button onClick={() => registerPurchase(item.sku, item.suggestedPurchase, item.unitCost)}
                       className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium">
                       Comprar
                     </button>
@@ -299,13 +299,13 @@ export default function EstoquePage() {
                   <SortTh label="Ponto Repos." field="reorderPoint" sk={sk} sd={sd} onSort={handleSort} />
                   <SortTh label="Sugestao Compra" field="suggestedPurchase" sk={sk} sd={sd} onSort={handleSort} />
                   <SortTh label="Capital" field="capitalTied" sk={sk} sd={sd} onSort={handleSort} />
-                  <SortTh label="Margem" field="margin" sk={sk} sd={sd} onSort={handleSort} />
+                  <SortTh label="Margem" field="marginPct" sk={sk} sd={sd} onSort={handleSort} />
                   <th className="text-center px-3 py-2 font-medium text-gray-600">Acao</th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.map((item) => (
-                  <tr key={item.id} className="border-t hover:bg-gray-50">
+                  <tr key={item.sku} className="border-t hover:bg-gray-50">
                     <td className="px-3 py-2">
                       <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusColors[item.status]}`}>{statusLabels[item.status]}</span>
                     </td>
@@ -324,10 +324,10 @@ export default function EstoquePage() {
                       {item.suggestedPurchase > 0 ? item.suggestedPurchase : "-"}
                     </td>
                     <td className="px-3 py-2 text-right text-gray-900">{formatCurrency(item.capitalTied)}</td>
-                    <td className={`px-3 py-2 text-right font-medium ${item.margin >= 30 ? "text-green-600" : item.margin >= 15 ? "text-yellow-600" : "text-red-600"}`}>{formatPercent(item.margin)}</td>
+                    <td className={`px-3 py-2 text-right font-medium ${item.marginPct >= 30 ? "text-green-600" : item.marginPct >= 15 ? "text-yellow-600" : "text-red-600"}`}>{formatPercent(item.marginPct)}</td>
                     <td className="px-3 py-2 text-center">
                       {item.suggestedPurchase > 0 && (
-                        <button onClick={() => registerPurchase(item.sku, item.suggestedPurchase, item.cost)}
+                        <button onClick={() => registerPurchase(item.sku, item.suggestedPurchase, item.unitCost)}
                           className="px-2 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700">
                           Comprar {item.suggestedPurchase}
                         </button>
