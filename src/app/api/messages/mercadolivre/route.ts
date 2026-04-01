@@ -99,33 +99,50 @@ export async function GET() {
               );
 
               const messages = msgsData.messages || [];
-              // Filtra mensagens nao lidas do comprador
-              for (const msg of messages) {
-                if (msg.from?.user_id !== Number(account.platformId) && !msg.read) {
-                  // Busca info do item
-                  let itemTitle = "";
-                  try {
-                    if (order.order_items?.[0]?.item?.title) {
-                      itemTitle = order.order_items[0].item.title;
-                    }
-                  } catch { /* */ }
+              if (messages.length === 0) continue;
 
-                  allMessages.push({
-                    id: msg.id,
-                    text: msg.text?.plain || msg.text || "",
-                    date: msg.date_created || msg.date,
-                    from: msg.from?.user_id,
-                    fromName: order.buyer?.nickname || "Comprador",
-                    orderId: String(order.id),
-                    packId: String(packId),
-                    itemTitle,
-                    totalAmount: order.total_amount,
-                    type: "posvenda",
-                    accountId: account.id,
-                    storeName,
-                  });
+              // Verifica se a ULTIMA mensagem e do comprador (nao respondida)
+              // Se a ultima mensagem for do vendedor, ja foi respondida
+              const lastMsg = messages[messages.length - 1] || messages[0];
+              const isLastFromBuyer = lastMsg.from?.user_id !== Number(account.platformId);
+
+              if (!isLastFromBuyer) continue; // Ja respondida - pula
+
+              // Pega a ultima mensagem do comprador
+              const buyerMessages = messages.filter((m: Record<string, unknown>) => {
+                const from = m.from as Record<string, unknown> | undefined;
+                return from?.user_id !== Number(account.platformId);
+              });
+              if (buyerMessages.length === 0) continue;
+
+              const latestBuyerMsg = buyerMessages[buyerMessages.length - 1];
+
+              // Busca info do item
+              let itemTitle = "";
+              try {
+                if (order.order_items?.[0]?.item?.title) {
+                  itemTitle = order.order_items[0].item.title;
                 }
-              }
+              } catch { /* */ }
+
+              const lbm = latestBuyerMsg as Record<string, unknown>;
+              const lbmFrom = lbm.from as Record<string, unknown> | undefined;
+              const lbmText = lbm.text as Record<string, unknown> | string | undefined;
+
+              allMessages.push({
+                id: String(lbm.id || `${packId}-${Date.now()}`),
+                text: typeof lbmText === "object" ? String((lbmText as Record<string,unknown>)?.plain || "") : String(lbmText || ""),
+                date: String(lbm.date_created || lbm.date || ""),
+                from: lbmFrom?.user_id,
+                fromName: order.buyer?.nickname || "Comprador",
+                orderId: String(order.id),
+                packId: String(packId),
+                itemTitle,
+                totalAmount: order.total_amount,
+                type: "posvenda",
+                accountId: account.id,
+                storeName,
+              });
             } catch { /* sem mensagens para este pedido */ }
           }
         } catch { /* endpoint de mensagens nao disponivel */ }
