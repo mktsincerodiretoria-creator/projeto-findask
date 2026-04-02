@@ -4,7 +4,7 @@ import {
   refreshShopeeToken,
   getShopeeOrders,
   getShopeeOrderDetails,
-  getShopeeOrderIncome,
+  // getShopeeOrderIncome, // nao mais necessario - usa order_income do get_order_detail
 } from "@/lib/shopee";
 
 export const dynamic = "force-dynamic";
@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
 
         // Busca pedidos dos ultimos 15 dias (limite da API Shopee)
         const timeTo = Math.floor(Date.now() / 1000);
-        const timeFrom = timeTo - 15 * 24 * 60 * 60;
+        const timeFrom = timeTo - 7 * 24 * 60 * 60; // 7 dias (evita timeout)
         let cursor = "";
         let hasMore = true;
 
@@ -73,29 +73,20 @@ export async function POST(request: NextRequest) {
             const orderDetails = detailsData.response?.order_list || [];
 
             for (const order of orderDetails) {
-              // Busca income (receita detalhada)
+              // Usa order_income que ja vem no get_order_detail (sem chamada extra)
               let platformFee = 0;
               let shippingCostSeller = 0;
               let shippingCostBuyer = 0;
-              let affiliateFee = 0;
 
-              try {
-                const income = await getShopeeOrderIncome(accessToken, shopId, order.order_sn);
-                const escrow = income.response?.order_income;
-                if (escrow) {
-                  // Taxas da Shopee
-                  platformFee = Math.abs(Number(escrow.commission_fee || 0))
-                    + Math.abs(Number(escrow.service_fee || 0))
-                    + Math.abs(Number(escrow.transaction_fee || 0));
-                  shippingCostSeller = Math.abs(Number(escrow.actual_shipping_fee || 0))
-                    - Math.abs(Number(escrow.shipping_fee_discount_from_3pl || 0));
-                  shippingCostBuyer = Math.abs(Number(escrow.buyer_paid_shipping_fee || 0));
-                  affiliateFee = Math.abs(Number(escrow.affiliate_commission || 0));
-                  // Soma afiliado na tarifa
-                  platformFee += affiliateFee;
-                }
-              } catch {
-                // Sem dados de income
+              const income = order.order_income;
+              if (income) {
+                platformFee = Math.abs(Number(income.commission_fee || 0))
+                  + Math.abs(Number(income.service_fee || 0))
+                  + Math.abs(Number(income.seller_transaction_fee || income.transaction_fee || 0))
+                  + Math.abs(Number(income.affiliate_commission || 0));
+                shippingCostSeller = Math.abs(Number(income.actual_shipping_fee || income.final_shipping_fee || 0));
+                shippingCostBuyer = Math.abs(Number(income.buyer_paid_shipping_fee || 0));
+              } else {
                 shippingCostBuyer = Math.abs(Number(order.estimated_shipping_fee || 0));
               }
 
