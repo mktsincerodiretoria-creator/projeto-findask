@@ -82,7 +82,7 @@ export async function getShopInfo(accessToken: string, shopId: number) {
 }
 
 export async function getShopeeOrders(accessToken: string, shopId: number, timeFrom: number, timeTo: number, cursor = "", pageSize = 50) {
-  const params: Record<string, string | number> = { time_range_field: "create_time", time_from: timeFrom, time_to: timeTo, page_size: pageSize, order_status: "COMPLETED", response_optional_fields: "order_status" };
+  const params: Record<string, string | number> = { time_range_field: "create_time", time_from: timeFrom, time_to: timeTo, page_size: pageSize, response_optional_fields: "order_status" };
   if (cursor) params.cursor = cursor;
   return shopeeApiCall("/api/v2/order/get_order_list", accessToken, shopId, params);
 }
