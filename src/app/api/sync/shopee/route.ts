@@ -52,14 +52,15 @@ export async function POST(request: NextRequest) {
 
         let totalSynced = 0;
 
-        // Busca pedidos dos ultimos 15 dias (limite da API Shopee)
+        // Busca pedidos dos ultimos 3 dias (evita timeout de 60s da Vercel)
         const timeTo = Math.floor(Date.now() / 1000);
-        const timeFrom = timeTo - 7 * 24 * 60 * 60; // 7 dias (evita timeout)
+        const timeFrom = timeTo - 3 * 24 * 60 * 60;
         let cursor = "";
         let hasMore = true;
+        const maxOrders = 30; // Limita para evitar timeout
 
-        while (hasMore) {
-          const ordersData = await getShopeeOrders(accessToken, shopId, timeFrom, timeTo, cursor);
+        while (hasMore && totalSynced < maxOrders) {
+          const ordersData = await getShopeeOrders(accessToken, shopId, timeFrom, timeTo, cursor, 20);
           const orderList = ordersData.response?.order_list || [];
 
           if (orderList.length === 0) break;
@@ -152,7 +153,7 @@ export async function POST(request: NextRequest) {
             }
 
             // Rate limiting
-            await new Promise((r) => setTimeout(r, 500));
+            await new Promise((r) => setTimeout(r, 100));
           }
 
           cursor = ordersData.response?.next_cursor || "";
