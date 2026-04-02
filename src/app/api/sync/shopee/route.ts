@@ -74,11 +74,11 @@ export async function POST(request: NextRequest) {
             const orderDetails = detailsData.response?.order_list || [];
 
             for (const order of orderDetails) {
-              // Usa order_income que ja vem no get_order_detail (sem chamada extra)
               let platformFee = 0;
               let shippingCostSeller = 0;
               let shippingCostBuyer = 0;
 
+              // Tenta order_income (vem no get_order_detail para COMPLETED)
               const income = order.order_income;
               if (income) {
                 platformFee = Math.abs(Number(income.commission_fee || 0))
@@ -88,7 +88,11 @@ export async function POST(request: NextRequest) {
                 shippingCostSeller = Math.abs(Number(income.actual_shipping_fee || income.final_shipping_fee || 0));
                 shippingCostBuyer = Math.abs(Number(income.buyer_paid_shipping_fee || 0));
               } else {
-                shippingCostBuyer = Math.abs(Number(order.estimated_shipping_fee || 0));
+                // Estima frete do shipping_fee
+                shippingCostBuyer = Math.abs(Number(order.estimated_shipping_fee || order.actual_shipping_fee || 0));
+                // Estima tarifa como ~12% do total (padrao Shopee BR)
+                const totalAmt = Number(order.total_amount || 0);
+                platformFee = Math.round(totalAmt * 0.12 * 100) / 100;
               }
 
               const totalAmount = Number(order.total_amount || 0);

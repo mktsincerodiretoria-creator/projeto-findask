@@ -43,9 +43,12 @@ export async function GET() {
     const allMessages: Array<Record<string, unknown>> = [];
     let totalQuestionsCount = 0;
 
+    const errors: Array<{account: string; error: string}> = [];
+
     for (const account of accounts) {
       try {
         const accessToken = await getValidToken(account);
+        if (!accessToken) { errors.push({account: account.nickname || account.platformId, error: "Token vazio"}); continue; }
         const storeName = account.nickname || account.platformId;
 
         // Busca perguntas nao respondidas desta conta
@@ -101,12 +104,16 @@ export async function GET() {
               const messages = msgsData.messages || [];
               if (messages.length === 0) continue;
 
-              // Verifica se a ULTIMA mensagem e do comprador (nao respondida)
-              // Se a ultima mensagem for do vendedor, ja foi respondida
-              const lastMsg = messages[messages.length - 1] || messages[0];
-              const isLastFromBuyer = lastMsg.from?.user_id !== Number(account.platformId);
+              // Verifica se a mensagem mais recente e do comprador
+              // A API pode retornar em qualquer ordem, entao verifica TANTO primeira quanto ultima
+              const sellerId = Number(account.platformId);
+              const firstMsg = messages[0];
+              const lastMsg = messages[messages.length - 1];
+              const firstIsFromSeller = firstMsg?.from?.user_id === sellerId;
+              const lastIsFromSeller = lastMsg?.from?.user_id === sellerId;
 
-              if (!isLastFromBuyer) continue; // Ja respondida - pula
+              // Se a primeira OU ultima mensagem e do vendedor, ja respondeu
+              if (firstIsFromSeller || lastIsFromSeller) continue;
 
               // Pega a ultima mensagem do comprador
               const buyerMessages = messages.filter((m: Record<string, unknown>) => {
@@ -157,6 +164,7 @@ export async function GET() {
       totalQuestions: totalQuestionsCount,
       totalMessages: allMessages.length,
       accountsChecked: accounts.length,
+      accountErrors: errors,
     });
   } catch (error) {
     return NextResponse.json({ error: String(error) }, { status: 500 });
