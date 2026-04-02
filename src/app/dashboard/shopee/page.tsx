@@ -93,11 +93,38 @@ export default function ShopeePage() {
     else { setSortKey(key); setSortDir("desc"); }
   }
 
+  const [syncingShopee, setSyncingShopee] = useState(false);
+  const [syncMsg, setSyncMsg] = useState("");
+
   async function handleShopeeSync() {
+    setSyncingShopee(true);
+    setSyncMsg("Sincronizando Shopee...");
     try {
-      await fetch("/api/sync/shopee", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+      const res = await fetch("/api/sync/shopee", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+      const contentType = res.headers.get("content-type") || "";
+      if (contentType.includes("application/json")) {
+        const data = await res.json();
+        if (data.results) {
+          const total = data.results.reduce((s: number, r: {recordsSynced?: number}) => s + (r.recordsSynced || 0), 0);
+          const failed = data.results.filter((r: {status: string}) => r.status === "failed");
+          if (failed.length > 0) {
+            setSyncMsg(`Erro: ${failed.map((f: {error?: string}) => f.error).join(", ")}`);
+          } else {
+            setSyncMsg(`Sincronizado! ${total} registros.`);
+          }
+        } else if (data.error) {
+          setSyncMsg(`Erro: ${data.error}`);
+        }
+      } else {
+        setSyncMsg(`Erro: resposta invalida do servidor (${res.status})`);
+      }
       fetchData(dateRange.from, dateRange.to);
-    } catch (e) { console.error(e); }
+    } catch (e) {
+      setSyncMsg(`Erro: ${e}`);
+    } finally {
+      setSyncingShopee(false);
+      setTimeout(() => setSyncMsg(""), 10000);
+    }
   }
 
   const rows: FlatRow[] = useMemo(() => {
@@ -136,10 +163,13 @@ export default function ShopeePage() {
             {dateRange.from && dateRange.to ? `${new Date(dateRange.from).toLocaleDateString("pt-BR")} - ${new Date(dateRange.to).toLocaleDateString("pt-BR")}` : "Ultimos 15 dias"}
           </p>
         </div>
-        {hasAccount && (
-          <button onClick={handleShopeeSync} className="px-4 py-2 rounded-lg text-sm font-medium text-white bg-orange-500 hover:bg-orange-600">
-            Sincronizar Shopee
+        {(
+          <div className="flex flex-col items-end gap-1">
+          <button onClick={handleShopeeSync} disabled={syncingShopee} className={`px-4 py-2 rounded-lg text-sm font-medium text-white ${syncingShopee ? "bg-gray-400" : "bg-orange-500 hover:bg-orange-600"}`}>
+            {syncingShopee ? "Sincronizando..." : "Sincronizar Shopee"}
           </button>
+          {syncMsg && <span className={`text-xs ${syncMsg.includes("Erro") ? "text-red-500" : "text-green-600"}`}>{syncMsg}</span>}
+          </div>
         )}
       </div>
 
