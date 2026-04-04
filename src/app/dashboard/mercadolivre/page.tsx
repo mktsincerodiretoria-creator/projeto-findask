@@ -98,8 +98,12 @@ export default function MercadoLivrePage() {
     }).catch(() => { clearTimeout(timer); return null; });
   }, []);
 
-  const fetchData = useCallback(async (from?: string, to?: string, accId?: string | null) => {
+  const fetchData = useCallback((from?: string, to?: string, accId?: string | null) => {
     setLoading(true);
+
+    // Garantia: libera UI em no maximo 8s mesmo se conexao travar
+    const safetyTimer = setTimeout(() => setLoading(false), 8000);
+
     const params = new URLSearchParams({ platform: "MERCADO_LIVRE" });
     if (from) params.set("from", from);
     if (to) params.set("to", to);
@@ -118,6 +122,7 @@ export default function MercadoLivrePage() {
     // Metrics: rapido (pre-agregado), libera UI
     safeFetch(`/api/metrics?${params.toString()}`).then(d => {
       if (d) setMetrics(d);
+      clearTimeout(safetyTimer);
       setLoading(false);
     });
 
