@@ -359,33 +359,44 @@ export default function MercadoLivrePage() {
               {taxRate === 0 && <a href="/configuracoes" className="text-blue-600 underline ml-1">(configurar)</a>}
             </p>
 
-            {/* Resumo vendas */}
-            <div className="grid grid-cols-2 md:grid-cols-6 gap-3 mb-4">
-              <div className="bg-white rounded-lg border p-3">
-                <p className="text-xs text-gray-500">Faturamento</p>
-                <p className="text-lg font-bold">{formatCurrency(salesTotals.revenue)}</p>
-              </div>
-              <div className="bg-white rounded-lg border p-3">
-                <p className="text-xs text-gray-500">(-) Custo</p>
-                <p className="text-lg font-bold text-red-600">{formatCurrency(salesTotals.cost)}</p>
-              </div>
-              <div className="bg-white rounded-lg border p-3">
-                <p className="text-xs text-gray-500">(-) Imposto</p>
-                <p className="text-lg font-bold text-red-600">{formatCurrency(salesTotals.tax)}</p>
-              </div>
-              <div className="bg-white rounded-lg border p-3">
-                <p className="text-xs text-gray-500">(-) Tarifa</p>
-                <p className="text-lg font-bold text-red-600">{formatCurrency(salesTotals.fee)}</p>
-              </div>
-              <div className="bg-white rounded-lg border p-3">
-                <p className="text-xs text-gray-500">(-) Frete Vend</p>
-                <p className="text-lg font-bold text-red-600">{formatCurrency(salesTotals.freteVend)}</p>
-              </div>
-              <div className="bg-white rounded-lg border p-3">
-                <p className="text-xs text-gray-500">= Margem</p>
-                <p className={`text-lg font-bold ${salesTotals.margin >= 0 ? "text-green-600" : "text-red-600"}`}>{formatCurrency(salesTotals.margin)}</p>
-              </div>
-            </div>
+            {/* Resumo vendas - usa metrics (totais reais) quando disponivel */}
+            {(() => {
+              const mt = metrics?.totals;
+              const vFat = mt?.revenue ?? salesTotals.revenue;
+              const vCusto = mt?.cost ?? salesTotals.cost;
+              const vImposto = mt?.tax ?? salesTotals.tax;
+              const vTarifa = mt?.platformFee ?? salesTotals.fee;
+              const vFrete = mt?.shippingCost ?? salesTotals.freteVend;
+              const vMargem = mt?.margin ?? salesTotals.margin;
+              return (
+                <div className="grid grid-cols-2 md:grid-cols-6 gap-3 mb-4">
+                  <div className="bg-white rounded-lg border p-3">
+                    <p className="text-xs text-gray-500">Faturamento</p>
+                    <p className="text-lg font-bold">{formatCurrency(vFat)}</p>
+                  </div>
+                  <div className="bg-white rounded-lg border p-3">
+                    <p className="text-xs text-gray-500">(-) Custo</p>
+                    <p className="text-lg font-bold text-red-600">{formatCurrency(vCusto)}</p>
+                  </div>
+                  <div className="bg-white rounded-lg border p-3">
+                    <p className="text-xs text-gray-500">(-) Imposto</p>
+                    <p className="text-lg font-bold text-red-600">{formatCurrency(vImposto)}</p>
+                  </div>
+                  <div className="bg-white rounded-lg border p-3">
+                    <p className="text-xs text-gray-500">(-) Tarifa</p>
+                    <p className="text-lg font-bold text-red-600">{formatCurrency(vTarifa)}</p>
+                  </div>
+                  <div className="bg-white rounded-lg border p-3">
+                    <p className="text-xs text-gray-500">(-) Frete Vend</p>
+                    <p className="text-lg font-bold text-red-600">{formatCurrency(vFrete)}</p>
+                  </div>
+                  <div className="bg-white rounded-lg border p-3">
+                    <p className="text-xs text-gray-500">= Margem</p>
+                    <p className={`text-lg font-bold ${vMargem >= 0 ? "text-green-600" : "text-red-600"}`}>{formatCurrency(vMargem)}</p>
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Tabela */}
             <div className="bg-white rounded-lg border overflow-x-auto">
