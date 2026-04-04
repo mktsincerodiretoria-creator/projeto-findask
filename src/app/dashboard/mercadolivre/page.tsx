@@ -87,56 +87,51 @@ export default function MercadoLivrePage() {
   const [adsMsg, setAdsMsg] = useState("");
   const adsFileRef = useRef<HTMLInputElement>(null);
 
+  const safeFetch = useCallback((url: string) =>
+    fetch(url).then(async r => {
+      if (!r.ok) return null;
+      const text = await r.text();
+      try { return JSON.parse(text); } catch { return null; }
+    }).catch(() => null), []);
+
   const fetchData = useCallback(async (from?: string, to?: string, accId?: string | null) => {
     setLoading(true);
-    try {
-      const params = new URLSearchParams({ platform: "MERCADO_LIVRE" });
-      if (from) params.set("from", from);
-      if (to) params.set("to", to);
-      const ordParams = new URLSearchParams();
-      if (from) ordParams.set("from", from);
-      if (to) ordParams.set("to", to);
-      if (accId) {
-        ordParams.set("accountId", accId);
-      } else {
-        ordParams.set("platform", "MERCADO_LIVRE");
-      }
-
-      const adsParams = new URLSearchParams({ platform: "MERCADO_LIVRE" });
-      if (from) adsParams.set("from", from);
-      if (to) adsParams.set("to", to);
-
-      const safeFetch = (url: string) =>
-        fetch(url).then(async r => {
-          if (!r.ok) return null;
-          const text = await r.text();
-          try { return JSON.parse(text); } catch { return null; }
-        }).catch(() => null);
-
-      // 1. Carrega metrics primeiro (rapido, mostra cards)
-      const metricsData = await safeFetch(`/api/metrics?${params.toString()}`);
-      if (metricsData) setMetrics(metricsData);
-      setLoading(false); // Libera UI com cards
-
-      // 2. Carrega orders e ads em background (mais lento)
-      const [ordersData, adsData] = await Promise.all([
-        safeFetch(`/api/orders?${ordParams.toString()}`),
-        safeFetch(`/api/ads?${adsParams.toString()}`),
-      ]);
-      if (ordersData) {
-        setOrders(ordersData.orders || []);
-        setTaxRate(ordersData.taxRate || 0);
-        if (ordersData.returns) setReturns(ordersData.returns);
-      }
-      if (adsData) {
-        if (adsData.totals) setAdsTotals(adsData.totals);
-        if (adsData.byCampaign) setAdsCampaigns(adsData.byCampaign);
-      }
-    } catch (e) {
-      console.error("Error:", e);
-      setLoading(false);
+    const params = new URLSearchParams({ platform: "MERCADO_LIVRE" });
+    if (from) params.set("from", from);
+    if (to) params.set("to", to);
+    const ordParams = new URLSearchParams();
+    if (from) ordParams.set("from", from);
+    if (to) ordParams.set("to", to);
+    if (accId) {
+      ordParams.set("accountId", accId);
+    } else {
+      ordParams.set("platform", "MERCADO_LIVRE");
     }
-  }, []);
+    const adsParams = new URLSearchParams({ platform: "MERCADO_LIVRE" });
+    if (from) adsParams.set("from", from);
+    if (to) adsParams.set("to", to);
+
+    // Metrics: rapido (pre-agregado), libera UI
+    safeFetch(`/api/metrics?${params.toString()}`).then(d => {
+      if (d) setMetrics(d);
+      setLoading(false);
+    });
+
+    // Orders + Ads: mais lento, atualiza em background
+    safeFetch(`/api/orders?${ordParams.toString()}`).then(d => {
+      if (d) {
+        setOrders(d.orders || []);
+        setTaxRate(d.taxRate || 0);
+        if (d.returns) setReturns(d.returns);
+      }
+    });
+    safeFetch(`/api/ads?${adsParams.toString()}`).then(d => {
+      if (d) {
+        if (d.totals) setAdsTotals(d.totals);
+        if (d.byCampaign) setAdsCampaigns(d.byCampaign);
+      }
+    });
+  }, [safeFetch]);
 
   useEffect(() => {
     const now = new Date();
