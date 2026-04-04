@@ -106,16 +106,19 @@ export default function MercadoLivrePage() {
       if (from) adsParams.set("from", from);
       if (to) adsParams.set("to", to);
 
-      // Usa allSettled para que falha de uma API nao afete as outras
-      const [metricsResult, ordersResult, adsResult] = await Promise.allSettled([
-        fetch(`/api/metrics?${params.toString()}`).then(r => r.ok ? r.json() : null),
-        fetch(`/api/orders?${ordParams.toString()}`).then(r => r.ok ? r.json() : null),
-        fetch(`/api/ads?${adsParams.toString()}`).then(r => r.ok ? r.json() : null),
-      ]);
+      // Fetch seguro: retorna null em caso de erro ou timeout
+      const safeFetch = (url: string) =>
+        fetch(url).then(async r => {
+          if (!r.ok) return null;
+          const text = await r.text();
+          try { return JSON.parse(text); } catch { return null; }
+        }).catch(() => null);
 
-      const metricsData = metricsResult.status === "fulfilled" ? metricsResult.value : null;
-      const ordersData = ordersResult.status === "fulfilled" ? ordersResult.value : null;
-      const adsData = adsResult.status === "fulfilled" ? adsResult.value : null;
+      const [metricsData, ordersData, adsData] = await Promise.all([
+        safeFetch(`/api/metrics?${params.toString()}`),
+        safeFetch(`/api/orders?${ordParams.toString()}`),
+        safeFetch(`/api/ads?${adsParams.toString()}`),
+      ]);
 
       if (metricsData) setMetrics(metricsData);
       if (ordersData) {
