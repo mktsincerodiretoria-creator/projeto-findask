@@ -106,19 +106,28 @@ export default function MercadoLivrePage() {
       if (from) adsParams.set("from", from);
       if (to) adsParams.set("to", to);
 
-      // Fetch seguro: retorna null em caso de erro ou timeout
-      const safeFetch = (url: string) =>
-        fetch(url).then(async r => {
-          if (!r.ok) return null;
-          const text = await r.text();
-          try { return JSON.parse(text); } catch { return null; }
-        }).catch(() => null);
+      // Fetch seguro: retorna null em caso de erro, timeout de 20s no client
+      const safeFetch = (url: string) => {
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 20000);
+        return fetch(url, { signal: ctrl.signal })
+          .then(async r => {
+            clearTimeout(timer);
+            if (!r.ok) return null;
+            const text = await r.text();
+            try { return JSON.parse(text); } catch { return null; }
+          })
+          .catch(() => { clearTimeout(timer); return null; });
+      };
 
-      const [metricsData, ordersData, adsData] = await Promise.all([
+      const [metricsResult, ordersResult, adsResult] = await Promise.allSettled([
         safeFetch(`/api/metrics?${params.toString()}`),
         safeFetch(`/api/orders?${ordParams.toString()}`),
         safeFetch(`/api/ads?${adsParams.toString()}`),
       ]);
+      const metricsData = metricsResult.status === "fulfilled" ? metricsResult.value : null;
+      const ordersData = ordersResult.status === "fulfilled" ? ordersResult.value : null;
+      const adsData = adsResult.status === "fulfilled" ? adsResult.value : null;
 
       if (metricsData) setMetrics(metricsData);
       if (ordersData) {
