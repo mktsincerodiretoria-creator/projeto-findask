@@ -62,6 +62,7 @@ export async function GET(request: NextRequest) {
       prisma.order.findMany({
         where,
         include: {
+          account: { select: { platform: true } },
           items: {
             select: {
               id: true, platformItemId: true, title: true,
@@ -70,7 +71,7 @@ export async function GET(request: NextRequest) {
           },
         },
         orderBy: { orderDate: "desc" },
-        take: 200,
+        take: 500,
       }),
       prisma.setting.findUnique({ where: { key: "tax_rate" } }),
       prisma.productCost.findMany({ select: { sku: true, cost: true } }),
@@ -117,6 +118,7 @@ export async function GET(request: NextRequest) {
         discount: order.discount,
         orderDate: order.orderDate,
         buyerNickname: order.buyerNickname,
+        account: order.account,
         items: enrichedItems,
         productCost: totalProductCost,
         calculatedTax: taxAmount,
