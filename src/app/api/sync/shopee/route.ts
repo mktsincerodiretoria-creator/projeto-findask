@@ -95,110 +95,107 @@ export async function POST(request: NextRequest) {
         }
 
         // ======================================================
-        // FASE 3: Processar e salvar (transacao unica = rapido)
+        // FASE 3: Processar e salvar pedidos
         // ======================================================
         let totalSynced = 0;
         let ordersWithIncome = 0;
         let ordersWithoutIncome = 0;
 
-        // Usar transacao para agrupar todas as writes
-        await prisma.$transaction(async (tx) => {
-          for (const order of allDetails) {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const o = order as any;
-            if (o.order_status && o.order_status !== "COMPLETED") continue;
+        for (const order of allDetails) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const o = order as any;
+          if (o.order_status && o.order_status !== "COMPLETED") continue;
 
-            let platformFee = 0;
-            let shippingCostSeller = 0;
-            let shippingCostBuyer = 0;
+          let platformFee = 0;
+          let shippingCostSeller = 0;
+          let shippingCostBuyer = 0;
 
-            const income = o.order_income;
-            if (income) {
-              ordersWithIncome++;
-              // TODAS as taxas reais da Shopee
-              platformFee = Math.abs(Number(income.commission_fee || 0))
-                + Math.abs(Number(income.service_fee || 0))
-                + Math.abs(Number(income.seller_transaction_fee || income.transaction_fee || 0))
-                + Math.abs(Number(income.affiliate_commission || 0))
-                + Math.abs(Number(income.credit_card_promotion || 0))
-                + Math.abs(Number(income.final_product_protection || 0))
-                + Math.abs(Number(income.drc_adjustable_refund || 0))
-                + Math.abs(Number(income.escrow_tax || 0));
-              shippingCostSeller = Math.abs(Number(income.actual_shipping_fee || income.final_shipping_fee || 0));
-              shippingCostBuyer = Math.abs(Number(income.buyer_paid_shipping_fee || 0));
-            } else {
-              ordersWithoutIncome++;
-              shippingCostBuyer = Math.abs(Number(o.estimated_shipping_fee || o.actual_shipping_fee || 0));
-              platformFee = 0;
+          const income = o.order_income;
+          if (income) {
+            ordersWithIncome++;
+            platformFee = Math.abs(Number(income.commission_fee || 0))
+              + Math.abs(Number(income.service_fee || 0))
+              + Math.abs(Number(income.seller_transaction_fee || income.transaction_fee || 0))
+              + Math.abs(Number(income.affiliate_commission || 0))
+              + Math.abs(Number(income.credit_card_promotion || 0))
+              + Math.abs(Number(income.final_product_protection || 0))
+              + Math.abs(Number(income.drc_adjustable_refund || 0))
+              + Math.abs(Number(income.escrow_tax || 0));
+            shippingCostSeller = Math.abs(Number(income.actual_shipping_fee || income.final_shipping_fee || 0));
+            shippingCostBuyer = Math.abs(Number(income.buyer_paid_shipping_fee || 0));
+          } else {
+            ordersWithoutIncome++;
+            shippingCostBuyer = Math.abs(Number(o.estimated_shipping_fee || o.actual_shipping_fee || 0));
+            platformFee = 0;
+          }
+
+          // Receita = soma dos itens (sem frete comprador)
+          let revenueFromItems = 0;
+          if (Array.isArray(o.item_list)) {
+            for (const item of o.item_list) {
+              const price = Number(item.model_discounted_price || item.model_original_price || 0);
+              const qty = Number(item.model_quantity_purchased || item.quantity || 1);
+              revenueFromItems += price * qty;
             }
+          }
+          const totalAmount = revenueFromItems > 0 ? revenueFromItems : Number(o.total_amount || 0);
 
-            // Receita = soma dos itens (sem frete comprador)
-            let revenueFromItems = 0;
-            if (Array.isArray(o.item_list)) {
-              for (const item of o.item_list) {
-                const price = Number(item.model_discounted_price || item.model_original_price || 0);
-                const qty = Number(item.model_quantity_purchased || item.quantity || 1);
-                revenueFromItems += price * qty;
-              }
-            }
-            const totalAmount = revenueFromItems > 0 ? revenueFromItems : Number(o.total_amount || 0);
-
-            const savedOrder = await tx.order.upsert({
-              where: {
-                accountId_platformOrderId: {
-                  accountId: account.id,
-                  platformOrderId: String(o.order_sn),
-                },
-              },
-              update: {
-                status: "COMPLETED",
-                totalAmount,
-                platformFee,
-                sellerShippingCost: Math.max(0, shippingCostSeller),
-                shippingCost: shippingCostBuyer,
-                paidDate: o.pay_time ? new Date(o.pay_time * 1000) : null,
-              },
-              create: {
+          const savedOrder = await prisma.order.upsert({
+            where: {
+              accountId_platformOrderId: {
                 accountId: account.id,
                 platformOrderId: String(o.order_sn),
-                status: "COMPLETED",
-                totalAmount,
-                currency: "BRL",
-                platformFee,
-                sellerShippingCost: Math.max(0, shippingCostSeller),
-                shippingCost: shippingCostBuyer,
-                buyerNickname: o.buyer_username || null,
-                orderDate: new Date((o.create_time || o.pay_time || timeTo) * 1000),
-                paidDate: o.pay_time ? new Date(o.pay_time * 1000) : null,
               },
+            },
+            update: {
+              status: "COMPLETED",
+              totalAmount,
+              platformFee,
+              sellerShippingCost: Math.max(0, shippingCostSeller),
+              shippingCost: shippingCostBuyer,
+              paidDate: o.pay_time ? new Date(o.pay_time * 1000) : null,
+            },
+            create: {
+              accountId: account.id,
+              platformOrderId: String(o.order_sn),
+              status: "COMPLETED",
+              totalAmount,
+              currency: "BRL",
+              platformFee,
+              sellerShippingCost: Math.max(0, shippingCostSeller),
+              shippingCost: shippingCostBuyer,
+              buyerNickname: o.buyer_username || null,
+              orderDate: new Date((o.create_time || o.pay_time || timeTo) * 1000),
+              paidDate: o.pay_time ? new Date(o.pay_time * 1000) : null,
+            },
+          });
+
+          // Salva itens — deletar antigos e recriar (mais rapido que upsert individual)
+          if (Array.isArray(o.item_list)) {
+            await prisma.orderItem.deleteMany({ where: { orderId: savedOrder.id } });
+            await prisma.orderItem.createMany({
+              data: o.item_list.map((item: Record<string, unknown>) => {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const it = item as any;
+                const qty = Number(it.model_quantity_purchased || it.quantity || 1);
+                const price = Number(it.model_discounted_price || it.model_original_price || 0);
+                return {
+                  id: `${savedOrder.id}-${it.item_id}-${it.model_id || 0}`,
+                  orderId: savedOrder.id,
+                  platformItemId: String(it.item_id),
+                  title: it.item_name || "",
+                  quantity: qty,
+                  unitPrice: price,
+                  totalPrice: price * qty,
+                  sku: it.item_sku || it.model_sku || null,
+                };
+              }),
+              skipDuplicates: true,
             });
-
-            // Salva itens
-            if (Array.isArray(o.item_list)) {
-              for (const item of o.item_list) {
-                const itemId = `${savedOrder.id}-${item.item_id}-${item.model_id || 0}`;
-                const qty = Number(item.model_quantity_purchased || item.quantity || 1);
-                const price = Number(item.model_discounted_price || item.model_original_price || 0);
-                await tx.orderItem.upsert({
-                  where: { id: itemId },
-                  update: { quantity: qty, unitPrice: price, totalPrice: price * qty },
-                  create: {
-                    id: itemId,
-                    orderId: savedOrder.id,
-                    platformItemId: String(item.item_id),
-                    title: item.item_name || "",
-                    quantity: qty,
-                    unitPrice: price,
-                    totalPrice: price * qty,
-                    sku: item.item_sku || item.model_sku || null,
-                  },
-                });
-              }
-            }
-
-            totalSynced++;
           }
-        });
+
+          totalSynced++;
+        }
 
         // ======================================================
         // FASE 4: Recalcular metricas diarias
