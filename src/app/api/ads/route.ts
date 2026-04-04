@@ -59,7 +59,7 @@ export async function GET(request: NextRequest) {
         where,
         include: { campaign: { select: { campaignName: true, platform: true, campaignId: true } } },
         orderBy: { date: "desc" },
-        take: 5000,
+        take: 500,
       }),
       prisma.dailyMetric.aggregate({
         where: metricsWhere,

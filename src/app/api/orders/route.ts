@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 // GET /api/orders
 export async function GET(request: NextRequest) {
@@ -69,7 +70,7 @@ export async function GET(request: NextRequest) {
           },
         },
         orderBy: { orderDate: "desc" },
-        take: 300,
+        take: 200,
       }),
       prisma.setting.findUnique({ where: { key: "tax_rate" } }),
       prisma.productCost.findMany({ select: { sku: true, cost: true } }),

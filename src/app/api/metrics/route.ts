@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 // GET /api/metrics?platform=MERCADO_LIVRE&from=2024-01-01&to=2024-12-31
 export async function GET(request: NextRequest) {
