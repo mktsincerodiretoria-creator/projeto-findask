@@ -89,7 +89,8 @@ export async function refreshAccessToken(refreshToken: string) {
 }
 
 // Faz chamada autenticada a API do ML com retry para rate limiting
-export async function mlApiCall(endpoint: string, accessToken: string, retries = 3): Promise<Record<string, unknown>> {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function mlApiCall(endpoint: string, accessToken: string, retries = 3): Promise<any> {
   for (let attempt = 0; attempt < retries; attempt++) {
     const response = await fetch(`${ML_API_URL}${endpoint}`, {
       headers: {

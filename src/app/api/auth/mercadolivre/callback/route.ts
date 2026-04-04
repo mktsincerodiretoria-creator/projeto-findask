@@ -26,6 +26,8 @@ export async function GET(request: NextRequest) {
 
     // 2. Busca info do usuario
     const userInfo = await getUserInfo(tokenData.access_token);
+    const nickname = String(userInfo.nickname || "");
+    const email = String(userInfo.email || "");
 
     // 3. Salva ou atualiza a conta no banco
     await prisma.account.upsert({
@@ -39,8 +41,8 @@ export async function GET(request: NextRequest) {
         accessToken: tokenData.access_token,
         refreshToken: tokenData.refresh_token,
         tokenExpires: new Date(Date.now() + tokenData.expires_in * 1000),
-        nickname: userInfo.nickname,
-        email: userInfo.email,
+        nickname,
+        email,
         isActive: true,
       },
       create: {
@@ -49,8 +51,8 @@ export async function GET(request: NextRequest) {
         accessToken: tokenData.access_token,
         refreshToken: tokenData.refresh_token,
         tokenExpires: new Date(Date.now() + tokenData.expires_in * 1000),
-        nickname: userInfo.nickname,
-        email: userInfo.email,
+        nickname,
+        email,
       },
     });
 
