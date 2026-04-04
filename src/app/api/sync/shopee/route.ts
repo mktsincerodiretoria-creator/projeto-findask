@@ -154,8 +154,11 @@ export async function POST(request: NextRequest) {
               + Math.abs(Number(income.final_product_protection || 0))
               + Math.abs(Number(income.drc_adjustable_refund || 0))
               + Math.abs(Number(income.escrow_tax || 0));
-            shippingCostSeller = Math.abs(Number(income.actual_shipping_fee || income.final_shipping_fee || 0));
+            // Frete vendedor = total - pago pelo comprador - subsidio Shopee
+            const actualShip = Math.abs(Number(income.actual_shipping_fee || income.final_shipping_fee || 0));
             shippingCostBuyer = Math.abs(Number(income.buyer_paid_shipping_fee || 0));
+            const shopeeRebate = Math.abs(Number(income.shopee_shipping_rebate || 0));
+            shippingCostSeller = Math.max(0, actualShip - shippingCostBuyer - shopeeRebate);
           } else if (escrowIncome) {
             ordersWithEscrow++;
             platformFee = Math.abs(Number(escrowIncome.commission_fee || 0))
@@ -166,8 +169,10 @@ export async function POST(request: NextRequest) {
               + Math.abs(Number(escrowIncome.final_product_protection || 0))
               + Math.abs(Number(escrowIncome.drc_adjustable_refund || 0))
               + Math.abs(Number(escrowIncome.escrow_tax || 0));
-            shippingCostSeller = Math.abs(Number(escrowIncome.actual_shipping_fee || escrowIncome.final_shipping_fee || 0));
+            const actualShip = Math.abs(Number(escrowIncome.actual_shipping_fee || escrowIncome.final_shipping_fee || 0));
             shippingCostBuyer = Math.abs(Number(escrowIncome.buyer_paid_shipping_fee || 0));
+            const shopeeRebate = Math.abs(Number(escrowIncome.shopee_shipping_rebate || 0));
+            shippingCostSeller = Math.max(0, actualShip - shippingCostBuyer - shopeeRebate);
           } else {
             ordersWithoutIncome++;
             shippingCostBuyer = Math.abs(Number(o.estimated_shipping_fee || o.actual_shipping_fee || 0));
