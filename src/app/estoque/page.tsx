@@ -19,7 +19,7 @@ interface Totals {
   totalSold30d: number; totalSuggested: number;
 }
 
-type SortKey = "sku" | "title" | "currentStock" | "avgDailySales" | "coverageDays" | "reorderPoint" | "suggestedPurchase" | "marginPct" | "capitalTied" | "abcClass" | "status" | "totalSold";
+type SortKey = "sku" | "title" | "currentStock" | "avgDailySales" | "coverageDays" | "reorderPoint" | "suggestedPurchase" | "marginPct" | "capitalTied" | "purchaseCost" | "abcClass" | "status" | "totalSold";
 type SortDir = "asc" | "desc";
 
 function SortTh({ label, field, sk, sd, onSort, align = "right" }: {
@@ -259,8 +259,8 @@ export default function EstoquePage() {
                     <p className="font-bold text-gray-900">{item.reorderPoint} un</p>
                   </div>
                   <div>
-                    <p className="text-gray-700 text-xs font-medium">Capital</p>
-                    <p className="font-bold text-gray-900">{formatCurrency(item.capitalTied)}</p>
+                    <p className="text-gray-700 text-xs font-medium">Valor Compra</p>
+                    <p className="font-bold text-gray-900">{formatCurrency(item.purchaseCost)}</p>
                   </div>
                   <div>
                     <p className="text-gray-700 text-xs font-medium">Margem</p>
@@ -298,7 +298,7 @@ export default function EstoquePage() {
                   <SortTh label="Cobertura" field="coverageDays" sk={sk} sd={sd} onSort={handleSort} />
                   <SortTh label="Ponto Repos." field="reorderPoint" sk={sk} sd={sd} onSort={handleSort} />
                   <SortTh label="Sugestao Compra" field="suggestedPurchase" sk={sk} sd={sd} onSort={handleSort} />
-                  <SortTh label="Capital" field="capitalTied" sk={sk} sd={sd} onSort={handleSort} />
+                  <SortTh label="Capital" field="purchaseCost" sk={sk} sd={sd} onSort={handleSort} />
                   <SortTh label="Margem" field="marginPct" sk={sk} sd={sd} onSort={handleSort} />
                   <th className="text-center px-3 py-2 font-medium text-gray-600">Acao</th>
                 </tr>
@@ -323,7 +323,7 @@ export default function EstoquePage() {
                     <td className={`px-3 py-2 text-right font-bold ${item.suggestedPurchase > 0 ? "text-red-600" : "text-green-600"}`}>
                       {item.suggestedPurchase > 0 ? item.suggestedPurchase : "-"}
                     </td>
-                    <td className="px-3 py-2 text-right text-gray-900">{formatCurrency(item.capitalTied)}</td>
+                    <td className="px-3 py-2 text-right text-gray-900">{formatCurrency(item.purchaseCost)}</td>
                     <td className={`px-3 py-2 text-right font-medium ${item.marginPct >= 30 ? "text-green-600" : item.marginPct >= 15 ? "text-yellow-600" : "text-red-600"}`}>{formatPercent(item.marginPct)}</td>
                     <td className="px-3 py-2 text-center">
                       {item.suggestedPurchase > 0 && (
