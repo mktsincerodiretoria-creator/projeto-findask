@@ -210,9 +210,11 @@ export default function MercadoLivrePage() {
         </div>
       ) : (
         <>
-          {/* ===== DASHBOARD (usando daily_metrics para totais precisos) ===== */}
+          {/* ===== DASHBOARD (usa metrics p/ todas lojas, salesTotals p/ loja especifica) ===== */}
           {(() => {
-            const t = metrics?.totals;
+            // Se loja especifica selecionada, metrics nao tem accountId => usar salesTotals dos pedidos
+            const useOrders = !!selectedAccount;
+            const t = !useOrders ? metrics?.totals : null;
             const revenue = t?.revenue ?? salesTotals.revenue;
             const margin = t?.margin ?? salesTotals.margin;
             const totalOrders = t?.totalOrders ?? rows.length;
@@ -355,13 +357,14 @@ export default function MercadoLivrePage() {
           <div className="border-t-2 border-yellow-400 pt-6">
             <h2 className="text-xl font-bold text-gray-900 mb-1">Vendas - Mercado Livre</h2>
             <p className="text-sm text-gray-500 mb-4">
-              {metrics?.totals?.totalOrders ?? rows.length} vendas{orders.length >= 300 ? ` (tabela: ultimas ${orders.length})` : ""} | Imposto: {taxRate}%
+              {(!selectedAccount && metrics?.totals?.totalOrders) ? metrics.totals.totalOrders : rows.length} vendas{orders.length >= 300 ? ` (tabela: ultimas ${orders.length})` : ""} | Imposto: {taxRate}%
               {taxRate === 0 && <a href="/configuracoes" className="text-blue-600 underline ml-1">(configurar)</a>}
             </p>
 
-            {/* Resumo vendas - usa metrics (totais reais) quando disponivel */}
+            {/* Resumo vendas - usa metrics p/ todas lojas, salesTotals p/ loja especifica */}
             {(() => {
-              const mt = metrics?.totals;
+              const useOrders = !!selectedAccount;
+              const mt = !useOrders ? metrics?.totals : null;
               const vFat = mt?.revenue ?? salesTotals.revenue;
               const vCusto = mt?.cost ?? salesTotals.cost;
               const vImposto = mt?.tax ?? salesTotals.tax;
