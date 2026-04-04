@@ -87,12 +87,16 @@ export default function MercadoLivrePage() {
   const [adsMsg, setAdsMsg] = useState("");
   const adsFileRef = useRef<HTMLInputElement>(null);
 
-  const safeFetch = useCallback((url: string) =>
-    fetch(url).then(async r => {
+  const safeFetch = useCallback((url: string, timeoutMs = 12000) => {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+    return fetch(url, { signal: ctrl.signal }).then(async r => {
+      clearTimeout(timer);
       if (!r.ok) return null;
       const text = await r.text();
       try { return JSON.parse(text); } catch { return null; }
-    }).catch(() => null), []);
+    }).catch(() => { clearTimeout(timer); return null; });
+  }, []);
 
   const fetchData = useCallback(async (from?: string, to?: string, accId?: string | null) => {
     setLoading(true);
