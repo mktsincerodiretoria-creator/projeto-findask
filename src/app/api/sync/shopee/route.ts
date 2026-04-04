@@ -59,9 +59,9 @@ export async function POST(request: NextRequest) {
         let cursor = "";
         let hasMore = true;
 
-        while (hasMore && allOrderSns.length < 20) {
+        while (hasMore && allOrderSns.length < 100) {
           const ordersData = await getShopeeOrders(
-            accessToken, shopId, timeFrom, timeTo, cursor, 30,
+            accessToken, shopId, timeFrom, timeTo, cursor, 50,
             "update_time", "COMPLETED"
           );
           const orderList = ordersData.response?.order_list || [];
@@ -104,9 +104,9 @@ export async function POST(request: NextRequest) {
           (o: any) => !o.order_income && o.order_sn
         );
 
-        // Buscar escrow em lotes paralelos de 5 para evitar timeout
-        for (let i = 0; i < ordersNeedingEscrow.length; i += 5) {
-          const batch = ordersNeedingEscrow.slice(i, i + 5);
+        // Buscar escrow em lotes paralelos de 10 para evitar timeout
+        for (let i = 0; i < ordersNeedingEscrow.length; i += 10) {
+          const batch = ordersNeedingEscrow.slice(i, i + 10);
           const escrowResults = await Promise.allSettled(
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             batch.map((o: any) =>
