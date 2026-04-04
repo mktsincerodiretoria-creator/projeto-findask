@@ -57,8 +57,10 @@ export async function refreshShopeeToken(refreshToken: string, shopId: number) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ refresh_token: refreshToken, shop_id: shopId, partner_id: SHOPEE_CONFIG.partnerId }),
   });
-  if (!response.ok) throw new Error("Failed to refresh Shopee token");
-  return response.json();
+  if (!response.ok) { const e = await response.text(); throw new Error(`Failed to refresh Shopee token: ${e}`); }
+  const data = await response.json();
+  if (data.error) throw new Error(`Shopee refresh error: ${data.error} - ${data.message}`);
+  return data;
 }
 
 export async function shopeeApiCall(path: string, accessToken: string, shopId: number, params: Record<string, string | number> = {}) {
@@ -77,13 +79,34 @@ export async function shopeeApiCall(path: string, accessToken: string, shopId: n
   return data;
 }
 
+// POST request para APIs que exigem POST (ex: sellerchat)
+export async function shopeeApiPost(path: string, accessToken: string, shopId: number, body: Record<string, unknown> = {}) {
+  const timestamp = Math.floor(Date.now() / 1000);
+  const sign = generateShopSign(SHOPEE_CONFIG.partnerId, path, timestamp, accessToken, shopId);
+  const queryParams = new URLSearchParams({
+    partner_id: String(SHOPEE_CONFIG.partnerId), timestamp: String(timestamp),
+    access_token: accessToken, shop_id: String(shopId), sign,
+  });
+  const url = `${SHOPEE_HOST}${path}?${queryParams.toString()}`;
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) { const e = await response.text(); throw new Error(`Shopee API error (${response.status}): ${e}`); }
+  const data = await response.json();
+  if (data.error) throw new Error(`Shopee: ${data.error} - ${data.message}`);
+  return data;
+}
+
 export async function getShopInfo(accessToken: string, shopId: number) {
   return shopeeApiCall("/api/v2/shop/get_shop_info", accessToken, shopId);
 }
 
-export async function getShopeeOrders(accessToken: string, shopId: number, timeFrom: number, timeTo: number, cursor = "", pageSize = 50) {
-  const params: Record<string, string | number> = { time_range_field: "create_time", time_from: timeFrom, time_to: timeTo, page_size: pageSize, response_optional_fields: "order_status" };
+export async function getShopeeOrders(accessToken: string, shopId: number, timeFrom: number, timeTo: number, cursor = "", pageSize = 50, timeField: "create_time" | "update_time" = "create_time", orderStatus?: string) {
+  const params: Record<string, string | number> = { time_range_field: timeField, time_from: timeFrom, time_to: timeTo, page_size: pageSize, response_optional_fields: "order_status" };
   if (cursor) params.cursor = cursor;
+  if (orderStatus) params.order_status = orderStatus;
   return shopeeApiCall("/api/v2/order/get_order_list", accessToken, shopId, params);
 }
 

@@ -106,18 +106,27 @@ export default function MercadoLivrePage() {
       if (from) adsParams.set("from", from);
       if (to) adsParams.set("to", to);
 
-      const [metricsRes, ordersRes, adsRes] = await Promise.all([
-        fetch(`/api/metrics?${params.toString()}`),
-        fetch(`/api/orders?${ordParams.toString()}`),
-        fetch(`/api/ads?${adsParams.toString()}`),
+      // Usa allSettled para que falha de uma API nao afete as outras
+      const [metricsResult, ordersResult, adsResult] = await Promise.allSettled([
+        fetch(`/api/metrics?${params.toString()}`).then(r => r.ok ? r.json() : null),
+        fetch(`/api/orders?${ordParams.toString()}`).then(r => r.ok ? r.json() : null),
+        fetch(`/api/ads?${adsParams.toString()}`).then(r => r.ok ? r.json() : null),
       ]);
-      const [metricsData, ordersData, adsData] = await Promise.all([metricsRes.json(), ordersRes.json(), adsRes.json()]);
-      setMetrics(metricsData);
-      setOrders(ordersData.orders || []);
-      setTaxRate(ordersData.taxRate || 0);
-      if (ordersData.returns) setReturns(ordersData.returns);
-      if (adsData.totals) setAdsTotals(adsData.totals);
-      if (adsData.byCampaign) setAdsCampaigns(adsData.byCampaign);
+
+      const metricsData = metricsResult.status === "fulfilled" ? metricsResult.value : null;
+      const ordersData = ordersResult.status === "fulfilled" ? ordersResult.value : null;
+      const adsData = adsResult.status === "fulfilled" ? adsResult.value : null;
+
+      if (metricsData) setMetrics(metricsData);
+      if (ordersData) {
+        setOrders(ordersData.orders || []);
+        setTaxRate(ordersData.taxRate || 0);
+        if (ordersData.returns) setReturns(ordersData.returns);
+      }
+      if (adsData) {
+        if (adsData.totals) setAdsTotals(adsData.totals);
+        if (adsData.byCampaign) setAdsCampaigns(adsData.byCampaign);
+      }
     } catch (e) {
       console.error("Error:", e);
     } finally {
@@ -193,28 +202,37 @@ export default function MercadoLivrePage() {
         </div>
       ) : (
         <>
-          {/* ===== DASHBOARD (usando dados das vendas, nao daily_metrics) ===== */}
+          {/* ===== DASHBOARD (usando daily_metrics para totais precisos) ===== */}
           {(() => {
-            const marginPct = salesTotals.revenue > 0 ? (salesTotals.margin / salesTotals.revenue) * 100 : 0;
-            const avgTicket = rows.length > 0 ? salesTotals.revenue / rows.length : 0;
+            const t = metrics?.totals;
+            const revenue = t?.revenue ?? salesTotals.revenue;
+            const margin = t?.margin ?? salesTotals.margin;
+            const totalOrders = t?.totalOrders ?? rows.length;
+            const cost = t?.cost ?? salesTotals.cost;
+            const platformFee = t?.platformFee ?? salesTotals.fee;
+            const shippingCost = t?.shippingCost ?? salesTotals.freteVend;
+            const tax = t?.tax ?? salesTotals.tax;
+            const discount = t?.discount ?? 0;
+            const marginPct = revenue > 0 ? (margin / revenue) * 100 : 0;
+            const avgTicket = totalOrders > 0 ? revenue / totalOrders : 0;
             return (
               <>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <MetricCard title="Faturamento" value={salesTotals.revenue} icon="💰" />
-                  <MetricCard title="Vendas" value={rows.length} type="number" icon="🛒" />
+                  <MetricCard title="Faturamento" value={revenue} icon="💰" />
+                  <MetricCard title="Vendas" value={totalOrders} type="number" icon="🛒" />
                   <MetricCard title="Ticket Medio" value={avgTicket} icon="🎫" />
-                  <MetricCard title="Margem" value={salesTotals.margin} subtitle={`${marginPct.toFixed(1)}% do faturamento`} icon="📈" color={salesTotals.margin >= 0 ? "text-green-600" : "text-red-600"} />
+                  <MetricCard title="Margem" value={margin} subtitle={`${marginPct.toFixed(1)}% do faturamento`} icon="📈" color={margin >= 0 ? "text-green-600" : "text-red-600"} />
                 </div>
 
                 <div className="bg-white rounded-lg border p-4">
                   <h3 className="font-semibold text-gray-700 mb-3">Detalhamento de Custos</h3>
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                    <MetricCard title="(-) Custo Produtos" value={salesTotals.cost} icon="📦" />
-                    <MetricCard title={`(-) Impostos (${taxRate}%)`} value={salesTotals.tax} icon="🏛️" />
-                    <MetricCard title="(-) Tarifa ML" value={salesTotals.fee} icon="💳" />
-                    <MetricCard title="(-) Frete Vendedor" value={salesTotals.freteVend} icon="🚚" />
-                    <MetricCard title="(-) Descontos" value={0} icon="🏷️" />
-                    <MetricCard title="= Margem Liquida" value={salesTotals.margin} icon="✅" color={salesTotals.margin >= 0 ? "text-green-600" : "text-red-600"} />
+                    <MetricCard title="(-) Custo Produtos" value={cost} icon="📦" />
+                    <MetricCard title={`(-) Impostos (${taxRate}%)`} value={tax} icon="🏛️" />
+                    <MetricCard title="(-) Tarifa ML" value={platformFee} icon="💳" />
+                    <MetricCard title="(-) Frete Vendedor" value={shippingCost} icon="🚚" />
+                    <MetricCard title="(-) Descontos" value={discount} icon="🏷️" />
+                    <MetricCard title="= Margem Liquida" value={margin} icon="✅" color={margin >= 0 ? "text-green-600" : "text-red-600"} />
                   </div>
                 </div>
               </>
@@ -329,7 +347,7 @@ export default function MercadoLivrePage() {
           <div className="border-t-2 border-yellow-400 pt-6">
             <h2 className="text-xl font-bold text-gray-900 mb-1">Vendas - Mercado Livre</h2>
             <p className="text-sm text-gray-500 mb-4">
-              {rows.length} vendas | Imposto: {taxRate}%
+              {metrics?.totals?.totalOrders ?? rows.length} vendas{orders.length >= 300 ? ` (tabela: ultimas ${orders.length})` : ""} | Imposto: {taxRate}%
               {taxRate === 0 && <a href="/configuracoes" className="text-blue-600 underline ml-1">(configurar)</a>}
             </p>
 
@@ -424,7 +442,7 @@ export default function MercadoLivrePage() {
                 </div>
                 <div className="bg-red-50 rounded-lg border border-red-200 p-3">
                   <p className="text-xs text-red-700 font-medium">% do Faturamento</p>
-                  <p className="text-xl font-bold text-red-700">{formatPercent(salesTotals.revenue > 0 ? (returns.totalAmount / (salesTotals.revenue + returns.totalAmount)) * 100 : 0)}</p>
+                  <p className="text-xl font-bold text-red-700">{formatPercent((metrics?.totals?.revenue || salesTotals.revenue) > 0 ? (returns.totalAmount / ((metrics?.totals?.revenue || salesTotals.revenue) + returns.totalAmount)) * 100 : 0)}</p>
                 </div>
               </div>
 

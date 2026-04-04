@@ -21,7 +21,11 @@ export async function GET(request: NextRequest) {
     if (from || to) {
       where.date = {};
       if (from) where.date.gte = new Date(from);
-      if (to) where.date.lte = new Date(to);
+      if (to) {
+        const toDate = new Date(to);
+        toDate.setHours(23, 59, 59, 999);
+        where.date.lte = toDate;
+      }
     }
 
     const dailyMetrics = await prisma.dailyMetric.findMany({

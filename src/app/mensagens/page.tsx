@@ -26,6 +26,7 @@ interface PostSaleMessage {
   totalAmount: number;
   accountId: string;
   storeName: string;
+  platform?: "ML" | "SHOPEE";
 }
 
 interface PendingReply {
@@ -38,6 +39,8 @@ interface PendingReply {
   packId?: string;
   buyerId?: number;
   itemTitle?: string;
+  platform?: "ML" | "SHOPEE";
+  conversationId?: string;
 }
 
 export default function MensagensPage() {
@@ -49,18 +52,39 @@ export default function MensagensPage() {
   const [sending, setSending] = useState<string | null>(null);
   const [pendingReplies, setPendingReplies] = useState<Record<string, PendingReply>>({});
   const [sentResults, setSentResults] = useState<Array<{ question: string; answer: string; status: string }>>([]);
+  const [dismissed, setDismissed] = useState<Set<string>>(new Set());
+
+  function dismissMessage(type: "question" | "posvenda", id: string | number) {
+    setDismissed(prev => new Set(prev).add(`${type}-${id}`));
+  }
 
   const fetchMessages = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch("/api/messages/mercadolivre");
-      const data = await res.json();
-      if (data.error) {
-        setError(data.error);
-      } else {
-        setQuestions(data.questions || []);
-        setPostSaleMessages(data.messages || []);
+      // Buscar de ML e Shopee em paralelo
+      const [mlRes, shopeeRes] = await Promise.allSettled([
+        fetch("/api/messages/mercadolivre").then(r => r.json()),
+        fetch("/api/messages/shopee").then(r => r.json()),
+      ]);
+
+      const mlData = mlRes.status === "fulfilled" ? mlRes.value : {};
+      const shopeeData = shopeeRes.status === "fulfilled" ? shopeeRes.value : {};
+
+      // Perguntas (só ML tem perguntas no anúncio)
+      setQuestions(mlData.questions || []);
+
+      // Mensagens pós-venda: combinar ML + Shopee
+      const mlMessages = (mlData.messages || []).map((m: PostSaleMessage) => ({ ...m, platform: "ML" as const }));
+      const shopeeMessages = (shopeeData.messages || []).map((m: PostSaleMessage) => ({ ...m, platform: "SHOPEE" as const }));
+      setPostSaleMessages([...mlMessages, ...shopeeMessages]);
+
+      // Mostrar erro só se ambos falharam
+      const erros: string[] = [];
+      if (mlData.error && !mlData.questions?.length) erros.push(`ML: ${mlData.error}`);
+      if (shopeeData.error && !shopeeData.messages?.length) erros.push(`Shopee: ${shopeeData.error}`);
+      if (erros.length > 0 && !mlData.questions?.length && !shopeeMessages.length) {
+        setError(erros.join(" | "));
       }
     } catch (e) {
       setError(String(e));
@@ -72,11 +96,14 @@ export default function MensagensPage() {
   useEffect(() => { fetchMessages(); }, [fetchMessages]);
 
   // GERAR resposta com IA (nao envia, so mostra)
-  async function generateReply(type: "question" | "posvenda", id: string | number, text: string, accountId: string, extras?: { packId?: string; buyerId?: number; itemTitle?: string; totalAmount?: number }) {
+  async function generateReply(type: "question" | "posvenda", id: string | number, text: string, accountId: string, extras?: { packId?: string; buyerId?: number; itemTitle?: string; totalAmount?: number; platform?: "ML" | "SHOPEE"; conversationId?: string }) {
     const key = `${type}-${id}`;
     setGenerating(key);
     try {
-      const res = await fetch("/api/messages/mercadolivre", {
+      const isShopee = extras?.platform === "SHOPEE";
+      const apiUrl = isShopee ? "/api/messages/shopee" : "/api/messages/mercadolivre";
+
+      const res = await fetch(apiUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -86,7 +113,7 @@ export default function MensagensPage() {
           customerMessage: text,
           itemTitle: extras?.itemTitle || "",
           totalAmount: extras?.totalAmount || 0,
-          context: type === "question" ? "pergunta_anuncio" : "mensagem_posvenda",
+          context: isShopee ? "chat_shopee" : type === "question" ? "pergunta_anuncio" : "mensagem_posvenda",
         }),
       });
       const data = await res.json();
@@ -96,6 +123,7 @@ export default function MensagensPage() {
           [key]: {
             type, id, originalText: text, aiResponse: data.aiResponse, accountId,
             packId: extras?.packId, buyerId: extras?.buyerId, itemTitle: extras?.itemTitle,
+            platform: extras?.platform, conversationId: extras?.conversationId,
           },
         }));
       } else {
@@ -115,7 +143,16 @@ export default function MensagensPage() {
     setSending(key);
     try {
       let res;
-      if (reply.type === "question") {
+      const isShopee = reply.platform === "SHOPEE";
+
+      if (isShopee) {
+        // Enviar via API Shopee
+        res = await fetch("/api/messages/shopee", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "send_message", accountId: reply.accountId, conversationId: reply.conversationId || reply.packId, buyerId: reply.buyerId, text: reply.aiResponse }),
+        });
+      } else if (reply.type === "question") {
         res = await fetch("/api/messages/mercadolivre", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -190,22 +227,23 @@ export default function MensagensPage() {
       )}
 
       {/* ===== PERGUNTAS NO ANUNCIO (Pre-Venda) ===== */}
+      {(() => { const visibleQuestions = questions.filter(q => !dismissed.has(`question-${q.id}`)); return (
       <div className="bg-white rounded-lg border">
         <div className="p-4 border-b flex items-center justify-between">
           <div>
             <h2 className="font-semibold text-gray-800">Perguntas no Anuncio (Pre-Venda)</h2>
-            <p className="text-sm text-gray-500">{questions.length} perguntas pendentes</p>
+            <p className="text-sm text-gray-500">{visibleQuestions.length} perguntas pendentes</p>
           </div>
           <span className="bg-yellow-100 text-yellow-800 px-3 py-1 rounded-full text-sm font-medium">ML</span>
         </div>
 
         {loading ? (
           <div className="p-8 text-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto" /><p className="text-gray-500 mt-3">Buscando perguntas...</p></div>
-        ) : questions.length === 0 ? (
+        ) : visibleQuestions.length === 0 ? (
           <div className="p-8 text-center text-gray-500"><p>Nenhuma pergunta pendente</p></div>
         ) : (
           <div className="divide-y">
-            {questions.map((q) => {
+            {visibleQuestions.map((q) => {
               const key = `question-${q.id}`;
               const pending = pendingReplies[key];
               return (
@@ -228,11 +266,17 @@ export default function MensagensPage() {
                       </div>
                     </div>
                     {!pending && (
-                      <button onClick={() => generateReply("question", q.id, q.text, q.accountId, { itemTitle: q.itemTitle, totalAmount: q.itemPrice })}
-                        disabled={generating === key}
-                        className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700 disabled:bg-gray-400 whitespace-nowrap">
-                        {generating === key ? "Gerando..." : "Gerar Resposta IA"}
-                      </button>
+                      <div className="flex flex-col gap-1">
+                        <button onClick={() => generateReply("question", q.id, q.text, q.accountId, { itemTitle: q.itemTitle, totalAmount: q.itemPrice })}
+                          disabled={generating === key}
+                          className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700 disabled:bg-gray-400 whitespace-nowrap">
+                          {generating === key ? "Gerando..." : "Gerar Resposta IA"}
+                        </button>
+                        <button onClick={() => dismissMessage("question", q.id)}
+                          className="px-3 py-1 text-gray-400 hover:text-gray-600 text-xs whitespace-nowrap">
+                          Ignorar
+                        </button>
+                      </div>
                     )}
                   </div>
 
@@ -268,22 +312,31 @@ export default function MensagensPage() {
           </div>
         )}
       </div>
+      ); })()}
 
-      {/* ===== MENSAGENS POS-VENDA ===== */}
+      {/* ===== MENSAGENS POS-VENDA (ML + SHOPEE) ===== */}
+      {(() => { const visibleMessages = postSaleMessages.filter(m => !dismissed.has(`posvenda-${m.id}`)); return (
       <div className="bg-white rounded-lg border">
         <div className="p-4 border-b flex items-center justify-between">
           <div>
             <h2 className="font-semibold text-gray-800">Mensagens Pos-Venda</h2>
-            <p className="text-sm text-gray-500">{postSaleMessages.length} mensagens pendentes</p>
+            <p className="text-sm text-gray-500">
+              {visibleMessages.length} mensagens pendentes
+              {visibleMessages.filter(m => m.platform === "SHOPEE").length > 0 && (
+                <span className="ml-2 text-xs text-orange-600">
+                  ({visibleMessages.filter(m => m.platform === "SHOPEE").length} Shopee + {visibleMessages.filter(m => m.platform !== "SHOPEE").length} ML)
+                </span>
+              )}
+            </p>
           </div>
-          <span className="bg-orange-100 text-orange-800 px-3 py-1 rounded-full text-sm font-medium">Pos-Venda</span>
+          <span className="bg-orange-100 text-orange-800 px-3 py-1 rounded-full text-sm font-medium">ML + Shopee</span>
         </div>
 
-        {postSaleMessages.length === 0 ? (
+        {visibleMessages.length === 0 ? (
           <div className="p-8 text-center text-gray-500"><p>Nenhuma mensagem pos-venda pendente</p></div>
         ) : (
           <div className="divide-y">
-            {postSaleMessages.map((msg) => {
+            {visibleMessages.map((msg) => {
               const key = `posvenda-${msg.id}`;
               const pending = pendingReplies[key];
               return (
@@ -297,7 +350,9 @@ export default function MensagensPage() {
                           <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-red-500 inline-block animate-pulse"></span><span className="text-xs font-bold text-red-600">NAO RESPONDIDA</span></span>
                         )}
                         <span className="font-bold text-gray-900">{msg.fromName || "Comprador"}</span>
-                        <span className="px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-800 text-xs font-medium">{msg.storeName}</span>
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${msg.platform === "SHOPEE" ? "bg-orange-100 text-orange-800" : "bg-yellow-100 text-yellow-800"}`}>
+                          {msg.platform === "SHOPEE" ? "Shopee" : "ML"} · {msg.storeName}
+                        </span>
                       </div>
                       <p className="text-gray-900 mb-2 bg-gray-100 rounded-lg p-3">{msg.text}</p>
                       <div className="flex flex-wrap gap-2 text-xs text-gray-500">
@@ -307,11 +362,17 @@ export default function MensagensPage() {
                       </div>
                     </div>
                     {!pending && (
-                      <button onClick={() => generateReply("posvenda", msg.id, msg.text, msg.accountId, { packId: msg.packId, buyerId: msg.from, itemTitle: msg.itemTitle, totalAmount: msg.totalAmount })}
-                        disabled={generating === key}
-                        className="px-3 py-1.5 bg-orange-500 text-white rounded-lg text-xs font-medium hover:bg-orange-600 disabled:bg-gray-400 whitespace-nowrap">
-                        {generating === key ? "Gerando..." : "Gerar Resposta IA"}
-                      </button>
+                      <div className="flex flex-col gap-1">
+                        <button onClick={() => generateReply("posvenda", msg.id, msg.text, msg.accountId, { packId: msg.packId, buyerId: msg.from, itemTitle: msg.itemTitle, totalAmount: msg.totalAmount, platform: msg.platform, conversationId: msg.platform === "SHOPEE" ? msg.id : undefined })}
+                          disabled={generating === key}
+                          className="px-3 py-1.5 bg-orange-500 text-white rounded-lg text-xs font-medium hover:bg-orange-600 disabled:bg-gray-400 whitespace-nowrap">
+                          {generating === key ? "Gerando..." : "Gerar Resposta IA"}
+                        </button>
+                        <button onClick={() => dismissMessage("posvenda", msg.id)}
+                          className="px-3 py-1 text-gray-400 hover:text-gray-600 text-xs whitespace-nowrap">
+                          Ignorar
+                        </button>
+                      </div>
                     )}
                   </div>
 
@@ -330,7 +391,7 @@ export default function MensagensPage() {
                           className="px-4 py-1.5 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:bg-gray-400">
                           {sending === key ? "Enviando..." : "Aprovar e Enviar"}
                         </button>
-                        <button onClick={() => generateReply("posvenda", msg.id, msg.text, msg.accountId, { packId: msg.packId, buyerId: msg.from, itemTitle: msg.itemTitle, totalAmount: msg.totalAmount })}
+                        <button onClick={() => generateReply("posvenda", msg.id, msg.text, msg.accountId, { packId: msg.packId, buyerId: msg.from, itemTitle: msg.itemTitle, totalAmount: msg.totalAmount, platform: msg.platform, conversationId: msg.platform === "SHOPEE" ? msg.id : undefined })}
                           className="px-4 py-1.5 bg-orange-500 text-white rounded-lg text-sm font-medium hover:bg-orange-600">
                           Regenerar
                         </button>
@@ -347,6 +408,7 @@ export default function MensagensPage() {
           </div>
         )}
       </div>
+      ); })()}
 
       {/* Info */}
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">

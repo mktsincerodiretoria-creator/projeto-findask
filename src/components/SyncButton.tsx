@@ -2,121 +2,134 @@
 import { useState } from "react";
 
 interface SyncResult {
-    accountId: string;
-    nickname?: string;
-    status: string;
-    recordsSynced?: number;
-    error?: string;
+  accountId: string;
+  nickname?: string;
+  status: string;
+  recordsSynced?: number;
+  error?: string;
+  partial?: boolean;
 }
 
 interface SyncButtonProps {
-    accountId?: string;
-    onSyncComplete?: () => void;
+  accountId?: string;
+  onSyncComplete?: () => void;
 }
 
 export default function SyncButton({ accountId, onSyncComplete }: SyncButtonProps) {
-    const [syncing, setSyncing] = useState(false);
-    const [status, setStatus] = useState<string | null>(null);
-    const [isError, setIsError] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [status, setStatus] = useState<string | null>(null);
+  const [isError, setIsError] = useState(false);
 
   async function handleSync() {
-        setSyncing(true);
-        setStatus("Sincronizando...");
-        setIsError(false);
+    setSyncing(true);
+    setStatus("Sincronizando vendas...");
+    setIsError(false);
 
-      try {
-              const response = await fetch("/api/sync/mercadolivre", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify(accountId ? { accountId } : {}),
-              });
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 65000);
 
-          // Verificar se a resposta e JSON antes de fazer parse
-          const contentType = response.headers.get("content-type") || "";
-              let data: { results?: SyncResult[]; error?: string } = {};
+      const response = await fetch("/api/sync/mercadolivre", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(accountId ? { accountId } : {}),
+        signal: controller.signal,
+      });
 
-          if (contentType.includes("application/json")) {
-                    try {
-                                data = await response.json();
-                    } catch {
-                                const rawText = await response.text().catch(() => "");
-                                setIsError(true);
-                                setStatus(`Erro ao processar resposta do servidor. Status: ${response.status}`);
-                                console.error("Resposta invalida (nao e JSON):", rawText.substring(0, 200));
-                                return;
-                    }
-          } else {
-                    // Servidor retornou algo que nao e JSON (ex: timeout do Vercel, erro HTML)
-                const rawText = await response.text().catch(() => "");
-                    if (response.status === 504 || rawText.toLowerCase().includes("timeout") || rawText.toLowerCase().includes("function")) {
-                                setIsError(true);
-                                setStatus("Timeout: a sincronizacao demorou demais. Tente sincronizar por periodos menores ou aguarde e tente novamente.");
-                    } else {
-                                setIsError(true);
-                                setStatus(`Erro do servidor (${response.status}). Verifique as configuracoes da conta Mercado Livre.`);
-                    }
-                    console.error("Resposta nao-JSON do servidor:", rawText.substring(0, 200));
-                    return;
-          }
+      clearTimeout(timeoutId);
 
-          if (response.ok && data.results) {
-                    const results: SyncResult[] = data.results;
-                    const failed = results.filter((r) => r.status === "failed");
-                    const totalSynced = results.reduce(
-                                (sum, r) => sum + (r.recordsSynced || 0),
-                                0
-                              );
+      // Verifica se a resposta e JSON
+      const contentType = response.headers.get("content-type") || "";
 
-                if (failed.length > 0) {
-                            setIsError(true);
-                            setStatus(`Erro na sincronizacao: ${failed.map((f) => f.error).join(", ")}`);
-                } else if (results.length === 0) {
-                            setIsError(true);
-                            setStatus("Nenhuma conta Mercado Livre ativa encontrada. Configure em Contas.");
-                } else {
-                            setIsError(false);
-                            setStatus(`Sincronizado! ${totalSynced} registros atualizados.`);
-                }
-                    onSyncComplete?.();
-          } else {
-                    setIsError(true);
-                    setStatus(`Erro: ${data.error || "Resposta inesperada do servidor."}`);
-          }
-      } catch (error) {
-              setIsError(true);
-              if (error instanceof TypeError && error.message.includes("fetch")) {
-                        setStatus("Erro de conexao: sem internet ou servidor indisponivel.");
-              } else {
-                        setStatus(`Erro: ${error instanceof Error ? error.message : "desconhecido"}`);
-              }
-      } finally {
-              setSyncing(false);
-              setTimeout(() => setStatus(null), 15000);
+      if (!contentType.includes("application/json")) {
+        const rawText = await response.text().catch(() => "");
+        if (response.status === 504 || rawText.toLowerCase().includes("timeout")) {
+          setIsError(true);
+          setStatus("Timeout do servidor. Dados parciais foram salvos. Clique novamente para continuar.");
+        } else {
+          setIsError(true);
+          setStatus(`Erro do servidor (${response.status}). Tente novamente.`);
+        }
+        return;
       }
+
+      let data: { results?: SyncResult[]; error?: string };
+      try {
+        data = await response.json();
+      } catch {
+        setIsError(true);
+        setStatus("Erro ao processar resposta do servidor.");
+        return;
+      }
+
+      if (response.ok && data.results) {
+        const results = data.results;
+        const failed = results.filter((r) => r.status === "failed");
+        const totalSynced = results.reduce((sum, r) => sum + (r.recordsSynced || 0), 0);
+
+        if (failed.length > 0 && failed.length === results.length) {
+          setIsError(true);
+          setStatus(`Erro: ${failed.map((f) => f.error).join(", ")}`);
+        } else if (results.length === 0) {
+          setIsError(true);
+          setStatus("Nenhuma conta ML ativa. Configure em Contas.");
+        } else {
+          const hasPartial = results.some((r) => r.partial);
+          setIsError(false);
+          const msg = `Sincronizado! ${totalSynced} registros.`;
+          const partialMsg = hasPartial ? " Clique novamente para continuar sincronizando." : "";
+          setStatus(failed.length > 0 ? `${msg} (${failed.length} conta(s) com erro)${partialMsg}` : `${msg}${partialMsg}`);
+        }
+        onSyncComplete?.();
+      } else {
+        setIsError(true);
+        setStatus(`Erro: ${data.error || "Resposta inesperada."}`);
+      }
+    } catch (error) {
+      setIsError(true);
+      if (error instanceof DOMException && error.name === "AbortError") {
+        setStatus("Timeout. Dados parciais salvos. Clique novamente para continuar.");
+        onSyncComplete?.();
+      } else if (error instanceof TypeError && error.message.includes("fetch")) {
+        setStatus("Sem conexao com o servidor.");
+      } else {
+        setStatus(`Erro: ${error instanceof Error ? error.message : "desconhecido"}`);
+      }
+    } finally {
+      setSyncing(false);
+      setTimeout(() => setStatus(null), 12000);
+    }
   }
 
   return (
-        <div className="flex flex-col gap-2">
-              <button
-                        onClick={handleSync}
-                        disabled={syncing}
-                        className={`px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors ${
-                                    syncing
-                                      ? "bg-gray-400 cursor-not-allowed"
-                                      : "bg-green-600 hover:bg-green-700"
-                        }`}
-                      >
-                {syncing ? "Sincronizando..." : "Sincronizar Vendas"}
-              </button>
-          {status && (
-                  <span
-                              className={`text-sm max-w-md break-words ${
-                                            isError ? "text-red-500" : "text-green-600"
-                              }`}
-                            >
-                    {status}
-                  </span>
-              )}
-        </div>
-      );
+    <div className="flex flex-col gap-2 items-end">
+      <button
+        onClick={handleSync}
+        disabled={syncing}
+        className={`px-6 py-2.5 rounded-lg text-sm font-semibold text-white transition-all ${
+          syncing
+            ? "bg-gray-400 cursor-not-allowed"
+            : "bg-green-600 hover:bg-green-700 active:scale-95"
+        }`}
+      >
+        {syncing ? (
+          <span className="flex items-center gap-2">
+            <span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            Sincronizando...
+          </span>
+        ) : (
+          "Sincronizar Vendas"
+        )}
+      </button>
+      {status && (
+        <span
+          className={`text-sm max-w-sm text-right ${
+            isError ? "text-red-500" : "text-green-600"
+          }`}
+        >
+          {status}
+        </span>
+      )}
+    </div>
+  );
 }

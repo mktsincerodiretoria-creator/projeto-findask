@@ -153,6 +153,8 @@ export default function ShopeePage() {
 
   const totals = rows.reduce((a, r) => ({ revenue: a.revenue + r.revenue, cost: a.cost + r.cost, tax: a.tax + r.tax, fee: a.fee + r.fee, freteVend: a.freteVend + r.freteVend, margin: a.margin + r.margin }), { revenue: 0, cost: 0, tax: 0, fee: 0, freteVend: 0, margin: 0 });
   const marginPct = totals.revenue > 0 ? (totals.margin / totals.revenue) * 100 : 0;
+  // FIX: contar pedidos unicos, nao linhas de itens
+  const orderCount = new Set(orders.map(o => o.id)).size;
 
   return (
     <div className="space-y-6">
@@ -194,8 +196,8 @@ export default function ShopeePage() {
           {/* Dashboard */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <MetricCard title="Faturamento" value={totals.revenue} icon="💰" />
-            <MetricCard title="Vendas" value={rows.length} type="number" icon="🛒" />
-            <MetricCard title="Ticket Medio" value={rows.length > 0 ? totals.revenue / rows.length : 0} icon="🎫" />
+            <MetricCard title="Vendas" value={orderCount} type="number" icon="🛒" />
+            <MetricCard title="Ticket Medio" value={orderCount > 0 ? totals.revenue / orderCount : 0} icon="🎫" />
             <MetricCard title="Margem" value={totals.margin} subtitle={`${marginPct.toFixed(1)}%`} icon="📈" color={totals.margin >= 0 ? "text-green-600" : "text-red-600"} />
           </div>
 
@@ -220,7 +222,7 @@ export default function ShopeePage() {
           {/* Vendas */}
           <div className="border-t-2 border-orange-400 pt-6">
             <h2 className="text-xl font-bold text-gray-900 mb-1">Vendas - Shopee</h2>
-            <p className="text-sm text-gray-500 mb-4">{rows.length} vendas | Imposto: {taxRate}%</p>
+            <p className="text-sm text-gray-500 mb-4">{orderCount} vendas ({rows.length} itens) | Imposto: {taxRate}%</p>
 
             <div className="grid grid-cols-2 md:grid-cols-6 gap-3 mb-4">
               <div className="bg-white rounded-lg border p-3"><p className="text-xs text-gray-500">Faturamento</p><p className="text-lg font-bold">{formatCurrency(totals.revenue)}</p></div>

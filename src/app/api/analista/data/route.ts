@@ -173,10 +173,6 @@ export async function GET(request: NextRequest) {
       include: { items: true },
     });
 
-    // Tambem busca pedidos normais do periodo para comparar
-    const normalWhere = { ...returnWhere, status: { notIn: Object.keys(returnWhere.status) } };
-    delete normalWhere.status;
-
     const returnsBySku: Record<string, { sku: string; title: string; returns: number; cancellations: number; totalLost: number; statuses: Set<string> }> = {};
     for (const order of returnOrders) {
       for (const item of order.items) {
@@ -222,7 +218,16 @@ export async function GET(request: NextRequest) {
     // Tenta buscar motivos reais da API do ML
     for (const acc of accounts.slice(0, 2)) { // limita a 2 contas para performance
       try {
-        const token = acc.accessToken;
+        // Renova token se necessario antes de buscar claims
+        let token = acc.accessToken;
+        if (acc.refreshToken && acc.tokenExpires && acc.tokenExpires < new Date(Date.now() + 60000)) {
+          try {
+            const { refreshAccessToken } = await import("@/lib/mercadolivre");
+            const newToken = await refreshAccessToken(acc.refreshToken);
+            token = newToken.access_token;
+            await prisma.account.update({ where: { id: acc.id }, data: { accessToken: newToken.access_token, refreshToken: newToken.refresh_token || acc.refreshToken, tokenExpires: new Date(Date.now() + (newToken.expires_in || 21600) * 1000) } });
+          } catch { /* usa token atual */ }
+        }
         // Busca claims/reclamacoes recentes
         const claimsRes = await fetch(`https://api.mercadolibre.com/claims/search?seller_id=${acc.platformId}&status=opened&limit=50`, {
           headers: { Authorization: `Bearer ${token}` },

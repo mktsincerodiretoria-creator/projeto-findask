@@ -88,22 +88,33 @@ export async function refreshAccessToken(refreshToken: string) {
         return safeParseResponse(response, "refreshAccessToken");
 }
 
-// Faz chamada autenticada a API do ML
-export async function mlApiCall(endpoint: string, accessToken: string) {
-        const response = await fetch(`${ML_API_URL}${endpoint}`, {
-                  headers: {
-                              Authorization: `Bearer ${accessToken}`,
-                              "Content-Type": "application/json",
-                              Accept: "application/json",
-                  },
-        });
+// Faz chamada autenticada a API do ML com retry para rate limiting
+export async function mlApiCall(endpoint: string, accessToken: string, retries = 3): Promise<Record<string, unknown>> {
+  for (let attempt = 0; attempt < retries; attempt++) {
+    const response = await fetch(`${ML_API_URL}${endpoint}`, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+    });
 
-  if (!response.ok) {
-            const errText = await response.text().catch(() => "");
-            throw new Error(`ML API error (${response.status}) em ${endpoint}: ${errText.substring(0, 200)}`);
+    // Rate limit — espera e tenta novamente
+    if (response.status === 429 && attempt < retries - 1) {
+      const waitMs = Math.min(1000 * Math.pow(2, attempt), 8000);
+      await new Promise((r) => setTimeout(r, waitMs));
+      continue;
+    }
+
+    if (!response.ok) {
+      const errText = await response.text().catch(() => "");
+      throw new Error(`ML API error (${response.status}) em ${endpoint}: ${errText.substring(0, 200)}`);
+    }
+
+    return safeParseResponse(response, `mlApiCall(${endpoint})`);
   }
 
-  return safeParseResponse(response, `mlApiCall(${endpoint})`);
+  throw new Error(`ML API falhou apos ${retries} tentativas em ${endpoint}`);
 }
 
 // Busca informacoes do usuario autenticado
@@ -121,8 +132,15 @@ export async function getOrders(
         dateTo?: string
       ) {
         let endpoint = `/orders/search?seller=${sellerId}&offset=${offset}&limit=${limit}&sort=date_desc`;
-        if (dateFrom) endpoint += `&order.date_created.from=${dateFrom}`;
-        if (dateTo) endpoint += `&order.date_created.to=${dateTo}`;
+        if (dateFrom) {
+          // Garante formato ISO que a API do ML aceita
+          const from = dateFrom.includes("T") ? dateFrom : `${dateFrom}T00:00:00.000-03:00`;
+          endpoint += `&order.date_created.from=${encodeURIComponent(from)}`;
+        }
+        if (dateTo) {
+          const to = dateTo.includes("T") ? dateTo : `${dateTo}T23:59:59.000-03:00`;
+          endpoint += `&order.date_created.to=${encodeURIComponent(to)}`;
+        }
         return mlApiCall(endpoint, accessToken);
 }
 

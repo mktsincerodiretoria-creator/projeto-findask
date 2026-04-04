@@ -58,7 +58,7 @@ export default function DashboardPage() {
       if (to) params.set("to", to);
 
       const [ordersRes, metricsRes] = await Promise.all([
-        fetch(`/api/orders?${params.toString()}`),
+        fetch(`/api/orders?${params.toString()}&status=Todos`),
         fetch(`/api/metrics?${params.toString()}`),
       ]);
       const [ordersData, metricsData] = await Promise.all([ordersRes.json(), metricsRes.json()]);

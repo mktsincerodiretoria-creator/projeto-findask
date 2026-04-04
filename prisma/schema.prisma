@@ -99,6 +99,9 @@ model Order {
   items              OrderItem[]
 
   @@unique([accountId, platformOrderId])
+  @@index([orderDate])
+  @@index([accountId, orderDate])
+  @@index([status])
   @@map("orders")
 }
 
@@ -115,6 +118,8 @@ model OrderItem {
   totalPrice      Float
   sku             String?
 
+  @@index([orderId])
+  @@index([sku])
   @@map("order_items")
 }
 
@@ -143,6 +148,8 @@ model DailyMetric {
   updatedAt       DateTime @updatedAt
 
   @@unique([platform, date])
+  @@index([date])
+  @@index([platform])
   @@map("daily_metrics")
 }
 
