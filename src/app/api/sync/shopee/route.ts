@@ -83,12 +83,9 @@ export async function POST(request: NextRequest) {
               let platformFee = 0;
               let shippingCostSeller = 0;
               let shippingCostBuyer = 0;
-              let hasRealIncome = false;
-
               // order_income = fonte oficial de dados financeiros da Shopee
               const income = order.order_income;
               if (income) {
-                hasRealIncome = true;
                 // TODAS as taxas (nao apenas 3)
                 platformFee = Math.abs(Number(income.commission_fee || 0))
                   + Math.abs(Number(income.service_fee || 0))

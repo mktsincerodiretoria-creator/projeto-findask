@@ -37,9 +37,10 @@ export async function GET() {
     const costMap: Record<string, number> = {};
     for (const pc of productCosts) costMap[pc.sku] = pc.cost;
 
-    // Busca tax rate
+    // Busca tax rate (reservado para calculo futuro de margem liquida)
     const taxSetting = await prisma.setting.findUnique({ where: { key: "tax_rate" } });
-    const taxRate = taxSetting ? parseFloat(taxSetting.value) : 0;
+    const _taxRate = taxSetting ? parseFloat(taxSetting.value) : 0;
+    void _taxRate;
 
     // Agrupa vendas por SKU
     const skuData: Record<string, {
