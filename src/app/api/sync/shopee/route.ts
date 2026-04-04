@@ -58,9 +58,9 @@ export async function POST(request: NextRequest) {
         let cursor = "";
         let hasMore = true;
 
-        while (hasMore && allOrderSns.length < 100) {
+        while (hasMore && allOrderSns.length < 30) {
           const ordersData = await getShopeeOrders(
-            accessToken, shopId, timeFrom, timeTo, cursor, 50,
+            accessToken, shopId, timeFrom, timeTo, cursor, 30,
             "update_time", "COMPLETED"
           );
           const orderList = ordersData.response?.order_list || [];
