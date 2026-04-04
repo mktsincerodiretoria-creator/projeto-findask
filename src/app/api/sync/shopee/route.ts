@@ -4,6 +4,7 @@ import {
   refreshShopeeToken,
   getShopeeOrders,
   getShopeeOrderDetails,
+  getShopeeOrderIncome,
 } from "@/lib/shopee";
 
 export const dynamic = "force-dynamic";
@@ -58,7 +59,7 @@ export async function POST(request: NextRequest) {
         let cursor = "";
         let hasMore = true;
 
-        while (hasMore && allOrderSns.length < 30) {
+        while (hasMore && allOrderSns.length < 20) {
           const ordersData = await getShopeeOrders(
             accessToken, shopId, timeFrom, timeTo, cursor, 30,
             "update_time", "COMPLETED"
@@ -95,11 +96,38 @@ export async function POST(request: NextRequest) {
         }
 
         // ======================================================
+        // FASE 2.5: Buscar escrow_detail para pedidos sem order_income
+        // ======================================================
+        const escrowMap: Record<string, Record<string, unknown>> = {};
+        const ordersNeedingEscrow = allDetails.filter(
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (o: any) => !o.order_income && o.order_sn
+        );
+
+        // Buscar escrow em lotes paralelos de 5 para evitar timeout
+        for (let i = 0; i < ordersNeedingEscrow.length; i += 5) {
+          const batch = ordersNeedingEscrow.slice(i, i + 5);
+          const escrowResults = await Promise.allSettled(
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            batch.map((o: any) =>
+              getShopeeOrderIncome(accessToken, shopId, o.order_sn)
+                .then(data => ({ orderSn: o.order_sn, data }))
+            )
+          );
+          for (const r of escrowResults) {
+            if (r.status === "fulfilled" && r.value.data?.response) {
+              escrowMap[r.value.orderSn] = r.value.data.response;
+            }
+          }
+        }
+
+        // ======================================================
         // FASE 3: Processar e salvar pedidos
         // ======================================================
         let totalSynced = 0;
         let ordersWithIncome = 0;
         let ordersWithoutIncome = 0;
+        let ordersWithEscrow = 0;
 
         for (const order of allDetails) {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -110,7 +138,12 @@ export async function POST(request: NextRequest) {
           let shippingCostSeller = 0;
           let shippingCostBuyer = 0;
 
+          // Tenta order_income primeiro, depois escrow_detail como fallback
           const income = o.order_income;
+          const escrow = escrowMap[o.order_sn];
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const escrowIncome = escrow?.order_income as any;
+
           if (income) {
             ordersWithIncome++;
             platformFee = Math.abs(Number(income.commission_fee || 0))
@@ -123,6 +156,18 @@ export async function POST(request: NextRequest) {
               + Math.abs(Number(income.escrow_tax || 0));
             shippingCostSeller = Math.abs(Number(income.actual_shipping_fee || income.final_shipping_fee || 0));
             shippingCostBuyer = Math.abs(Number(income.buyer_paid_shipping_fee || 0));
+          } else if (escrowIncome) {
+            ordersWithEscrow++;
+            platformFee = Math.abs(Number(escrowIncome.commission_fee || 0))
+              + Math.abs(Number(escrowIncome.service_fee || 0))
+              + Math.abs(Number(escrowIncome.seller_transaction_fee || escrowIncome.transaction_fee || 0))
+              + Math.abs(Number(escrowIncome.affiliate_commission || 0))
+              + Math.abs(Number(escrowIncome.credit_card_promotion || 0))
+              + Math.abs(Number(escrowIncome.final_product_protection || 0))
+              + Math.abs(Number(escrowIncome.drc_adjustable_refund || 0))
+              + Math.abs(Number(escrowIncome.escrow_tax || 0));
+            shippingCostSeller = Math.abs(Number(escrowIncome.actual_shipping_fee || escrowIncome.final_shipping_fee || 0));
+            shippingCostBuyer = Math.abs(Number(escrowIncome.buyer_paid_shipping_fee || 0));
           } else {
             ordersWithoutIncome++;
             shippingCostBuyer = Math.abs(Number(o.estimated_shipping_fee || o.actual_shipping_fee || 0));
@@ -213,6 +258,7 @@ export async function POST(request: NextRequest) {
           status: "success",
           recordsSynced: totalSynced,
           withIncome: ordersWithIncome,
+          withEscrow: ordersWithEscrow,
           withoutIncome: ordersWithoutIncome,
         });
       } catch (error) {
