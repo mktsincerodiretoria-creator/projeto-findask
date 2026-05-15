@@ -194,7 +194,10 @@ export async function POST(request: NextRequest) {
             });
           } catch (refreshError) {
             console.warn(`Token refresh failed for ${account.id}:`, refreshError);
+            throw new Error(`Token refresh failed: ${refreshError instanceof Error ? refreshError.message : String(refreshError)}`);
           }
+        } else {
+          throw new Error("No refresh token available");
         }
 
         // 2. Determina data de inicio — ultimo sync com sucesso ou 90 dias atras
