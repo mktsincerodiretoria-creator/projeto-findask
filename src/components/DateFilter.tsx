@@ -29,8 +29,9 @@ export default function DateFilter({ onFilter }: DateFilterProps) {
       start.setDate(now.getDate() - days);
     }
 
-    const fromStr = start.toISOString().split("T")[0];
-    const toStr = now.toISOString().split("T")[0];
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const fromStr = `${start.getFullYear()}-${pad(start.getMonth() + 1)}-${pad(start.getDate())}`;
+    const toStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 
     setFrom(fromStr);
     setTo(toStr);

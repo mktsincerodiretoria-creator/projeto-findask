@@ -101,12 +101,15 @@ export default function MercadoLivrePage() {
   const fetchData = useCallback((from?: string, to?: string, accId?: string | null) => {
     setLoading(true);
 
-    // Garantia: libera UI em no maximo 8s mesmo se conexao travar
-    const safetyTimer = setTimeout(() => setLoading(false), 8000);
+    const metricsParams = new URLSearchParams();
+    if (accId) {
+      metricsParams.set("accountId", accId);
+    } else {
+      metricsParams.set("platform", "MERCADO_LIVRE");
+    }
+    if (from) metricsParams.set("from", from);
+    if (to) metricsParams.set("to", to);
 
-    const params = new URLSearchParams({ platform: "MERCADO_LIVRE" });
-    if (from) params.set("from", from);
-    if (to) params.set("to", to);
     const ordParams = new URLSearchParams();
     if (from) ordParams.set("from", from);
     if (to) ordParams.set("to", to);
@@ -119,14 +122,11 @@ export default function MercadoLivrePage() {
     if (from) adsParams.set("from", from);
     if (to) adsParams.set("to", to);
 
-    // Metrics: rapido (pre-agregado), libera UI
-    safeFetch(`/api/metrics?${params.toString()}`).then(d => {
+    safeFetch(`/api/metrics?${metricsParams.toString()}`).then(d => {
       if (d) setMetrics(d);
-      clearTimeout(safetyTimer);
       setLoading(false);
-    });
+    }).catch(() => setLoading(false));
 
-    // Orders + Ads: mais lento, atualiza em background
     safeFetch(`/api/orders?${ordParams.toString()}`).then(d => {
       if (d) {
         setOrders(d.orders || []);
@@ -210,14 +210,12 @@ export default function MercadoLivrePage() {
         </div>
       ) : (
         <>
-          {/* ===== DASHBOARD (usa metrics p/ todas lojas, salesTotals p/ loja especifica) ===== */}
+          {/* ===== DASHBOARD ===== */}
           {(() => {
-            // Se loja especifica selecionada, metrics nao tem accountId => usar salesTotals dos pedidos
-            const useOrders = !!selectedAccount;
-            const t = !useOrders ? metrics?.totals : null;
+            const t = metrics?.totals;
             const revenue = t?.revenue ?? salesTotals.revenue;
             const margin = t?.margin ?? salesTotals.margin;
-            const totalOrders = t?.totalOrders ?? rows.length;
+            const totalOrders = t?.totalOrders ?? new Set(orders.map(o => o.id)).size;
             const cost = t?.cost ?? salesTotals.cost;
             const platformFee = t?.platformFee ?? salesTotals.fee;
             const shippingCost = t?.shippingCost ?? salesTotals.freteVend;
@@ -361,16 +359,13 @@ export default function MercadoLivrePage() {
               {taxRate === 0 && <a href="/configuracoes" className="text-blue-600 underline ml-1">(configurar)</a>}
             </p>
 
-            {/* Resumo vendas - usa metrics p/ todas lojas, salesTotals p/ loja especifica */}
             {(() => {
-              const useOrders = !!selectedAccount;
-              const mt = !useOrders ? metrics?.totals : null;
-              const vFat = mt?.revenue ?? salesTotals.revenue;
-              const vCusto = mt?.cost ?? salesTotals.cost;
-              const vImposto = mt?.tax ?? salesTotals.tax;
-              const vTarifa = mt?.platformFee ?? salesTotals.fee;
-              const vFrete = mt?.shippingCost ?? salesTotals.freteVend;
-              const vMargem = mt?.margin ?? salesTotals.margin;
+              const vFat = salesTotals.revenue;
+              const vCusto = salesTotals.cost;
+              const vImposto = salesTotals.tax;
+              const vTarifa = salesTotals.fee;
+              const vFrete = salesTotals.freteVend;
+              const vMargem = salesTotals.margin;
               return (
                 <div className="grid grid-cols-2 md:grid-cols-6 gap-3 mb-4">
                   <div className="bg-white rounded-lg border p-3">
