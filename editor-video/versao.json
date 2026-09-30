@@ -1,34 +1,36 @@
 {
- "versao": "1.1.0",
+ "versao": "1.2.0",
  "ramo": "claude/video-editing-subtitles-che65w",
  "novidades": [
-  "Barra de tamanho da legenda ao lado do vídeo, como no Instagram",
-  "Escolha entre 1 ou 2 linhas de legenda e a largura máxima",
-  "Pacote de 10 filtros de cor cinematográficos com intensidade ajustável",
-  "Atualização com um clique, sem reinstalar"
+  "Use no celular: botão 📱 Celular com QR Code (mesmo Wi-Fi) e senha",
+  "Tela adaptada para celular: toque na primeira e na última palavra para cortar",
+  "Pode ser instalado num servidor (VPS) com o seu domínio e https"
  ],
  "arquivos": {
-  "README.md": "73643ed8dc9326ff044a4e1af62e373c486b9e66fb3305fe5e94bae88c29db49",
+  "README.md": "81b75cee20a5c2a26ee617405d6162958c44a22bb793b4d8fec6a2af21fe8b79",
   "app/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "app/acesso.py": "34e409255f8802f5ce7f2ba161a26d0c05482be2b09ecebd0fa3e5f49eea58ad",
   "app/analise.py": "3fe25f9a3993b81ea71f68a7608d3c7757ebd614d0c01eee075b18eedf4c73d3",
   "app/atualizacao.py": "e62c4876b768d4d8df9041119663d2a0f36c1b857dfe6af5488dcfb8041e2099",
   "app/exportar.py": "70de34f52bf2fe131d139441eeec85400d28b1ccc2452b13866ae096f7e36b74",
   "app/filtros.py": "fb48cc98db550daacfe4da05cd7dcd9b395a0b287d3be7dfc8cf7b1717d335d8",
   "app/ia.py": "358cc54541fcaed0361c89a4b2af5b12ab791859e4d59d4a144782d287ed6e56",
   "app/legendas.py": "b4efd005ff2ad102410e8c0e63f9d6333c44b7cd55c5c1e4051d3f75e0f44920",
-  "app/main.py": "f30a7dc006715bef74a65881de8944fd93da67cdff0c3dd1b91eaa9c6e7b04b1",
+  "app/main.py": "e7085bf8d4e3e6fd136eb5cf3e267c2d7662d1ce12550e5ef5948c7001214268",
   "app/midia.py": "ae77fca98624a4ded810b2766a953efd0fa2cb86dd1b3c30945e038355174f17",
   "app/projetos.py": "a93e37a697d1bae4a7e7bf62556cf100d8ea0c4c8e5bb49e9ce373a4f4bfa312",
   "app/transcricao.py": "7c18799a6eb77c82cf837ba275bbcca4c22286ae5d6b2c5b5ca9626b7e129bc1",
-  "app/versao.py": "ab91e7f65fb0a5b39b725d68f3ac8b6737e7848cb257faea85ec5490c678918e",
+  "app/versao.py": "cff8e3197451981fdb8955fc416815afa82c92ca0bec379ccf01b177210c4318",
   "iniciar.bat": "105c72b2454f34dd2325e47372aa19431d017fa541cb0a15d443bc1e1b12187d",
-  "iniciar.py": "3414f4832fb3bf2390076f0f6b28894b0fc94f890efb076ef13734764f88c5de",
+  "iniciar.py": "87f537ad208994eb42f60849c7f750be74d46371a6d2e5f9cd643e3035d3f09b",
   "instalar.ps1": "9cca92c7f2e6ce36b1b763e7e3aef791f85443002da3d88af797c93df3dd6bf2",
-  "requirements.txt": "eb91f34793eb2c3b2e1193111e5de020a7955c1c2fee82ceb72cb9396dad2d86",
-  "static/app.js": "7e3ad68398d16c1946924a3a140dd8d2729572467ac5434a8591be132d5472eb",
-  "static/estilo.css": "6a80752f9776462e8967f24ae1a7fca8b7102b2de453eefb6d927aa72c41ab0d",
+  "requirements.txt": "183871f4d6a2d2718594a2665ce3b32557d7faec0467d00eb5bd28a60310cb61",
+  "servidor/instalar-servidor.sh": "317c2e9654a2550dd38bfe81734415e940056a21149c29428d39e9bc918642c3",
+  "static/app.js": "5a76c6baa15fec9924788ea5542af4fd4d6bc16ae1e3d049f3b0e042e54fed17",
+  "static/entrar.html": "00b9db99b7e4cf5f3f323bbc87006bb1a0ceddfcdd77f186c8c24e70975e5d86",
+  "static/estilo.css": "858adf55532b750dcd8d316e9c1fe290ce06000a08a7a5d73c1df2ee3f4cb867",
   "static/icone.ico": "25adae0d43faed26a76a8e177c6456c04bec9763b64a7ed86fae6b948e77c2ef",
   "static/icone.png": "54eaf6e32a8527f4b8e908fc9d593677ba818a0f75fda2d78499966b6d6ee678",
-  "static/index.html": "b22785e87eae5b7e08782186fb6baee8cf5a2dc274b67316fe831b7ac722dba9"
+  "static/index.html": "c2f40e2267bfe2b64d9cdbb6e4b4fee7fa93d0f08f3230d6d2e5a7d9033cd157"
  }
 }

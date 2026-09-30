@@ -57,6 +57,22 @@ O editor abre em <http://127.0.0.1:8765>. Para sair, feche a janela do terminal.
 > (Whisper, de 75 MB a 3 GB conforme o modelo escolhido). Depois funciona offline.
 > Se o computador tiver placa de vídeo NVIDIA, ela é usada automaticamente.
 
+### Num servidor (VPS) com o seu domínio
+
+Para abrir de qualquer lugar (celular, outro computador) em `https://editor.seudominio.com.br`:
+
+1. Tenha um **VPS Linux limpo** (Ubuntu 22.04/24.04 recomendado, **sem cPanel**), com 4 GB de RAM ou mais.
+2. No DNS do domínio (HostGator: cPanel → Zone Editor), crie um registro **A** com o nome
+   `editor` apontando para o **IP do VPS**.
+3. Entre no VPS como root (`ssh root@IP-DO-VPS`) e rode:
+
+   ```bash
+   curl -fsSL https://raw.githubusercontent.com/mktsincerodiretoria-creator/projeto-findask/claude/video-editing-subtitles-che65w/editor-video/servidor/instalar-servidor.sh | bash -s editor.seudominio.com.br
+   ```
+
+   No fim ele mostra o endereço e a **senha de acesso**. O https (cadeado) liga sozinho.
+   Rodar de novo atualiza; `... | bash -s editor.seudominio.com.br --nova-senha` troca a senha.
+
 ## Como usar
 
 1. **Arraste o vídeo** para a tela inicial. Em "Opções da análise" você ajusta a pausa mínima,

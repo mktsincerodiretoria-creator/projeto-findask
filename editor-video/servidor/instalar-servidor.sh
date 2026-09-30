@@ -86,7 +86,8 @@ ENV=/etc/cortefacil.env
 SENHA=""
 [ -f "$ENV" ] && [ "$NOVA_SENHA" = "no" ] && SENHA="$(grep '^CF_SENHA=' "$ENV" | cut -d= -f2-)"
 if [ -z "$SENHA" ]; then
-  SENHA="$(tr -dc 'a-km-zA-HJ-NP-Z2-9' </dev/urandom | head -c 10)"
+  # (sem "tr < /dev/urandom | head": com pipefail o SIGPIPE derrubaria o script)
+  SENHA="$(head -c 400 /dev/urandom | LC_ALL=C tr -dc 'a-km-zA-HJ-NP-Z2-9' | cut -c1-10)"
 fi
 cat > "$ENV" <<EOF
 CF_SENHA=$SENHA
