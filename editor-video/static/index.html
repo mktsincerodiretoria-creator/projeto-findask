@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CorteFácil — editor inteligente</title>
+  <link rel="stylesheet" href="estilo.css">
+</head>
+<body>
+  <header class="topo">
+    <a class="marca" href="#" id="ir-inicio">
+      <span class="marca-icone">✂</span> CorteFácil
+    </a>
+    <span class="topo-nome" id="nome-projeto"></span>
+    <div class="topo-acoes">
+      <button class="btn-fantasma" id="btn-config" title="Configurações">⚙ Configurações</button>
+      <button class="btn-primario" id="btn-exportar" hidden>⬇ Exportar</button>
+    </div>
+  </header>
+
+  <!-- ============ INÍCIO ============ -->
+  <main id="tela-inicio" class="tela">
+    <section class="boas-vindas">
+      <h1>Edite vídeos falados em minutos</h1>
+      <p>Envie o vídeo: o CorteFácil corta os silêncios, encontra erros de fala
+        (hesitações, repetições, frases regravadas), mostra o motivo de cada corte
+        e exporta em alta resolução com legenda.</p>
+
+      <label class="soltar" id="soltar">
+        <input type="file" id="arquivo" accept="video/*,.mkv,.mts" hidden>
+        <span class="soltar-icone">⬆</span>
+        <strong>Arraste o vídeo aqui</strong>
+        <span>ou clique para escolher (MP4, MOV, MKV, WEBM…)</span>
+      </label>
+      <div class="envio" id="envio" hidden>
+        <div class="barra"><div class="barra-cheia" id="envio-barra"></div></div>
+        <span id="envio-texto">Enviando…</span>
+      </div>
+
+      <details class="opcoes-analise">
+        <summary>Opções da análise</summary>
+        <div class="grade-opcoes" id="opcoes-iniciais"></div>
+      </details>
+    </section>
+
+    <section class="recentes">
+      <h2>Projetos recentes</h2>
+      <ul id="lista-projetos" class="lista-projetos"></ul>
+    </section>
+  </main>
+
+  <!-- ============ PROCESSANDO ============ -->
+  <main id="tela-processando" class="tela" hidden>
+    <div class="processando">
+      <div class="girando"></div>
+      <h2 id="proc-etapa">Analisando…</h2>
+      <div class="barra grande"><div class="barra-cheia" id="proc-barra"></div></div>
+      <p id="proc-pct">0%</p>
+      <p class="dica">Na primeira vez o programa baixa o modelo de reconhecimento de voz
+        (algumas centenas de MB). Vídeos longos podem levar alguns minutos.</p>
+      <div class="erro-caixa" id="proc-erro" hidden></div>
+      <button class="btn-fantasma" id="proc-voltar" hidden>Voltar ao início</button>
+    </div>
+  </main>
+
+  <!-- ============ EDITOR ============ -->
+  <main id="tela-editor" class="tela editor" hidden>
+    <div class="editor-grade">
+      <section class="palco">
+        <div class="video-caixa" id="video-caixa">
+          <video id="video" playsinline preload="auto"></video>
+          <div class="legenda-previa" id="legenda-previa"></div>
+        </div>
+        <div class="controles">
+          <button class="btn-redondo" id="btn-play" title="Reproduzir (espaço)">▶</button>
+          <div class="tempos">
+            <span id="tempo-atual">0:00</span>
+            <span class="tempo-sub">no vídeo final: <b id="tempo-final">0:00</b></span>
+          </div>
+          <label class="alternar" title="Pular os trechos cortados ao reproduzir">
+            <input type="checkbox" id="pular-cortes" checked>
+            <span class="alternar-trilho"></span> Prévia com cortes
+          </label>
+        </div>
+        <div class="resumo" id="resumo"></div>
+      </section>
+
+      <aside class="painel">
+        <nav class="abas" role="tablist">
+          <button class="aba ativa" data-aba="cortes">Erros e cortes</button>
+          <button class="aba" data-aba="texto">Transcrição</button>
+          <button class="aba" data-aba="legenda">Legenda</button>
+          <button class="aba" data-aba="ajustes">Ajustes</button>
+        </nav>
+
+        <div class="aba-conteudo" id="aba-cortes">
+          <div class="comentario-ia" id="comentario-ia" hidden></div>
+          <div class="filtros" id="filtros"></div>
+          <div class="acoes-lote">
+            <button class="btn-mini" id="ativar-visiveis">Ativar todos</button>
+            <button class="btn-mini" id="desativar-visiveis">Desativar todos</button>
+          </div>
+          <ul class="lista-cortes" id="lista-cortes"></ul>
+        </div>
+
+        <div class="aba-conteudo" id="aba-texto" hidden>
+          <p class="dica">Clique numa palavra para ir até ela. Selecione várias (arraste ou
+            Shift+clique) para cortar ou restaurar. Duplo clique corrige o texto da legenda.</p>
+          <div class="barra-selecao" id="barra-selecao" hidden>
+            <span id="selecao-info"></span>
+            <button class="btn-mini perigo" id="cortar-selecao">✂ Cortar</button>
+            <button class="btn-mini" id="restaurar-selecao">↺ Restaurar</button>
+          </div>
+          <div class="transcricao" id="transcricao"></div>
+        </div>
+
+        <div class="aba-conteudo" id="aba-legenda" hidden>
+          <div class="form-legenda" id="form-legenda"></div>
+        </div>
+
+        <div class="aba-conteudo" id="aba-ajustes" hidden>
+          <div class="grade-opcoes" id="opcoes-ajustes"></div>
+          <div class="botoes-ajustes">
+            <button class="btn-primario" id="recalcular">Aplicar ajustes</button>
+            <p class="dica">Refaz a detecção com os novos valores na hora. Cortes manuais são mantidos.</p>
+            <hr>
+            <button class="btn-secundario" id="analisar-ia">✦ Revisão inteligente com IA</button>
+            <p class="dica" id="dica-ia"></p>
+            <hr>
+            <label class="campo">Modelo de reconhecimento de voz
+              <select id="modelo-retranscrever"></select>
+            </label>
+            <button class="btn-fantasma" id="retranscrever">Transcrever de novo</button>
+            <p class="dica">Modelos maiores erram menos, mas demoram mais. "small" é um bom equilíbrio;
+              "medium" ou "large-v3" para máxima precisão.</p>
+          </div>
+        </div>
+      </aside>
+    </div>
+
+    <section class="linha-tempo">
+      <div class="linha-tempo-barra">
+        <span class="lt-titulo">Linha do tempo</span>
+        <div class="legenda-cores" id="legenda-cores"></div>
+        <div class="lt-direita">
+          <button class="btn-mini" id="desfazer" title="Desfazer (Ctrl+Z)" disabled>↶ Desfazer</button>
+          <button class="btn-mini perigo" id="cortar-trecho" hidden>✂ Cortar trecho</button>
+          <label class="zoom">🔍 <input type="range" id="zoom" min="10" max="400" value="60"></label>
+        </div>
+      </div>
+      <div class="lt-rolagem" id="lt-rolagem">
+        <div class="lt-espaco" id="lt-espaco"></div>
+        <canvas id="lt-canvas"></canvas>
+      </div>
+      <div class="lt-dica" id="lt-dica">Clique para ir até o ponto · arraste para selecionar um trecho e cortar</div>
+    </section>
+  </main>
+
+  <!-- ============ EXPORTAR ============ -->
+  <dialog id="dlg-exportar" class="dialogo">
+    <form method="dialog" class="dialogo-corpo">
+      <h2>Exportar vídeo</h2>
+      <div id="exp-opcoes">
+        <label class="campo">Resolução
+          <select name="resolucao">
+            <option value="original">Original</option>
+            <option value="720">HD (720p)</option>
+            <option value="1080">Full HD (1080p)</option>
+            <option value="1440">2K (1440p)</option>
+            <option value="2160">4K (2160p)</option>
+          </select>
+        </label>
+        <label class="campo">Qualidade
+          <select name="qualidade">
+            <option value="maxima">Máxima (arquivo maior)</option>
+            <option value="alta" selected>Alta</option>
+            <option value="normal">Normal (arquivo menor)</option>
+          </select>
+        </label>
+        <label class="campo">Legenda
+          <select name="legenda">
+            <option value="gravada">Gravada no vídeo + arquivo .srt</option>
+            <option value="arquivo">Só arquivo .srt separado</option>
+            <option value="nenhuma">Sem legenda</option>
+          </select>
+        </label>
+        <label class="campo">Velocidade
+          <select name="velocidade">
+            <option value="normal">Normal (melhor compressão)</option>
+            <option value="rapida">Rápida</option>
+          </select>
+        </label>
+        <p class="dica" id="exp-info"></p>
+      </div>
+      <div id="exp-progresso" hidden>
+        <div class="barra grande"><div class="barra-cheia" id="exp-barra"></div></div>
+        <p id="exp-pct">Exportando…</p>
+      </div>
+      <div class="erro-caixa" id="exp-erro" hidden></div>
+      <ul class="lista-exportacoes" id="exp-lista"></ul>
+      <div class="dialogo-acoes">
+        <button value="cancelar" class="btn-fantasma">Fechar</button>
+        <button type="button" id="exp-iniciar" class="btn-primario">Exportar agora</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- ============ CONFIGURAÇÕES ============ -->
+  <dialog id="dlg-config" class="dialogo">
+    <form method="dialog" class="dialogo-corpo">
+      <h2>Configurações</h2>
+      <label class="campo">Chave da API da Anthropic (para a revisão inteligente com IA)
+        <input type="password" id="cfg-chave" placeholder="sk-ant-..." autocomplete="off">
+      </label>
+      <p class="dica">Opcional. Sem a chave, o editor continua cortando silêncios, hesitações,
+        repetições e regravações automaticamente. A chave fica salva só neste computador.</p>
+      <div class="dialogo-acoes">
+        <button value="cancelar" class="btn-fantasma">Cancelar</button>
+        <button type="button" id="cfg-salvar" class="btn-primario">Salvar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div class="aviso" id="aviso" hidden></div>
+  <script src="app.js"></script>
+</body>
+</html>
