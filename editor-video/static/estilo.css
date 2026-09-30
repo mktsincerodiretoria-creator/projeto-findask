@@ -230,3 +230,27 @@ button:disabled { cursor: not-allowed; opacity: .5; }
   .editor-grade { grid-template-columns: 1fr; grid-template-rows: minmax(260px, 1fr) minmax(300px, 1fr); }
   .painel { border-left: 0; border-top: 1px solid var(--borda); }
 }
+
+/* ---------- filtros ---------- */
+.video-filtro { position: absolute; pointer-events: none; }
+.grade-filtros { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 10px 0 16px; }
+.filtro-item { background: none; border: 2px solid transparent; border-radius: 10px; padding: 0; overflow: hidden; text-align: center; color: var(--texto-2); font-size: 12px; }
+.filtro-item img { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; background: var(--fundo-3); }
+.filtro-item span { display: block; padding: 4px 2px 5px; }
+.filtro-item:hover { border-color: var(--borda); }
+.filtro-item.ativo { border-color: var(--acento); color: var(--texto); font-weight: 600; }
+#comparar { width: 100%; margin-top: 8px; user-select: none; }
+
+/* ---------- barra de tamanho da legenda (estilo Instagram) ---------- */
+.barra-tamanho { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); width: 26px; height: 46%; min-height: 140px; cursor: ns-resize; touch-action: none; z-index: 3; }
+.barra-tamanho-trilho { position: absolute; inset: 0 6px; background: rgba(255,255,255,.85); clip-path: polygon(0 0, 100% 0, 58% 100%, 42% 100%); border-radius: 3px; box-shadow: 0 0 6px rgba(0,0,0,.4); }
+.barra-tamanho-botao { position: absolute; left: 50%; width: 22px; height: 22px; margin: -11px 0 0 -11px; border-radius: 50%; background: #fff; box-shadow: 0 1px 6px rgba(0,0,0,.5); }
+
+/* ---------- atualização ---------- */
+.btn-atualizar { border-radius: 8px; padding: 8px 14px; background: #2b2350; color: #e4d9ff; border: 1px solid #6e56cf; font-weight: 600; animation: brilho 2s ease-in-out infinite; }
+@keyframes brilho { 50% { box-shadow: 0 0 0 4px rgba(110,86,207,.25); } }
+.novidades { margin: 0; padding-left: 18px; color: var(--texto); display: grid; gap: 4px; }
+#atu-progresso { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.separador { border: 0; border-top: 1px solid var(--borda); width: 100%; margin: 4px 0; }
+.linha-versao { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.aba { font-size: 13px; }

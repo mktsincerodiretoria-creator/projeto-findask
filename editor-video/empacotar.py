@@ -3,12 +3,19 @@
 O .bat carrega o programa inteiro dentro dele (zip em base64). Ao dar dois
 cliques, ele se extrai em %LOCALAPPDATA%\\CorteFacil (fora do OneDrive, sem
 precisar de administrador), roda o instalar.ps1 e cria o ícone na Área de
-Trabalho. Uso: python empacotar.py
+Trabalho. Também gera o versao.json usado pela atualização automática.
+Uso: python empacotar.py  (e faça commit do versao.json junto)
 """
 import base64
 import io
+import json
+import sys
 import zipfile
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from app.atualizacao import hash_conteudo  # noqa: E402
+from app.versao import NOVIDADES, RAMO, VERSAO  # noqa: E402
 
 RAIZ = Path(__file__).resolve().parent
 IGNORAR = {"testes", "dados", "ferramentas", "dist", "__pycache__", ".pytest_cache", ".venv"}
@@ -59,7 +66,22 @@ def arquivos():
             yield p, rel
 
 
+def gerar_manifesto() -> Path:
+    """versao.json: o que o botão "Atualizar" compara e baixa (tem que ir no commit)."""
+    lista = {
+        rel.as_posix(): hash_conteudo(rel.as_posix(), p.read_bytes())
+        for p, rel in arquivos() if rel.name != "versao.json"
+    }
+    destino = RAIZ / "versao.json"
+    destino.write_text(json.dumps(
+        {"versao": VERSAO, "ramo": RAMO, "novidades": NOVIDADES, "arquivos": lista},
+        ensure_ascii=False, indent=1,
+    ) + "\n", encoding="utf-8")
+    return destino
+
+
 def gerar() -> Path:
+    gerar_manifesto()
     memoria = io.BytesIO()
     with zipfile.ZipFile(memoria, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as z:
         for p, rel in arquivos():

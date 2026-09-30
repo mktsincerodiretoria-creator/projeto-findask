@@ -4,6 +4,7 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+from . import filtros
 from .analise import intervalos_mantidos
 from .legendas import gerar_ass, gerar_srt, montar_blocos
 from .midia import versao_ffmpeg
@@ -29,7 +30,7 @@ def dimensoes_saida(largura: int, altura: int, resolucao: str) -> tuple[int, int
     return int(round(alvo_l / 2) * 2), int(round(alvo_a / 2) * 2)
 
 
-def montar_filtro(trechos, largura, altura, orig_l, orig_a, com_legenda: bool) -> str:
+def montar_filtro(trechos, largura, altura, orig_l, orig_a, com_legenda: bool, com_cor: bool = False) -> str:
     linhas = []
     pares = []
     for k, (a, b) in enumerate(trechos):
@@ -44,6 +45,9 @@ def montar_filtro(trechos, largura, altura, orig_l, orig_a, com_legenda: bool) -
     linhas.append(f"{''.join(pares)}concat=n={len(trechos)}:v=1:a=1[vc][ac]")
 
     posterior = []
+    if com_cor:
+        # Filtro de cor antes da escala e da legenda (o texto não pode ficar colorido).
+        posterior.append("lut3d=cor.cube:interp=tetrahedral")
     if (largura, altura) != (orig_l, orig_a):
         posterior.append(f"scale={largura}:{altura}:flags=lanczos")
     posterior.append("setsar=1")
@@ -55,7 +59,7 @@ def montar_filtro(trechos, largura, altura, orig_l, orig_a, com_legenda: bool) -
 
 
 def exportar(projeto_dir: Path, original: Path, meta: dict, palavras: list, cortes: list,
-             estilo: dict, opcoes: dict, nome_saida: str, progresso=None) -> dict:
+             estilo: dict, opcoes: dict, nome_saida: str, progresso=None, filtro: dict | None = None) -> dict:
     opcoes = {**OPCOES_PADRAO, **(opcoes or {})}
     duracao = meta["duracao"]
     trechos = intervalos_mantidos(cortes, duracao)
@@ -64,7 +68,7 @@ def exportar(projeto_dir: Path, original: Path, meta: dict, palavras: list, cort
     total = sum(b - a for a, b in trechos)
 
     largura, altura = dimensoes_saida(meta["largura"], meta["altura"], opcoes["resolucao"])
-    blocos = montar_blocos(palavras, cortes, duracao, estilo)
+    blocos = montar_blocos(palavras, cortes, duracao, estilo, meta["largura"] / meta["altura"])
     arquivos = {"video": f"{nome_saida}.mp4"}
 
     legenda_ativa = opcoes["legenda"] != "nenhuma" and bool(blocos)
@@ -77,7 +81,13 @@ def exportar(projeto_dir: Path, original: Path, meta: dict, palavras: list, cort
             gerar_ass(blocos, largura, altura, estilo), encoding="utf-8"
         )
 
-    filtro = montar_filtro(trechos, largura, altura, meta["largura"], meta["altura"], gravar)
+    filtro = filtro or {}
+    com_cor = filtro.get("id", "natural") in filtros.FILTROS and filtro.get("id", "natural") != "natural" \
+        and float(filtro.get("intensidade", 1.0)) > 0
+    if com_cor:
+        filtros.escrever_cube(projeto_dir / "cor.cube", filtro["id"], float(filtro.get("intensidade", 1.0)))
+
+    filtro = montar_filtro(trechos, largura, altura, meta["largura"], meta["altura"], gravar, com_cor)
     (projeto_dir / "filtro.txt").write_text(filtro, encoding="utf-8")
     flag_filtro = ["-/filter_complex", "filtro.txt"] if versao_ffmpeg() >= 7 else ["-filter_complex_script", "filtro.txt"]
 

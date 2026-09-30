@@ -7,10 +7,12 @@ from .analise import intervalos_mantidos
 
 ESTILO_PADRAO = {
     "ativa": True,
-    "modo": "frase",          # "frase" (até 2 linhas) ou "curta" (2-3 palavras, estilo Reels)
+    "modo": "frase",          # "frase" ou "curta" (no máximo 3 palavras por vez, estilo Reels)
     "maiusculas": False,
     "fonte": "Arial",
     "tamanho": 6.0,           # % do lado menor do vídeo
+    "linhas": 2,              # máximo de linhas na tela (1 ou 2)
+    "largura": 86.0,          # % da largura do vídeo que a legenda pode ocupar
     "negrito": True,
     "cor": "#FFFFFF",
     "cor_contorno": "#000000",
@@ -55,13 +57,23 @@ def _limpar(texto):
     return texto.replace("...", "").replace("…", "").strip()
 
 
-def montar_blocos(palavras, cortes, duracao, estilo=None):
+def caracteres_por_linha(estilo, proporcao: float) -> int:
+    """Quantas letras cabem numa linha, pelo tamanho da fonte e a largura permitida.
+    ``proporcao`` = largura / altura do vídeo (só a proporção importa)."""
+    largura_rel = max(proporcao, 1.0)   # largura do vídeo em "lados menores"
+    letra = 0.62 if estilo["maiusculas"] else 0.52  # largura média de uma letra, em relação à fonte
+    return max(6, int(float(estilo["largura"]) * largura_rel / (letra * float(estilo["tamanho"]))))
+
+
+def montar_blocos(palavras, cortes, duracao, estilo=None, proporcao: float = 16 / 9):
     """Agrupa palavras em legendas. Cada bloco tem tempos no vídeo original
     (para a prévia) e no vídeo final (para exportar)."""
     estilo = {**ESTILO_PADRAO, **(estilo or {})}
     relogio = Relogio(intervalos_mantidos(cortes, duracao))
     curta = estilo["modo"] == "curta"
-    max_chars = 16 if curta else 64
+    linhas = 1 if int(estilo["linhas"]) <= 1 else 2
+    por_linha = caracteres_por_linha(estilo, proporcao)
+    max_chars = por_linha * linhas
     max_palavras = 3 if curta else 99
     max_dur = 1.6 if curta else 4.5
 
@@ -102,6 +114,7 @@ def montar_blocos(palavras, cortes, duracao, estilo=None):
         if estilo["maiusculas"]:
             textos = [t.upper() for t in textos]
         resultado.append({
+            "quebra": _quebra(textos, por_linha) if linhas == 2 else None,
             "inicio": round(ini, 3),
             "fim": round(fim, 3),
             "inicio_orig": bloco[0]["inicio"],
@@ -115,18 +128,22 @@ def montar_blocos(palavras, cortes, duracao, estilo=None):
     return resultado
 
 
-def _quebrar_linhas(textos, max_linha=34):
-    """Divide em duas linhas equilibradas quando o texto é longo. Devolve índices de quebra."""
+def _quebra(textos, por_linha):
+    """Índice da palavra que começa a 2ª linha (divisão equilibrada), ou None se cabe em uma."""
     total = len(" ".join(textos))
-    if total <= max_linha or len(textos) < 2:
-        return set()
+    if total <= por_linha or len(textos) < 2:
+        return None
     melhor, alvo, acc = 1, total / 2, 0
     menor_dif = 1e9
     for i, t in enumerate(textos[:-1]):
         acc += len(t) + 1
         if abs(acc - alvo) < menor_dif:
             menor_dif, melhor = abs(acc - alvo), i + 1
-    return {melhor}
+    return melhor
+
+
+def _quebrar_linhas(bloco):
+    return set() if bloco.get("quebra") is None else {bloco["quebra"]}
 
 
 def _tempo_srt(t):
@@ -141,7 +158,7 @@ def gerar_srt(blocos) -> str:
     partes = []
     for n, b in enumerate(blocos, 1):
         textos = [w["texto"] for w in b["palavras"]]
-        quebras = _quebrar_linhas(textos)
+        quebras = _quebrar_linhas(b)
         linha = "".join(("\n" if i in quebras else (" " if i else "")) + t for i, t in enumerate(textos))
         partes.append(f"{n}\n{_tempo_srt(b['inicio'])} --> {_tempo_srt(b['fim'])}\n{linha}\n")
     return "\n".join(partes)
@@ -168,7 +185,7 @@ def gerar_ass(blocos, largura: int, altura: int, estilo=None) -> str:
     contorno = round(float(estilo["contorno"]) * menor / 1080, 1)
     alinhamento = {"inferior": 2, "meio": 5, "superior": 8}.get(estilo["posicao"], 2)
     margem_v = round(altura * (0.12 if altura > largura else 0.07))
-    margem_h = round(largura * 0.06)
+    margem_h = round(largura * (100 - float(estilo["largura"])) / 200)
     destaque = bool(estilo["destaque"])
     primaria = _cor_ass(estilo["cor"])
     cor_destaque = _cor_ass(estilo["cor_destaque"])
@@ -206,7 +223,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     eventos = []
     for b in blocos:
         textos = [w["texto"].replace("{", "(").replace("}", ")") for w in b["palavras"]]
-        quebras = _quebrar_linhas(textos)
+        quebras = _quebrar_linhas(b)
         if not destaque:
             eventos.append(evento(b["inicio"], b["fim"], linha(textos, quebras)))
             continue

@@ -266,8 +266,13 @@ async function abrirEditor(p) {
   $("#dica-ia").textContent = p.ia_disponivel
     ? "O Claude lê a transcrição, encontra regravações, correções e trechos fora do roteiro, e explica cada erro."
     : "Para usar, coloque sua chave da API da Anthropic em ⚙ Configurações.";
+  p.filtro = p.filtro || { id: "natural", intensidade: 1 };
+  carregarLut(p.filtro.id);
+  $("#grade-filtros").dataset.pid = "";
+  if (abaAtiva() === "filtros") montarFiltros();
   montarFormLegenda();
   montarLegendaCores();
+  posicionarBarraTamanho();
   atualizarTudo();
   carregarLegendas();
   setTimeout(redimensionarLinhaTempo, 50);
@@ -442,7 +447,7 @@ function salvarAgora() {
   const textos = estado.textosPendentes;
   estado.textosPendentes = {};
   salvando = salvando.then(() => enviar(`/api/projetos/${p.id}/edicao`, "PUT", {
-    cortes: p.cortes, textos, estilo_legenda: p.estilo_legenda,
+    cortes: p.cortes, textos, estilo_legenda: p.estilo_legenda, filtro: p.filtro,
   })).then(() => carregarLegendas()).catch((e) => aviso("Não consegui salvar: " + e.message, true));
   return salvando;
 }
@@ -620,6 +625,7 @@ $("#btn-play").addEventListener("click", alternarPlay);
 video.addEventListener("click", alternarPlay);
 video.addEventListener("play", () => ($("#btn-play").textContent = "❚❚"));
 video.addEventListener("pause", () => ($("#btn-play").textContent = "▶"));
+video.addEventListener("loadedmetadata", () => { legendaAtual = ""; posicionarBarraTamanho(); });
 
 let palavraAtual = -1;
 function quadro() {
@@ -639,6 +645,7 @@ function quadro() {
   }
   $("#tempo-atual").textContent = fmt(t, true);
   $("#tempo-final").textContent = fmt(tempoFinal(t), true);
+  desenharFiltro();
   atualizarLegendaPrevia(t);
   destacarPalavra(t);
   seguirCursor(t);
@@ -686,7 +693,11 @@ let legendaAtual = "";
 function atualizarLegendaPrevia(t) {
   const el = $("#legenda-previa");
   const es = estilo();
-  const bloco = es.ativa ? estado.blocos.find((b) => t >= b.inicio_orig - 0.05 && t <= b.fim_orig + 0.25) : null;
+  let bloco = es.ativa ? estado.blocos.find((b) => t >= b.inicio_orig - 0.05 && t <= b.fim_orig + 0.25) : null;
+  // Editando a legenda: mostra sempre a mais próxima, para ver o tamanho enquanto ajusta.
+  if (!bloco && es.ativa && abaAtiva() === "legenda" && estado.blocos.length) {
+    bloco = estado.blocos.find((b) => b.inicio_orig >= t) || estado.blocos[estado.blocos.length - 1];
+  }
   if (!bloco) {
     if (legendaAtual) { el.innerHTML = ""; legendaAtual = ""; }
     return;
@@ -705,13 +716,17 @@ function atualizarLegendaPrevia(t) {
     bloco.palavras.forEach((p, i) => { if (t >= p.inicio_orig) atual = i; });
   }
   const html = bloco.palavras.map((p, i) =>
-    i === atual ? `<span style="color:${es.cor_destaque}">${escapar(p.texto)}</span>` : escapar(p.texto)).join(" ");
+    (i === 0 ? "" : i === bloco.quebra ? "<br>" : " ")
+    + (i === atual ? `<span style="color:${es.cor_destaque}">${escapar(p.texto)}</span>` : escapar(p.texto))).join("");
   const chave = html + JSON.stringify(es) + vr.width + vr.height;
   if (chave === legendaAtual) return;
   legendaAtual = chave;
 
-  el.style.left = `${vr.left - caixa.left}px`;
-  el.style.width = `${vr.width}px`;
+  const largura = (vr.width * es.largura) / 100;
+  el.style.left = `${vr.left - caixa.left + (vr.width - largura) / 2}px`;
+  el.style.width = `${largura}px`;
+  el.style.padding = "0";
+  el.style.whiteSpace = es.linhas === 1 ? "nowrap" : "normal";
   el.style.top = el.style.bottom = "";
   el.style.transform = "";
   if (es.posicao === "superior") el.style.top = `${vr.top - caixa.top + margem}px`;
@@ -725,6 +740,41 @@ function atualizarLegendaPrevia(t) {
     font-weight:${es.negrito ? 700 : 400};color:${es.cor};${fundo}${traco}">${html}</span>`;
 }
 
+/* ---------- legenda: barra de tamanho (estilo Instagram) ---------- */
+
+const TAM_MIN = 3, TAM_MAX = 14;
+const barraTam = $("#barra-tamanho");
+
+function abaAtiva() { return $(".aba.ativa")?.dataset.aba; }
+
+function posicionarBarraTamanho() {
+  const visivel = !!estado.projeto && abaAtiva() === "legenda" && !$("#tela-editor").hidden;
+  barraTam.hidden = !visivel;
+  if (!visivel) return;
+  const caixa = $("#video-caixa").getBoundingClientRect();
+  const vr = video.getBoundingClientRect();
+  barraTam.style.left = `${Math.max(8, vr.left - caixa.left + 10)}px`;
+  const f = (TAM_MAX - estilo().tamanho) / (TAM_MAX - TAM_MIN);   // 0 = topo (maior)
+  $("#barra-tamanho-botao").style.top = `${Math.min(1, Math.max(0, f)) * 100}%`;
+}
+
+function arrastarTamanho(e) {
+  const r = barraTam.getBoundingClientRect();
+  const f = Math.min(1, Math.max(0, (e.clientY - r.top) / r.height));
+  const valor = Math.round((TAM_MAX - f * (TAM_MAX - TAM_MIN)) * 2) / 2;
+  if (valor === estilo().tamanho) return;
+  mudarEstilo("tamanho", valor);
+  const faixa = $('#form-legenda [data-chave="tamanho"]');
+  if (faixa) { faixa.value = valor; faixa.previousElementSibling.textContent = `${valor}%`; }
+}
+barraTam.addEventListener("pointerdown", (e) => {
+  e.preventDefault();
+  barraTam.setPointerCapture(e.pointerId);
+  arrastarTamanho(e);
+});
+barraTam.addEventListener("pointermove", (e) => { if (barraTam.hasPointerCapture(e.pointerId)) arrastarTamanho(e); });
+window.addEventListener("resize", posicionarBarraTamanho);
+
 /* ---------- legenda: formulário ---------- */
 
 const FONTES = ["Arial", "Arial Black", "Verdana", "Tahoma", "Trebuchet MS", "Impact", "Georgia", "Courier New"];
@@ -735,11 +785,13 @@ function montarFormLegenda() {
     `<button type="button" data-v="${v}" class="${es[chave] === v ? "ativo" : ""}">${r}</button>`).join("")}</div>`;
   $("#form-legenda").innerHTML = `
     ${campoAlternar("ativa", "Mostrar legenda", "Liga ou desliga a legenda na prévia", es.ativa)}
-    <div class="campo">Estilo ${seg("modo", [["frase", "Frases (até 2 linhas)"], ["curta", "Curta (2-3 palavras)"]])}</div>
+    <div class="campo">Linhas na tela ${seg("linhas", [[1, "1 linha"], [2, "2 linhas"]])}</div>
+    <div class="campo">Palavras por vez ${seg("modo", [["frase", "Frase inteira"], ["curta", "Até 3 (estilo Reels)"]])}</div>
     <div class="campo">Posição ${seg("posicao", [["superior", "Em cima"], ["meio", "Meio"], ["inferior", "Embaixo"]])}</div>
     <label class="campo">Fonte<select data-chave="fonte">${FONTES.map((f) =>
       `<option ${f === es.fonte ? "selected" : ""}>${f}</option>`).join("")}</select></label>
-    ${campoFaixa("tamanho", "Tamanho", "", es.tamanho, 3, 12, 0.5, "%")}
+    ${campoFaixa("tamanho", "Tamanho", "Dica: arraste também a barra ao lado do vídeo", es.tamanho, 3, 14, 0.5, "%")}
+    ${campoFaixa("largura", "Largura máxima", "Quanto da largura do vídeo a legenda pode ocupar", es.largura, 40, 96, 1, "%")}
     ${campoFaixa("contorno", "Contorno", "", es.contorno, 0, 10, 0.5, "px")}
     <div class="cores">
       <label>Texto<input type="color" data-chave="cor" value="${es.cor}"></label>
@@ -761,7 +813,8 @@ function mudarEstilo(chave, valor) {
   const p = estado.projeto;
   p.estilo_legenda = { ...estilo(), [chave]: valor };
   legendaAtual = "";
-  agendarSalvar();  // salvar recarrega os blocos (modo e maiúsculas mudam o agrupamento)
+  posicionarBarraTamanho();
+  agendarSalvar();  // salvar recarrega os blocos (tamanho, linhas e largura mudam o agrupamento)
 }
 
 $("#form-legenda").addEventListener("input", (e) => {
@@ -774,7 +827,8 @@ $("#form-legenda").addEventListener("click", (e) => {
   if (!b) return;
   const grupo = b.parentElement;
   $$("button", grupo).forEach((x) => x.classList.toggle("ativo", x === b));
-  mudarEstilo(grupo.dataset.seg, b.dataset.v);
+  const v = b.dataset.v;
+  mudarEstilo(grupo.dataset.seg, /^\d+$/.test(v) ? Number(v) : v);
 });
 
 /* ---------- abas ---------- */
@@ -782,6 +836,9 @@ $("#form-legenda").addEventListener("click", (e) => {
 $$(".aba").forEach((aba) => aba.addEventListener("click", () => {
   $$(".aba").forEach((a) => a.classList.toggle("ativa", a === aba));
   for (const c of $$(".aba-conteudo")) c.hidden = c.id !== `aba-${aba.dataset.aba}`;
+  legendaAtual = "";
+  posicionarBarraTamanho();
+  if (aba.dataset.aba === "filtros") montarFiltros();
 }));
 
 /* ---------- ajustes / reanálise ---------- */
@@ -821,6 +878,131 @@ $("#retranscrever").addEventListener("click", async () => {
     acompanhar(p.id);
   } catch (e) { aviso(e.message, true); }
 });
+
+/* ------------------------------------------------------------ filtros de cor */
+
+// A prévia aplica a mesma LUT 3D que o ffmpeg usa na exportação, via WebGL.
+const telaFiltro = $("#video-filtro");
+const gl = telaFiltro.getContext("webgl", { premultipliedAlpha: false });
+const N_LUT = 33;
+let glPrograma = null, texVideo = null, texLut = null, lutCarregada = null, comparando = false;
+
+function iniciarWebGL() {
+  if (!gl || glPrograma) return !!gl;
+  const vs = `attribute vec2 p; varying vec2 uv;
+    void main() { uv = p * 0.5 + 0.5; gl_Position = vec4(p, 0.0, 1.0); }`;
+  const fs = `precision mediump float;
+    varying vec2 uv; uniform sampler2D video; uniform sampler2D lut; uniform float intens;
+    const float N = ${N_LUT}.0;
+    vec3 aplicar(vec3 c) {
+      float b = c.b * (N - 1.0);
+      float b0 = floor(b); float b1 = min(b0 + 1.0, N - 1.0);
+      float x = c.r * (N - 1.0) + 0.5; float y = (c.g * (N - 1.0) + 0.5) / N;
+      vec3 a0 = texture2D(lut, vec2((b0 * N + x) / (N * N), y)).rgb;
+      vec3 a1 = texture2D(lut, vec2((b1 * N + x) / (N * N), y)).rgb;
+      return mix(a0, a1, b - b0);
+    }
+    void main() {
+      vec3 c = texture2D(video, uv).rgb;
+      gl_FragColor = vec4(mix(c, aplicar(c), intens), 1.0);
+    }`;
+  const compilar = (tipo, src) => { const sh = gl.createShader(tipo); gl.shaderSource(sh, src); gl.compileShader(sh); return sh; };
+  glPrograma = gl.createProgram();
+  gl.attachShader(glPrograma, compilar(gl.VERTEX_SHADER, vs));
+  gl.attachShader(glPrograma, compilar(gl.FRAGMENT_SHADER, fs));
+  gl.linkProgram(glPrograma);
+  gl.useProgram(glPrograma);
+  const buf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+  const loc = gl.getAttribLocation(glPrograma, "p");
+  gl.enableVertexAttribArray(loc);
+  gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+  const textura = (unidade) => {
+    const t = gl.createTexture();
+    gl.activeTexture(gl.TEXTURE0 + unidade);
+    gl.bindTexture(gl.TEXTURE_2D, t);
+    for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR],
+      [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, k, v);
+    return t;
+  };
+  texVideo = textura(0);
+  texLut = textura(1);
+  gl.uniform1i(gl.getUniformLocation(glPrograma, "video"), 0);
+  gl.uniform1i(gl.getUniformLocation(glPrograma, "lut"), 1);
+  return true;
+}
+
+async function carregarLut(fid) {
+  if (fid === "natural" || !iniciarWebGL()) { lutCarregada = null; return; }
+  const bytes = new Uint8Array(await (await fetch(`/api/filtros/${fid}/lut`)).arrayBuffer());
+  if (estado.projeto?.filtro?.id !== fid) return;   // trocou de filtro enquanto baixava
+  gl.activeTexture(gl.TEXTURE1);
+  gl.bindTexture(gl.TEXTURE_2D, texLut);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+  gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, N_LUT * N_LUT, N_LUT, 0, gl.RGB, gl.UNSIGNED_BYTE, bytes);
+  lutCarregada = fid;
+}
+
+function desenharFiltro() {
+  const f = estado.projeto?.filtro;
+  const ativo = f && f.id !== "natural" && f.intensidade > 0 && lutCarregada === f.id
+    && !comparando && video.readyState >= 2;
+  telaFiltro.hidden = !ativo;
+  if (!ativo) return;
+  const caixa = $("#video-caixa").getBoundingClientRect();
+  const vr = video.getBoundingClientRect();
+  Object.assign(telaFiltro.style, {
+    left: `${vr.left - caixa.left}px`, top: `${vr.top - caixa.top}px`, width: `${vr.width}px`, height: `${vr.height}px`,
+  });
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const w = Math.round(vr.width * dpr), h = Math.round(vr.height * dpr);
+  if (telaFiltro.width !== w || telaFiltro.height !== h) { telaFiltro.width = w; telaFiltro.height = h; }
+  gl.viewport(0, 0, w, h);
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, texVideo);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, video);
+  gl.uniform1f(gl.getUniformLocation(glPrograma, "intens"), f.intensidade);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+}
+
+async function montarFiltros() {
+  const grade = $("#grade-filtros");
+  const p = estado.projeto;
+  if (!estado.listaFiltros) estado.listaFiltros = await api("/api/filtros");
+  if (grade.dataset.pid !== p.id) {
+    grade.dataset.pid = p.id;
+    grade.innerHTML = estado.listaFiltros.map((f) => `
+      <button class="filtro-item" data-fid="${f.id}" title="${escapar(f.descricao)}">
+        <img src="/api/projetos/${p.id}/filtros/${f.id}.jpg" alt="" loading="lazy"><span>${escapar(f.nome)}</span>
+      </button>`).join("");
+  }
+  for (const b of $$(".filtro-item", grade)) b.classList.toggle("ativo", b.dataset.fid === p.filtro.id);
+  $("#intensidade").value = Math.round(p.filtro.intensidade * 100);
+  $("#intensidade-valor").textContent = `${$("#intensidade").value}%`;
+  $("#faixa-intensidade").hidden = p.filtro.id === "natural";
+  if (!gl) $("#comparar").textContent = "Seu navegador não mostra a prévia do filtro, mas ele é aplicado ao exportar.";
+}
+
+$("#grade-filtros").addEventListener("click", (e) => {
+  const b = e.target.closest(".filtro-item");
+  if (!b) return;
+  estado.projeto.filtro = { ...estado.projeto.filtro, id: b.dataset.fid };
+  carregarLut(b.dataset.fid);
+  montarFiltros();
+  agendarSalvar();
+});
+$("#intensidade").addEventListener("input", (e) => {
+  estado.projeto.filtro.intensidade = e.target.value / 100;
+  $("#intensidade-valor").textContent = `${e.target.value}%`;
+  agendarSalvar();
+});
+const soltarComparar = () => (comparando = false);
+$("#comparar").addEventListener("pointerdown", () => (comparando = true));
+$("#comparar").addEventListener("pointerup", soltarComparar);
+$("#comparar").addEventListener("pointerleave", soltarComparar);
 
 /* ------------------------------------------------------------ linha do tempo */
 
@@ -1081,14 +1263,75 @@ $("#exp-iniciar").addEventListener("click", async () => {
   }, 800);
 });
 
+/* ------------------------------------------------------------ atualização */
+
+async function procurarAtualizacao(avisar = false) {
+  const info = await api("/api/atualizacao").catch(() => null);
+  estado.atualizacao = info;
+  const tem = !!info?.ha_atualizacao;
+  $("#btn-atualizar").hidden = !tem;
+  if (tem) $("#btn-atualizar").textContent = `⬆ Atualizar para ${info.disponivel}`;
+  $("#cfg-versao-status").textContent = !info ? "" : info.erro ? `· ${info.erro}`
+    : tem ? `· versão ${info.disponivel} disponível` : "· você está na versão mais nova";
+  if (avisar && tem) abrirAtualizacao();
+  return info;
+}
+
+function abrirAtualizacao() {
+  const info = estado.atualizacao;
+  $("#atu-versoes").textContent = `Você está na versão ${info.atual}. A nova é a ${info.disponivel}. Seus projetos são mantidos.`;
+  $("#atu-novidades").innerHTML = (info.novidades || []).map((n) => `<li>${escapar(n)}</li>`).join("");
+  $("#atu-progresso").hidden = true;
+  $("#atu-erro").hidden = true;
+  $("#atu-acoes").hidden = false;
+  if ($("#dlg-config").open) $("#dlg-config").close();
+  $("#dlg-atualizar").showModal();
+}
+$("#btn-atualizar").addEventListener("click", abrirAtualizacao);
+
+$("#atu-aplicar").addEventListener("click", async () => {
+  const alvo = estado.atualizacao.disponivel;
+  $("#atu-acoes").hidden = true;
+  $("#atu-erro").hidden = true;
+  $("#atu-progresso").hidden = false;
+  $("#atu-texto").textContent = "Baixando a atualização…";
+  try {
+    if (estado.projeto) await salvarAgora();
+    await api("/api/atualizacao/aplicar", { method: "POST" });
+  } catch (e) {
+    $("#atu-progresso").hidden = true;
+    $("#atu-acoes").hidden = false;
+    $("#atu-erro").textContent = e.message;
+    $("#atu-erro").hidden = false;
+    return;
+  }
+  $("#atu-texto").textContent = "Reiniciando o CorteFácil…";
+  const limite = Date.now() + 180000;
+  const esperar = async () => {
+    const st = await api("/api/status").catch(() => null);
+    if (st?.versao === alvo) { location.reload(); return; }
+    if (Date.now() > limite) {
+      $("#atu-texto").textContent = "Atualizado! Feche a janela preta e abra o CorteFácil de novo pelo ícone.";
+      return;
+    }
+    setTimeout(esperar, 1500);
+  };
+  setTimeout(esperar, 2500);
+});
+
 /* ------------------------------------------------------------ configurações */
 
 function abrirConfig() {
   $("#cfg-chave").value = "";
   $("#cfg-chave").placeholder = estado.status.ia_disponivel ? "Chave já configurada (digite para trocar)" : "sk-ant-...";
+  $("#cfg-versao").textContent = estado.status.versao;
   $("#dlg-config").showModal();
 }
 $("#btn-config").addEventListener("click", abrirConfig);
+$("#cfg-procurar").addEventListener("click", async () => {
+  $("#cfg-versao-status").textContent = "· procurando…";
+  await procurarAtualizacao(true);
+});
 $("#cfg-salvar").addEventListener("click", async () => {
   const r = await enviar("/api/config", "POST", { anthropic_api_key: $("#cfg-chave").value });
   estado.status.ia_disponivel = r.ia_disponivel;
@@ -1132,4 +1375,5 @@ window.addEventListener("hashchange", rotear);
   if (!estado.status.ffmpeg) aviso("ffmpeg não encontrado: instale-o para processar vídeos (veja o README).", true);
   rotear();
   requestAnimationFrame(quadro);
+  procurarAtualizacao();
 })();

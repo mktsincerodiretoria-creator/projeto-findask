@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 import traceback
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
@@ -10,11 +11,12 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import analise, exportar, legendas, midia, projetos, transcricao
+from . import analise, atualizacao, exportar, filtros, legendas, midia, projetos, transcricao
+from .versao import VERSAO
 
 ESTATICOS = Path(__file__).resolve().parent.parent / "static"
 EXTENSOES = {".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v", ".mts", ".3gp"}
@@ -142,6 +144,7 @@ def tarefa_exportar(pid: str, opcoes: dict):
         resultado = exportar.exportar(
             p, p / dados["original"], dados["meta"], dados["palavras"], dados["cortes"],
             dados.get("estilo_legenda", {}), opcoes, f"video_editado_{n}", progresso=prog,
+            filtro=dados.get("filtro"),
         )
         dados = projetos.carregar(pid)
         dados["exportacoes"] = dados.get("exportacoes", []) + [resultado]
@@ -157,6 +160,7 @@ def tarefa_exportar(pid: str, opcoes: dict):
 @app.get("/api/status")
 def status():
     return {
+        "versao": VERSAO,
         "ffmpeg": midia.ffmpeg_disponivel(),
         "ia_disponivel": _ia_disponivel(),
         "modelos": transcricao.MODELOS,
@@ -280,6 +284,7 @@ class Edicao(BaseModel):
     cortes: Optional[list[Corte]] = None
     textos: Optional[dict[int, str]] = None   # índice da palavra -> texto corrigido
     estilo_legenda: Optional[dict] = None
+    filtro: Optional[dict] = None             # {"id": "cinema", "intensidade": 0.8}
 
 
 @app.put("/api/projetos/{pid}/edicao")
@@ -295,6 +300,12 @@ def salvar_edicao(pid: str, edicao: Edicao):
                 dados["palavras"][i]["texto"] = texto.strip() or dados["palavras"][i]["texto"]
     if edicao.estilo_legenda is not None:
         dados["estilo_legenda"] = {**legendas.ESTILO_PADRAO, **edicao.estilo_legenda}
+    if edicao.filtro is not None:
+        fid = edicao.filtro.get("id", "natural")
+        dados["filtro"] = {
+            "id": fid if fid in filtros.FILTROS else "natural",
+            "intensidade": min(1.0, max(0.0, float(edicao.filtro.get("intensidade", 1.0)))),
+        }
     projetos.salvar(pid, dados)
     return _com_resumo(dados)
 
@@ -304,9 +315,71 @@ def legendas_previa(pid: str):
     dados = _projeto_ou_404(pid)
     if not dados.get("meta"):
         return []
+    meta = dados["meta"]
     return legendas.montar_blocos(
-        dados["palavras"], dados["cortes"], dados["meta"]["duracao"], dados.get("estilo_legenda")
+        dados["palavras"], dados["cortes"], meta["duracao"], dados.get("estilo_legenda"),
+        meta["largura"] / meta["altura"],
     )
+
+
+# ---------------------------------------------------------------- filtros de cor
+
+_trava_miniaturas = threading.Lock()
+
+
+@app.get("/api/filtros")
+def listar_filtros():
+    return filtros.lista()
+
+
+@app.get("/api/filtros/{fid}/lut")
+def lut_filtro(fid: str):
+    if fid not in filtros.FILTROS:
+        raise HTTPException(404, "Filtro não encontrado.")
+    return Response(filtros.bytes_para_navegador(fid), media_type="application/octet-stream",
+                    headers={"Cache-Control": "max-age=3600"})
+
+
+@app.get("/api/projetos/{pid}/filtros/{fid}.jpg")
+def miniatura_filtro(pid: str, fid: str):
+    dados = _projeto_ou_404(pid)
+    if fid not in filtros.FILTROS:
+        raise HTTPException(404, "Filtro não encontrado.")
+    pasta = projetos.pasta(pid) / "miniaturas"
+    with _trava_miniaturas:
+        if not (pasta / f"{fid}.jpg").exists():
+            filtros.gerar_miniaturas(projetos.pasta(pid) / "previa.mp4", pasta, dados["meta"]["duracao"] * 0.3)
+    return FileResponse(pasta / f"{fid}.jpg", media_type="image/jpeg")
+
+
+# ---------------------------------------------------------------- atualização
+
+@app.get("/api/atualizacao")
+def verificar_atualizacao():
+    return atualizacao.verificar()
+
+
+def _ocupado() -> bool:
+    for item in projetos.listar():
+        d = projetos.carregar(item["id"])
+        if d["status"] in ("processando", "na_fila") or (d.get("tarefa") or {}).get("status") in ("rodando", "na_fila"):
+            return True
+    return False
+
+
+@app.post("/api/atualizacao/aplicar")
+def aplicar_atualizacao():
+    if _ocupado():
+        raise HTTPException(409, "Espere a análise ou a exportação terminar antes de atualizar.")
+    try:
+        resultado = atualizacao.aplicar()
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f"Não consegui atualizar: {e}")
+    # Código 42 = "reinicie": o iniciar.bat abre o programa de novo já atualizado.
+    projetos.RAIZ.mkdir(parents=True, exist_ok=True)
+    (projetos.RAIZ / ".reiniciando").write_text(resultado["versao"])
+    threading.Timer(1.0, lambda: os._exit(42)).start()
+    return resultado
 
 
 @app.post("/api/projetos/{pid}/exportar")

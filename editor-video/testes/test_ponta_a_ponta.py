@@ -76,7 +76,8 @@ def test_fluxo_completo(cliente):
     manual = {"id": "manual0001", "inicio": 0.0, "fim": 0.3, "tipo": "manual", "ativo": True, "origem": "manual"}
     r = c.put(f"/api/projetos/{pid}/edicao", json={
         "cortes": p["cortes"] + [manual], "textos": {"0": "Oi"},
-        "estilo_legenda": {"modo": "curta", "destaque": True, "maiusculas": True},
+        "estilo_legenda": {"modo": "curta", "destaque": True, "maiusculas": True, "linhas": 1},
+        "filtro": {"id": "cinema", "intensidade": 0.8},
     })
     assert r.status_code == 200
     r = c.post(f"/api/projetos/{pid}/recalcular", json={"config": {"silencio_minimo": 1.0}})
@@ -92,6 +93,8 @@ def test_fluxo_completo(cliente):
     assert p["tarefa"]["status"] == "concluida", p["tarefa"].get("erro")
     exp = p["exportacoes"][-1]
     assert (exp["largura"], exp["altura"]) == (1920, 1080)
+    from app import projetos as pj
+    assert "lut3d=cor.cube" in (pj.pasta(pid) / "filtro.txt").read_text()
 
     baixado = c.get(f"/api/projetos/{pid}/arquivos/{exp['video']}")
     assert baixado.status_code == 200 and len(baixado.content) > 10_000

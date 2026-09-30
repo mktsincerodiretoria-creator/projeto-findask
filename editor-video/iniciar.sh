@@ -10,4 +10,9 @@ if [ ! -d .venv ]; then
   .venv/bin/pip install --upgrade pip >/dev/null
   .venv/bin/pip install -r requirements.txt
 fi
-exec .venv/bin/python iniciar.py
+# Código 42 = o programa se atualizou e pediu para abrir de novo.
+while true; do
+  set +e; .venv/bin/python iniciar.py; codigo=$?; set -e
+  [ "$codigo" -eq 42 ] || exit "$codigo"
+  .venv/bin/pip install -q -r requirements.txt
+done

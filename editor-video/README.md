@@ -12,7 +12,11 @@ Um "CapCut simplificado" para vídeos falados. Você envia o vídeo e ele:
 - **Revisão inteligente com IA (opcional)**: o Claude lê a fala inteira e aponta regravações,
   correções ("custa 50, quer dizer, 40"), falsos inícios e comentários de bastidor, dizendo
   qual foi o erro em cada corte.
-- **Coloca legenda** sincronizada (estilo frase ou curta, estilo Reels, com destaque da palavra falada).
+- **Coloca legenda** sincronizada: barra de tamanho ao lado do vídeo (como nos Stories do Instagram),
+  1 ou 2 linhas, largura máxima, frase inteira ou até 3 palavras por vez, destaque da palavra falada.
+- **Filtros de cor cinematográficos**: Cinema (teal & orange), Filme Quente, Hora Dourada, Matte,
+  Nórdico, Bleach Suave, Pastel, Suspense, Vintage 70 e Noir, com intensidade ajustável. A prévia
+  mostra exatamente a cor que sai na exportação.
 - **Exporta em alta resolução** (original, 1080p, 2K ou 4K) com a legenda gravada no vídeo e/ou em `.srt`.
 
 Tudo roda **no seu computador**: o vídeo não é enviado para nenhum servidor (só o texto da fala
@@ -30,7 +34,8 @@ vai para a IA, e apenas se você ativar a revisão inteligente).
    Na primeira vez leva uns 5 a 10 minutos (baixa cerca de 1 GB).
 4. Das próximas vezes, clique no ícone **CorteFácil** na Área de Trabalho.
 
-Para atualizar, rode um `Instalar CorteFacil.bat` mais novo: seus projetos são mantidos.
+**Atualizações:** quando sai uma versão nova, aparece o botão **⬆ Atualizar** no topo do programa.
+Um clique baixa só o que mudou e reinicia sozinho; seus projetos são mantidos.
 
 ### Mac
 
@@ -61,7 +66,9 @@ O editor abre em <http://127.0.0.1:8765>. Para sair, feche a janela do terminal.
      ponto, ▶ para ouvir o trecho, e a chavinha para ligar/desligar o corte.
    - **Transcrição**: o texto da fala, com as palavras cortadas riscadas. Selecione palavras
      para cortar ou restaurar; **duplo clique** corrige o texto da legenda.
-   - **Legenda**: estilo, fonte, tamanho, cores, posição, maiúsculas, destaque da palavra.
+   - **Legenda**: arraste a barra ao lado do vídeo para mudar o tamanho; escolha 1 ou 2 linhas,
+     largura, fonte, cores, posição, maiúsculas e destaque da palavra.
+   - **Filtros**: escolha um look de cor e a intensidade. Segure "ver o original" para comparar.
    - **Ajustes**: mude os valores e clique em **Aplicar ajustes** (instantâneo), rode a
      **revisão com IA** ou transcreva de novo com um modelo mais preciso.
    - **Linha do tempo**: clique para navegar, **arraste para selecionar** e aperte Delete para
@@ -99,6 +106,10 @@ app/
 static/           interface (HTML/CSS/JS puro, sem build)
 testes/           pytest (o teste ponta a ponta gera um vídeo com espeak-ng)
 ```
+
+Para publicar uma versão: suba `VERSAO` e `NOVIDADES` em `app/versao.py`, rode
+`python empacotar.py` (gera o `versao.json` e o instalador em `dist/`) e faça commit/push do
+`versao.json` junto. Os programas instalados veem o botão de atualizar na próxima abertura.
 
 ```bash
 pip install -r requirements.txt -r requirements-dev.txt

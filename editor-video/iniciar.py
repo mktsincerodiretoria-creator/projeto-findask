@@ -25,7 +25,14 @@ if __name__ == "__main__":
         sys.exit(0)
     except OSError:
         pass
+    from app.projetos import RAIZ
+
+    # Reiniciando depois de uma atualização: a aba do navegador já está aberta.
+    marca = RAIZ / ".reiniciando"
+    reiniciando = marca.exists()
+    if reiniciando:
+        marca.unlink()
     print(f"\nCorteFácil rodando em {url}  (feche esta janela para sair)\n")
-    if "--sem-navegador" not in sys.argv:
+    if "--sem-navegador" not in sys.argv and not reiniciando:
         threading.Timer(1.5, lambda: webbrowser.open(url)).start()
     uvicorn.run("app.main:app", host="127.0.0.1", port=PORTA, log_level="warning")

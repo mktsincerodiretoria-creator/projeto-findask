@@ -14,6 +14,7 @@
     </a>
     <span class="topo-nome" id="nome-projeto"></span>
     <div class="topo-acoes">
+      <button class="btn-atualizar" id="btn-atualizar" hidden>⬆ Nova versão</button>
       <button class="btn-fantasma" id="btn-config" title="Configurações">⚙ Configurações</button>
       <button class="btn-primario" id="btn-exportar" hidden>⬇ Exportar</button>
     </div>
@@ -73,7 +74,12 @@
       <section class="palco">
         <div class="video-caixa" id="video-caixa">
           <video id="video" playsinline preload="auto"></video>
+          <canvas id="video-filtro" class="video-filtro" hidden></canvas>
           <div class="legenda-previa" id="legenda-previa"></div>
+          <div class="barra-tamanho" id="barra-tamanho" hidden title="Arraste para mudar o tamanho da legenda">
+            <div class="barra-tamanho-trilho"></div>
+            <div class="barra-tamanho-botao" id="barra-tamanho-botao"></div>
+          </div>
         </div>
         <div class="controles">
           <button class="btn-redondo" id="btn-play" title="Reproduzir (espaço)">▶</button>
@@ -91,9 +97,10 @@
 
       <aside class="painel">
         <nav class="abas" role="tablist">
-          <button class="aba ativa" data-aba="cortes">Erros e cortes</button>
-          <button class="aba" data-aba="texto">Transcrição</button>
+          <button class="aba ativa" data-aba="cortes">Cortes</button>
+          <button class="aba" data-aba="texto">Texto</button>
           <button class="aba" data-aba="legenda">Legenda</button>
+          <button class="aba" data-aba="filtros">Filtros</button>
           <button class="aba" data-aba="ajustes">Ajustes</button>
         </nav>
 
@@ -120,6 +127,16 @@
 
         <div class="aba-conteudo" id="aba-legenda" hidden>
           <div class="form-legenda" id="form-legenda"></div>
+        </div>
+
+        <div class="aba-conteudo" id="aba-filtros" hidden>
+          <p class="dica">Looks de cor usados em cinema, suaves e profissionais. O filtro vale para o vídeo todo.</p>
+          <div class="grade-filtros" id="grade-filtros"></div>
+          <div class="faixa" id="faixa-intensidade">
+            <label>Intensidade</label><output id="intensidade-valor">100%</output>
+            <input type="range" id="intensidade" min="0" max="100" step="5" value="100">
+          </div>
+          <button class="btn-fantasma" id="comparar" title="Segure para ver o vídeo sem filtro">👁 Segure para ver o original</button>
         </div>
 
         <div class="aba-conteudo" id="aba-ajustes" hidden>
@@ -209,6 +226,24 @@
     </form>
   </dialog>
 
+  <!-- ============ ATUALIZAÇÃO ============ -->
+  <dialog id="dlg-atualizar" class="dialogo">
+    <form method="dialog" class="dialogo-corpo">
+      <h2 id="atu-titulo">Nova versão disponível</h2>
+      <p class="dica" id="atu-versoes"></p>
+      <ul class="novidades" id="atu-novidades"></ul>
+      <div id="atu-progresso" hidden>
+        <div class="girando"></div>
+        <p id="atu-texto">Baixando a atualização…</p>
+      </div>
+      <div class="erro-caixa" id="atu-erro" hidden></div>
+      <div class="dialogo-acoes" id="atu-acoes">
+        <button value="cancelar" class="btn-fantasma">Depois</button>
+        <button type="button" id="atu-aplicar" class="btn-primario">Atualizar agora</button>
+      </div>
+    </form>
+  </dialog>
+
   <!-- ============ CONFIGURAÇÕES ============ -->
   <dialog id="dlg-config" class="dialogo">
     <form method="dialog" class="dialogo-corpo">
@@ -218,6 +253,11 @@
       </label>
       <p class="dica">Opcional. Sem a chave, o editor continua cortando silêncios, hesitações,
         repetições e regravações automaticamente. A chave fica salva só neste computador.</p>
+      <hr class="separador">
+      <div class="linha-versao">
+        <span>Versão <b id="cfg-versao"></b> <span class="dica" id="cfg-versao-status"></span></span>
+        <button type="button" class="btn-mini" id="cfg-procurar">Procurar atualizações</button>
+      </div>
       <div class="dialogo-acoes">
         <button value="cancelar" class="btn-fantasma">Cancelar</button>
         <button type="button" id="cfg-salvar" class="btn-primario">Salvar</button>
