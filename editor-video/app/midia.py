@@ -22,13 +22,14 @@ def ffmpeg_disponivel() -> bool:
 
 @lru_cache(maxsize=1)
 def versao_ffmpeg() -> int:
-    saida = subprocess.run(["ffmpeg", "-version"], capture_output=True, text=True).stdout
+    saida = subprocess.run(["ffmpeg", "-version"], capture_output=True, text=True, encoding="utf-8", errors="replace").stdout
     m = re.search(r"ffmpeg version n?(\d+)", saida)
-    return int(m.group(1)) if m else 6
+    # Builds de desenvolvimento ("N-12345-...") são mais novas que a 7.
+    return int(m.group(1)) if m else 7
 
 
 def _rodar(cmd, cwd=None):
-    proc = subprocess.run(cmd, capture_output=True, text=True, cwd=cwd)
+    proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=cwd)
     if proc.returncode != 0:
         raise RuntimeError(f"ffmpeg falhou: {proc.stderr[-1500:]}")
     return proc

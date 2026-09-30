@@ -22,11 +22,13 @@ vai para a IA, e apenas se você ativar a revisão inteligente).
 
 ### Windows
 
-1. Instale o **Python 3.10 ou mais novo** em <https://www.python.org/downloads/>.
-   Na instalação, marque **"Add python.exe to PATH"**.
-2. Instale o **ffmpeg**: abra o PowerShell e rode `winget install Gyan.FFmpeg`.
-3. Dê dois cliques em **`iniciar.bat`**. Na primeira vez ele instala o resto sozinho
-   (leva alguns minutos). Depois o editor abre no navegador.
+1. Descompacte o ZIP (botão direito → **Extrair tudo**).
+2. Dê dois cliques em **`iniciar.bat`**.
+   - Se aparecer "O Windows protegeu o computador", clique em **Mais informações → Executar assim mesmo**.
+   - Na primeira vez ele baixa e instala sozinho o Python, o ffmpeg e o resto (uns 5 a 10 minutos,
+     cerca de 1 GB). Tudo fica dentro da pasta `ferramentas`, sem mexer no resto do computador.
+   - Se o Windows pedir permissão para instalar o "Microsoft Visual C++", clique em **Sim**.
+3. O editor abre no navegador. Das próximas vezes, é só dar dois cliques em `iniciar.bat` de novo.
 
 ### Mac
 

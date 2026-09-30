@@ -92,7 +92,8 @@ def exportar(projeto_dir: Path, original: Path, meta: dict, palavras: list, cort
         "-movflags", "+faststart",
         arquivos["video"],
     ]
-    proc = subprocess.Popen(cmd, cwd=projeto_dir, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    proc = subprocess.Popen(cmd, cwd=projeto_dir, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                            text=True, encoding="utf-8", errors="replace")
     for linha in proc.stdout:
         if linha.startswith("out_time_us=") and progresso:
             try:
