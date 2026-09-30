@@ -1,0 +1,580 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ficha do Candidato</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800&family=Source+Sans+3:wght@400;600&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+/* Layout: uma coluna estreita tipo "ficha de expedição", seções numeradas porque o formulário é uma sequência real */
+:root {
+  --bg: #f3f5f4;
+  --paper: #ffffff;
+  --ink: #16201c;
+  --muted: #5b6a64;
+  --line: #d5dcd9;
+  --accent: #0f7a5a;
+  --accent-soft: #e2f1eb;
+  --tape: #f2b84b;
+  --danger: #b3261e;
+  --f-display: "Archivo", "Arial Narrow", Arial, sans-serif;
+  --f-body: "Source Sans 3", "Segoe UI", Roboto, Arial, sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #111715; --paper: #19211e; --ink: #e6ece9; --muted: #9aaba4; --line: #2e3a36;
+    --accent: #3fbf92; --accent-soft: #1d3129; --tape: #d9a23e; --danger: #ff8a80; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #111715; --paper: #19211e; --ink: #e6ece9; --muted: #9aaba4; --line: #2e3a36;
+  --accent: #3fbf92; --accent-soft: #1d3129; --tape: #d9a23e; --danger: #ff8a80; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 17px/1.55 var(--f-body); padding: 24px 16px 64px; }
+.wrap { max-width: 720px; margin: 0 auto; display: grid; gap: 20px; }
+header.top { display: grid; gap: 8px; padding-block: 8px 4px; }
+.label-tape { display: inline-block; justify-self: start; background: var(--tape); color: #1b1405; font: 700 12px/1 var(--f-display); letter-spacing: .12em; text-transform: uppercase; padding: 7px 10px; transform: rotate(-1.2deg); }
+h1 { font: 800 clamp(28px, 6vw, 40px)/1.1 var(--f-display); margin: 0; text-wrap: balance; letter-spacing: -.01em; }
+.lead { color: var(--muted); margin: 0; max-width: 62ch; }
+section.card { background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 22px 20px; display: grid; gap: 18px; }
+.sec-head { display: flex; gap: 12px; align-items: baseline; border-bottom: 1px dashed var(--line); padding-bottom: 12px; }
+.sec-num { font: 800 14px/1 var(--f-display); color: var(--accent); letter-spacing: .08em; font-variant-numeric: tabular-nums; }
+h2 { font: 700 20px/1.2 var(--f-display); margin: 0; }
+.sec-note { color: var(--muted); font-size: 15px; margin: -8px 0 0; }
+.field { display: grid; gap: 6px; min-width: 0; }
+.field > label, .q-title { font-weight: 600; }
+.req::after { content: " *"; color: var(--danger); }
+.hint { color: var(--muted); font-size: 14px; }
+input[type=text], input[type=email], input[type=tel], select, textarea {
+  width: 100%; font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px;
+}
+textarea { min-height: 88px; resize: vertical; }
+input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible, .opt input:focus-visible + span { outline: 3px solid var(--accent); outline-offset: 2px; }
+.row2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+.opts { display: grid; gap: 8px; }
+.opt { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer; background: var(--bg); }
+.opt:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+.opt input { margin-top: 4px; accent-color: var(--accent); flex: none; }
+.likert { display: grid; gap: 14px; }
+.lk-item { display: grid; gap: 8px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+.lk-item:last-child { border-bottom: 0; padding-bottom: 0; }
+.lk-scale { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.lk-scale label { display: grid; place-items: center; gap: 2px; padding: 8px 2px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer; font-size: 13px; text-align: center; background: var(--bg); }
+.lk-scale label:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); font-weight: 600; }
+.lk-scale input { accent-color: var(--accent); }
+.lk-legend { display: flex; justify-content: space-between; font-size: 13px; color: var(--muted); }
+.consent { display: flex; gap: 10px; align-items: flex-start; font-size: 15px; }
+.consent input { margin-top: 5px; accent-color: var(--accent); }
+button.send { font: 700 18px/1 var(--f-display); letter-spacing: .02em; background: var(--accent); color: #fff; border: 0; border-radius: 10px; padding: 16px 22px; cursor: pointer; width: 100%; }
+button.send:disabled { opacity: .6; cursor: progress; }
+.err { color: var(--danger); font-weight: 600; }
+.done { text-align: center; padding: 40px 20px; }
+.done h2 { font-size: 26px; margin-bottom: 8px; }
+.progress { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; height: 5px; background: var(--line); border-radius: 3px; overflow: hidden; }
+.progress i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .25s; }
+.invalid { border-color: var(--danger) !important; }
+@media (prefers-reduced-motion: reduce) { .progress i { transition: none; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="progress" aria-hidden="true"><i id="bar"></i></div>
+
+  <header class="top">
+    <span class="label-tape">Processo seletivo · Cajamar/SP</span>
+    <h1 id="titulo">Ficha do candidato</h1>
+    <p class="lead">Queremos te conhecer melhor antes da conversa presencial. Leva cerca de 15 minutos. Não existe resposta "bonita": responda como você realmente age no dia a dia.</p>
+  </header>
+
+  <form id="ficha" novalidate>
+
+    <!-- 1 -->
+    <section class="card">
+      <div class="sec-head"><span class="sec-num">01</span><h2>Seus dados</h2></div>
+      <div class="field"><label class="req" for="nome">Nome completo</label><input type="text" id="nome" name="nome" autocomplete="name" required></div>
+      <div class="row2">
+        <div class="field"><label class="req" for="whats">WhatsApp</label><input type="tel" id="whats" name="whats" placeholder="(11) 90000-0000" required></div>
+        <div class="field"><label for="email">E-mail</label><input type="email" id="email" name="email" autocomplete="email"></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label class="req" for="maior18">Você tem 18 anos ou mais?</label>
+          <select id="maior18" name="maior18" required><option value="">Selecione</option><option>Sim</option><option>Não</option></select></div>
+        <div class="field"><label class="req" for="cidade">Onde você mora?</label>
+          <select id="cidade" name="cidade" required>
+            <option value="">Selecione</option>
+            <option>Cajamar (Centro)</option><option>Cajamar (Jordanésia)</option><option>Cajamar (Polvilho)</option>
+            <option>Santana de Parnaíba</option><option>Pirapora do Bom Jesus</option><option>Franco da Rocha</option>
+            <option>Caieiras</option><option>Jundiaí</option><option>São Paulo (capital)</option><option>Outra cidade</option>
+          </select></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label for="bairro">Bairro</label><input type="text" id="bairro" name="bairro"></div>
+        <div class="field"><label class="req" for="deslocamento">Tempo até o trabalho</label>
+          <select id="deslocamento" name="deslocamento" required>
+            <option value="">Selecione</option><option>Até 20 minutos</option><option>20 a 40 minutos</option><option>40 minutos a 1 hora</option><option>Mais de 1 hora</option>
+          </select></div>
+      </div>
+      <div class="field"><label class="req" for="transporte">Como você chegaria ao trabalho?</label>
+        <select id="transporte" name="transporte" required>
+          <option value="">Selecione</option><option>Carro ou moto próprio</option><option>Ônibus / fretado</option><option>A pé ou bicicleta</option><option>Carona</option><option>Ainda não sei</option>
+        </select></div>
+    </section>
+
+    <!-- 2 -->
+    <section class="card">
+      <div class="sec-head"><span class="sec-num">02</span><h2>Sua experiência</h2></div>
+      <div class="row2">
+        <div class="field"><label class="req" for="ult_empresa">Último emprego (empresa)</label><input type="text" id="ult_empresa" name="ult_empresa" required><span class="hint">Se nunca trabalhou, escreva "primeiro emprego".</span></div>
+        <div class="field"><label class="req" for="ult_cargo">Cargo / função</label><input type="text" id="ult_cargo" name="ult_cargo" required></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label class="req" for="ult_tempo">Quanto tempo ficou lá?</label>
+          <select id="ult_tempo" name="ult_tempo" required>
+            <option value="">Selecione</option><option value="0">Menos de 3 meses</option><option value="1">3 a 6 meses</option><option value="2">6 meses a 1 ano</option><option value="3">1 a 2 anos</option><option value="4">Mais de 2 anos</option><option value="-1">Primeiro emprego</option>
+          </select></div>
+        <div class="field"><label class="req" for="n_empregos">Quantos empregos teve nos últimos 3 anos?</label>
+          <select id="n_empregos" name="n_empregos" required>
+            <option value="">Selecione</option><option value="0">Nenhum</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4 ou mais</option>
+          </select></div>
+      </div>
+      <div class="field"><label class="req" for="motivo">Por que saiu (ou quer sair) do último emprego?</label>
+        <select id="motivo" name="motivo" required>
+          <option value="">Selecione</option>
+          <option value="crescimento">Busco crescimento / novo desafio</option>
+          <option value="contrato">Fim de contrato ou trabalho temporário</option>
+          <option value="corte">Corte de pessoal / empresa fechou</option>
+          <option value="salario">Salário</option>
+          <option value="distancia">Distância / horário</option>
+          <option value="conflito">Não me dava bem com a liderança ou colegas</option>
+          <option value="desligado">Fui desligado</option>
+          <option value="empreender">Saí para ter meu próprio negócio</option>
+          <option value="primeiro">Primeiro emprego</option>
+          <option value="outro">Outro</option>
+        </select></div>
+      <div class="field"><label class="req" for="motivo_txt">Conte com suas palavras o que aconteceu</label><textarea id="motivo_txt" name="motivo_txt" required></textarea></div>
+      <div class="row2">
+        <div class="field"><label class="req" for="exp_ecom">Experiência com e-commerce, logística ou estoque?</label>
+          <select id="exp_ecom" name="exp_ecom" required><option value="">Selecione</option><option value="0">Nenhuma</option><option value="1">Menos de 1 ano</option><option value="2">1 a 3 anos</option><option value="3">Mais de 3 anos</option></select></div>
+        <div class="field"><label class="req" for="exp_lider">Já liderou pessoas?</label>
+          <select id="exp_lider" name="exp_lider" required><option value="">Selecione</option><option value="0">Nunca</option><option value="1">Informalmente (ajudava a organizar a equipe)</option><option value="2">Sim, até 5 pessoas</option><option value="3">Sim, mais de 5 pessoas</option></select></div>
+      </div>
+    </section>
+
+    <!-- 3 -->
+    <section class="card">
+      <div class="sec-head"><span class="sec-num">03</span><h2>Disponibilidade e rotina da vaga</h2></div>
+      <p class="sec-note">A vaga é em operação de e-commerce: ritmo acelerado, trabalho em pé, movimentação de volumes e picos de demanda (Black Friday, Natal, datas promocionais).</p>
+      <div class="field"><span class="q-title req">Você consegue movimentar e carregar caixas de até <b class="peso"></b> kg várias vezes ao dia?</span>
+        <div class="opts">
+          <label class="opt"><input type="radio" name="peso" value="2" required><span>Sim, sem problema</span></label>
+          <label class="opt"><input type="radio" name="peso" value="1"><span>Sim, com algumas limitações</span></label>
+          <label class="opt"><input type="radio" name="peso" value="0"><span>Não consigo</span></label>
+        </div></div>
+      <div class="field"><span class="q-title req">Tem disponibilidade para trabalhar em escala que inclua sábados, domingos ou feriados?</span>
+        <div class="opts">
+          <label class="opt"><input type="radio" name="fds" value="2" required><span>Sim, total</span></label>
+          <label class="opt"><input type="radio" name="fds" value="1"><span>Sim, mas com algumas restrições</span></label>
+          <label class="opt"><input type="radio" name="fds" value="0"><span>Não</span></label>
+        </div>
+        <label class="hint" for="fds_obs">Se tem restrição, qual? (opcional)</label><input type="text" id="fds_obs" name="fds_obs"></div>
+      <div class="field"><span class="q-title req">Em época de pico, pode fazer horas extras?</span>
+        <div class="opts">
+          <label class="opt"><input type="radio" name="he" value="2" required><span>Sim</span></label>
+          <label class="opt"><input type="radio" name="he" value="1"><span>Às vezes, dependendo do dia</span></label>
+          <label class="opt"><input type="radio" name="he" value="0"><span>Não</span></label>
+        </div></div>
+      <div class="field"><label class="req" for="inicio">Quando pode começar?</label>
+        <select id="inicio" name="inicio" required><option value="">Selecione</option><option>Imediatamente</option><option>Em até 15 dias</option><option>Em até 30 dias</option><option>Mais de 30 dias</option></select></div>
+    </section>
+
+    <!-- 4 -->
+    <section class="card">
+      <div class="sec-head"><span class="sec-num">04</span><h2>Situações do dia a dia</h2></div>
+      <p class="sec-note">Escolha o que você <b>realmente faria</b>, não o que parece mais certo.</p>
+      <div id="sjt" class="likert"></div>
+    </section>
+
+    <!-- 5 -->
+    <section class="card">
+      <div class="sec-head"><span class="sec-num">05</span><h2>Como você é</h2></div>
+      <p class="sec-note">Marque o quanto cada frase combina com você.</p>
+      <div id="lk" class="likert"></div>
+    </section>
+
+    <!-- 6 -->
+    <section class="card">
+      <div class="sec-head"><span class="sec-num">06</span><h2>Seus planos</h2></div>
+      <div class="field"><span class="q-title req">Daqui a 3 anos, onde você se vê?</span>
+        <div class="opts">
+          <label class="opt"><input type="radio" name="futuro" value="lider" required><span>Crescendo dentro da empresa, liderando uma equipe maior</span></label>
+          <label class="opt"><input type="radio" name="futuro" value="especialista"><span>Sendo referência na minha área, aprendendo cada vez mais</span></label>
+          <label class="opt"><input type="radio" name="futuro" value="outra_area"><span>Trabalhando em outra área que não tem relação com esta</span></label>
+          <label class="opt"><input type="radio" name="futuro" value="negocio"><span>Com meu próprio negócio</span></label>
+          <label class="opt"><input type="radio" name="futuro" value="naosei"><span>Ainda não pensei nisso</span></label>
+        </div></div>
+      <div class="field"><label class="req" for="aprendeu">O que você aprendeu por conta própria no último ano? (curso, livro, vídeo, habilidade)</label><textarea id="aprendeu" name="aprendeu" required></textarea></div>
+      <div class="field"><label class="req" for="pressao_txt">Conte uma situação de muita pressão no trabalho e como você resolveu</label><textarea id="pressao_txt" name="pressao_txt" required></textarea></div>
+      <div class="field"><label class="req" for="lider_txt">Na sua opinião, o que faz um bom líder de equipe?</label><textarea id="lider_txt" name="lider_txt" required></textarea></div>
+      <div class="field"><label for="porque">Por que você quer trabalhar com a gente?</label><textarea id="porque" name="porque"></textarea></div>
+    </section>
+
+    <section class="card">
+      <label class="consent" for="lgpd"><input type="checkbox" id="lgpd" required><span>Autorizo o uso dos meus dados apenas para este processo seletivo, conforme a LGPD (Lei 13.709/2018). Declaro que as informações são verdadeiras.</span></label>
+      <p id="erro" class="err" hidden></p>
+      <button type="submit" class="send" id="btn">Enviar minha ficha</button>
+    </section>
+  </form>
+
+  <section class="card done" id="ok" hidden>
+    <h2>Ficha enviada!</h2>
+    <p>Obrigado. Nossa equipe vai analisar suas respostas e entrar em contato pelo WhatsApp informado.</p>
+  </section>
+</div>
+
+<!-- Envio real: FormSubmit entrega o e-mail com o PDF em anexo -->
+<form id="envio" method="POST" enctype="multipart/form-data" target="iframe_envio" hidden>
+  <input type="hidden" name="_subject" id="e_subject">
+  <input type="hidden" name="_template" value="box">
+  <input type="hidden" name="_captcha" value="false">
+  <input type="text" name="_honey" style="display:none">
+  <input type="hidden" name="Candidato" id="e_nome">
+  <input type="hidden" name="WhatsApp" id="e_whats">
+  <input type="hidden" name="Classificacao" id="e_class">
+  <input type="hidden" name="Nota_geral" id="e_nota">
+  <input type="hidden" name="Resumo" id="e_resumo">
+  <input type="file" name="attachment" id="e_pdf">
+</form>
+<iframe name="iframe_envio" title="envio" hidden></iframe>
+
+<script>
+/* ===================== CONFIGURAÇÃO (edite aqui) ===================== */
+const CONFIG = {
+  EMAIL_DESTINO: "jessica-thais@outlook.com.br",
+  CARGO: "Líder de Operações – E-commerce",
+  PESO_KG: 25
+};
+/* ===================================================================== */
+
+document.getElementById("titulo").textContent = "Ficha do candidato · " + CONFIG.CARGO;
+document.querySelectorAll(".peso").forEach(e => e.textContent = CONFIG.PESO_KG);
+document.getElementById("envio").action = "https://formsubmit.co/" + CONFIG.EMAIL_DESTINO;
+
+/* Dimensões avaliadas e pesos na nota final */
+const DIM = {
+  lideranca:        { nome: "Liderança",               peso: 20 },
+  pressao:          { nome: "Resistência à pressão",   peso: 15 },
+  esforco:          { nome: "Disposição física/ritmo", peso: 15 },
+  responsabilidade: { nome: "Responsabilidade",        peso: 15 },
+  proatividade:     { nome: "Proatividade/urgência",   peso: 10 },
+  equipe:           { nome: "Trabalho em equipe",      peso: 10 },
+  crescimento:      { nome: "Vontade de crescer",      peso:  5 },
+  permanencia:      { nome: "Tendência a permanecer",  peso: 10 }
+};
+
+/* Teste situacional: cada opção vale 0 a 3 (a pontuação não aparece para o candidato) */
+const SJT = [
+  { dim: "pressao", q: "Véspera de Black Friday: 300 pedidos atrasados e dois colegas faltaram. O que você faz?", o: [
+    ["Faço o máximo que der. A falta deles não é culpa minha.", 0],
+    ["Reorganizo quem está presente, priorizo os pedidos com prazo mais curto e aviso o gestor.", 3],
+    ["Aviso o gestor e espero ele dizer como dividir o trabalho.", 1],
+    ["Trabalho o mais rápido possível sozinho para compensar.", 2]] },
+  { dim: "lideranca", q: "Dois colegas da sua equipe começam a discutir alto na frente de todos. O que você faz?", o: [
+    ["Deixo quieto. Eles são adultos e resolvem entre eles.", 0],
+    ["Chamo o gestor para resolver.", 1],
+    ["Separo os dois na hora, peço para voltarem ao trabalho e converso com cada um depois, em particular.", 3],
+    ["Dou uma bronca nos dois ali mesmo, para servir de exemplo.", 1]] },
+  { dim: "responsabilidade", q: "Você percebe que um pedido que você separou foi enviado com o produto errado. Ninguém percebeu ainda.", o: [
+    ["Aviso o responsável imediatamente e ajudo a corrigir.", 3],
+    ["Espero para ver se o cliente reclama.", 0],
+    ["Corrijo o processo para não acontecer de novo, mas não comento sobre o erro.", 1],
+    ["Aviso só se me perguntarem.", 0]] },
+  { dim: "proatividade", q: "Você terminou suas tarefas 40 minutos antes do fim do turno.", o: [
+    ["Aproveito para descansar, já fiz a minha parte.", 0],
+    ["Pergunto ao gestor se tem mais alguma coisa.", 2],
+    ["Vejo onde a operação está mais atrasada e vou ajudar, avisando o responsável.", 3],
+    ["Fico no celular, mas atento caso alguém me chame.", 0]] },
+  { dim: "lideranca", q: "Você é o líder. Um colaborador, que é seu amigo, chega atrasado pela terceira vez na semana.", o: [
+    ["Não falo nada para não estragar a amizade.", 0],
+    ["Converso em particular, deixo claro que a regra vale para todos e registro a ocorrência se continuar.", 3],
+    ["Comento de brincadeira para ele entender o recado.", 1],
+    ["Passo o caso direto para o RH.", 1]] },
+  { dim: "proatividade", q: "A transportadora chega em 30 minutos e falta um item em um pedido urgente.", o: [
+    ["Verifico no sistema se há outro local de estoque, aviso o atendimento para falar com o cliente e separo os outros pedidos enquanto isso.", 3],
+    ["Separo o pedido do jeito que dá e mando assim mesmo.", 0],
+    ["Deixo o pedido de lado e sigo com os outros.", 1],
+    ["Aviso o gestor e espero a decisão dele.", 2]] },
+  { dim: "pressao", q: "Seu gestor critica seu trabalho na frente da equipe, e você acha que ele está errado.", o: [
+    ["Rebato na hora, na frente de todos.", 0],
+    ["Fico calado e guardo para mim.", 1],
+    ["Escuto, continuo o trabalho e depois converso com ele em particular com calma.", 3],
+    ["Fico chateado e peço para mudar de setor.", 0]] },
+  { dim: "crescimento", q: "A empresa oferece um curso de gestão, em alguns sábados, sem pagamento extra.", o: [
+    ["Faço. É um aprendizado que fica comigo.", 3],
+    ["Só faço se for obrigatório.", 1],
+    ["Não faço sem receber.", 0],
+    ["Faço se não atrapalhar meus compromissos pessoais.", 2]] },
+  { dim: "responsabilidade", q: "Você vê um colega levando um produto da empresa sem registrar a saída.", o: [
+    ["Finjo que não vi. Não é problema meu.", 0],
+    ["Comento com outros colegas.", 0],
+    ["Pergunto a ele o que houve e, se não houver explicação, informo a liderança.", 3],
+    ["Informo a liderança sem falar com ele.", 2]] },
+  { dim: "equipe", q: "O gestor muda um processo que você achava melhor do jeito antigo.", o: [
+    ["Continuo fazendo do meu jeito, porque funciona.", 0],
+    ["Sigo o novo processo e, se notar problemas, levo sugestões com dados.", 3],
+    ["Sigo, mas reclamo com os colegas.", 1],
+    ["Sigo sem opinar.", 2]] },
+  { dim: "esforco", q: "É o terceiro dia seguido de pico e a equipe está cansada.", o: [
+    ["Mantenho meu ritmo e tento animar o time, organizando pausas curtas para ninguém quebrar.", 3],
+    ["Diminuo o ritmo, porque ninguém é de ferro.", 0],
+    ["Faço minha parte e vou embora no horário.", 1],
+    ["Falo com o gestor que a equipe precisa de reforço.", 2]] },
+  { dim: "equipe", q: "Um colega novo está lento e atrasando a sua parte do trabalho.", o: [
+    ["Reclamo com o gestor.", 1],
+    ["Mostro para ele o jeito mais rápido de fazer e acompanho nos primeiros dias.", 3],
+    ["Faço a parte dele para não atrasar.", 1],
+    ["Ignoro. Ele que aprenda.", 0]] }
+];
+
+/* Escala de perfil (1 a 5). inv = pontuação invertida. sinc = checagem de sinceridade */
+const LK = [
+  { t: "Gosto de trabalhar em lugares com ritmo acelerado.", dim: "pressao" },
+  { t: "Quando tenho muita coisa para fazer, travo e não sei por onde começar.", dim: "pressao", inv: true },
+  { t: "Costumo perceber os problemas antes que alguém me avise.", dim: "proatividade" },
+  { t: "Prefiro que me digam exatamente o que fazer.", dim: "proatividade", inv: true },
+  { t: "Me sinto à vontade para cobrar as pessoas quando algo não está certo.", dim: "lideranca" },
+  { t: "Prefiro não ser responsável pelo resultado de outras pessoas.", dim: "lideranca", inv: true },
+  { t: "Cumpro horários e combinados mesmo quando ninguém está olhando.", dim: "responsabilidade" },
+  { t: "Nunca perdi a paciência com ninguém na vida.", sinc: true },
+  { t: "Trabalho físico e repetitivo me cansa muito rápido.", dim: "esforco", inv: true },
+  { t: "Gosto de ajudar colegas mesmo quando não é minha função.", dim: "equipe" },
+  { t: "Meu grande objetivo é ter meu próprio negócio nos próximos anos.", dim: "permanencia", inv: true },
+  { t: "Busco aprender coisas novas mesmo sem ninguém pedir.", dim: "crescimento" },
+  { t: "Nunca cheguei atrasado a nenhum compromisso.", sinc: true },
+  { t: "Prefiro ficar muitos anos em uma empresa e crescer nela a trocar de emprego com frequência.", dim: "permanencia" },
+  { t: "Me sinto bem quando termino o dia fisicamente cansado, mas com tudo entregue.", dim: "esforco" }
+];
+
+/* ---------- Renderização das perguntas ---------- */
+const sjtBox = document.getElementById("sjt");
+SJT.forEach((s, i) => {
+  const d = document.createElement("div"); d.className = "lk-item field";
+  d.innerHTML = `<span class="q-title req">${i + 1}. ${s.q}</span><div class="opts">` +
+    s.o.map((o, j) => `<label class="opt"><input type="radio" name="sjt${i}" value="${j}" required><span>${o[0]}</span></label>`).join("") + "</div>";
+  sjtBox.appendChild(d);
+});
+const lkBox = document.getElementById("lk");
+const LK_ROT = ["Discordo totalmente", "Discordo", "Neutro", "Concordo", "Concordo totalmente"];
+LK.forEach((l, i) => {
+  const d = document.createElement("div"); d.className = "lk-item";
+  d.innerHTML = `<span class="q-title req">${l.t}</span><div class="lk-scale" role="radiogroup">` +
+    [1,2,3,4,5].map(v => `<label title="${LK_ROT[v-1]}"><input type="radio" name="lk${i}" value="${v}" required>${v}</label>`).join("") +
+    `</div><div class="lk-legend"><span>Discordo totalmente</span><span>Concordo totalmente</span></div>`;
+  lkBox.appendChild(d);
+});
+
+/* ---------- Progresso ---------- */
+const form = document.getElementById("ficha");
+function atualizaBarra() {
+  const req = [...form.querySelectorAll("[required]")];
+  const grupos = new Set(); let ok = 0;
+  req.forEach(el => {
+    if (el.type === "radio") { if (grupos.has(el.name)) return; grupos.add(el.name); if (form.querySelector(`input[name="${el.name}"]:checked`)) ok++; }
+    else if (el.type === "checkbox" ? el.checked : el.value.trim()) ok++;
+  });
+  const total = req.filter(el => el.type !== "radio").length + grupos.size;
+  document.getElementById("bar").style.width = Math.round(ok / total * 100) + "%";
+}
+form.addEventListener("input", atualizaBarra); form.addEventListener("change", atualizaBarra);
+
+/* ---------- Análise ---------- */
+const val = n => { const el = form.querySelector(`[name="${n}"]:checked`) || form.elements[n]; return el ? el.value : ""; };
+const txt = id => { const el = document.getElementById(id); return el.tagName === "SELECT" ? el.options[el.selectedIndex].text : el.value.trim(); };
+
+function analisar() {
+  const pts = {}; Object.keys(DIM).forEach(k => pts[k] = { s: 0, m: 0 });
+  const add = (k, s, m) => { pts[k].s += s; pts[k].m += m; };
+
+  const sjtResp = SJT.map((s, i) => { const j = +val("sjt" + i); add(s.dim, s.o[j][1], 3); return { q: s.q, r: s.o[j][0], p: s.o[j][1] }; });
+  let sinc = 0;
+  const lkResp = LK.map((l, i) => {
+    const v = +val("lk" + i);
+    if (l.sinc) { if (v >= 4) sinc++; }
+    else add(l.dim, (l.inv ? 6 - v : v) - 1, 4);
+    return { t: l.t, v };
+  });
+
+  // Fatos objetivos
+  const peso = +val("peso"), fds = +val("fds"), he = +val("he");
+  add("esforco", peso * 1.5, 3); add("esforco", he, 2);
+  const lid = +val("exp_lider"); add("lideranca", lid, 3);
+  const tempo = +val("ult_tempo"), nEmp = +val("n_empregos"), motivo = val("motivo"), futuro = val("futuro");
+  if (tempo >= 0) add("permanencia", tempo, 4);
+  add("permanencia", Math.max(0, 3 - Math.max(0, nEmp - 1)), 3);
+  add("permanencia", { lider: 3, especialista: 3, naosei: 1, outra_area: 0, negocio: 0 }[futuro], 3);
+  add("responsabilidade", motivo === "conflito" || motivo === "desligado" ? 0 : 2, 2);
+  add("crescimento", document.getElementById("aprendeu").value.trim().length > 40 ? 2 : 1, 2);
+
+  const dims = {}; let soma = 0, pesos = 0;
+  Object.keys(DIM).forEach(k => { const p = pts[k].m ? Math.round(pts[k].s / pts[k].m * 100) : 0; dims[k] = p; soma += p * DIM[k].peso; pesos += DIM[k].peso; });
+  const nota = Math.round(soma / pesos);
+
+  // Eliminatórios e alertas
+  const elim = [], alertas = [], perguntas = [];
+  if (val("maior18") === "Não") elim.push("Menor de 18 anos.");
+  if (peso === 0) elim.push(`Declarou que não consegue carregar volumes de até ${CONFIG.PESO_KG} kg.`);
+  if (fds === 0) elim.push("Sem disponibilidade para escala com fins de semana/feriados.");
+
+  const cidade = txt("cidade");
+  if (!cidade.startsWith("Cajamar") && !["Santana de Parnaíba", "Pirapora do Bom Jesus"].includes(cidade)) {
+    alertas.push(`Mora fora de Cajamar (${cidade}), deslocamento: ${txt("deslocamento")}.`);
+    perguntas.push("Como vai ser seu trajeto em dia de chuva, greve ou quando o turno terminar tarde?");
+  } else if (txt("deslocamento") === "Mais de 1 hora") alertas.push("Deslocamento acima de 1 hora.");
+  if (tempo === 0 || tempo === 1) { alertas.push(`Ficou pouco tempo no último emprego (${txt("ult_tempo")}).`); perguntas.push("Você ficou pouco tempo no último emprego. O que faria você ficar aqui por anos?"); }
+  if (nEmp >= 3) { alertas.push(`Rotatividade alta: ${txt("n_empregos")} empregos em 3 anos.`); perguntas.push("Conte a história de cada troca de emprego nos últimos 3 anos. O que se repetiu?"); }
+  if (motivo === "conflito") { alertas.push("Saiu por conflito com liderança/colegas."); perguntas.push("Como era a relação com seu último líder? O que você faria diferente hoje?"); }
+  if (motivo === "desligado") { alertas.push("Foi desligado do último emprego."); perguntas.push("Por que você foi desligado? O que seu antigo gestor diria sobre você?"); }
+  if (motivo === "empreender" || futuro === "negocio" || +val("lk10") >= 4) { alertas.push("Indica vontade de empreender / sair para negócio próprio."); perguntas.push("Se em 1 ano você juntar dinheiro, abriria seu negócio ou continuaria aqui? Por quê?"); }
+  if (futuro === "outra_area") alertas.push("Pretende mudar de área nos próximos anos.");
+  if (peso === 1) { alertas.push("Declarou limitações para carregar peso."); perguntas.push("Que tipo de limitação você tem para carregar peso? (Confirmar no exame admissional.)"); }
+  if (fds === 1) alertas.push("Restrição parcial para fins de semana: " + (txt("fds_obs") || "não detalhou") + ".");
+  if (he === 0) alertas.push("Não faz horas extras em pico.");
+  if (lid === 0) alertas.push("Nunca liderou pessoas (vaga exige perfil de liderança).");
+  if (sinc >= 2) { alertas.push("Possível resposta 'para agradar' (marcou que nunca perdeu a paciência e nunca se atrasou). Tratar as notas com cautela."); perguntas.push("Conte a última vez que você perdeu a paciência no trabalho."); }
+  if (txt("inicio") === "Mais de 30 dias") alertas.push("Só pode começar em mais de 30 dias.");
+
+  const fracas = Object.keys(dims).sort((a, b) => dims[a] - dims[b]).slice(0, 2);
+  const PERG_DIM = {
+    lideranca: "Conte uma vez em que precisou cobrar alguém. Como foi a conversa?",
+    pressao: "Qual foi o dia mais puxado que você já teve no trabalho? O que você fez?",
+    esforco: "Como você se sente depois de 8 horas em pé, carregando caixas? O que faz para manter o ritmo?",
+    responsabilidade: "Conte um erro seu no trabalho. Como você descobriu e o que fez?",
+    proatividade: "Dê um exemplo de algo que você melhorou no trabalho sem ninguém pedir.",
+    equipe: "Conte uma vez em que você ajudou um colega a render mais.",
+    crescimento: "O que você está estudando ou aprendendo agora? Mostre algo concreto.",
+    permanencia: "O que faria você pedir demissão daqui? E o que faria você ficar 5 anos?"
+  };
+  fracas.forEach(k => perguntas.push(PERG_DIM[k]));
+
+  let classe;
+  if (elim.length) classe = "NÃO ATENDE REQUISITOS";
+  else if (nota >= 70 && alertas.length <= 1) classe = "CHAMAR PARA ENTREVISTA";
+  else if (nota >= 55) classe = "AVALIAR COM CAUTELA";
+  else classe = "NÃO RECOMENDADO";
+
+  return { dims, nota, classe, elim, alertas, perguntas: [...new Set(perguntas)], sjtResp, lkResp };
+}
+
+/* ---------- PDF ---------- */
+function gerarPDF(a) {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: "mm", format: "a4" });
+  const W = 210, M = 16, LW = W - 2 * M; let y = 18;
+  const pula = h => { if (y + h > 282) { doc.addPage(); y = 18; } };
+  const texto = (t, size = 10, style = "normal", cor = [22, 32, 28]) => {
+    doc.setFont("helvetica", style); doc.setFontSize(size); doc.setTextColor(...cor);
+    doc.splitTextToSize(String(t), LW).forEach(l => { pula(size * 0.45); doc.text(l, M, y); y += size * 0.45; });
+  };
+  const titulo = t => { y += 4; pula(10); doc.setFillColor(15, 122, 90); doc.rect(M, y - 4.5, 2, 6, "F"); texto("  " + t, 12, "bold"); y += 1.5; };
+  const cor = { "CHAMAR PARA ENTREVISTA": [15, 122, 90], "AVALIAR COM CAUTELA": [196, 132, 20], "NÃO RECOMENDADO": [179, 38, 30], "NÃO ATENDE REQUISITOS": [179, 38, 30] }[a.classe];
+
+  texto("FICHA DO CANDIDATO · ANÁLISE PRELIMINAR", 9, "bold", [91, 106, 100]);
+  y += 5; texto(txt("nome"), 18, "bold");
+  texto(`${CONFIG.CARGO}  ·  enviado em ${new Date().toLocaleString("pt-BR")}`, 9, "normal", [91, 106, 100]);
+  y += 3;
+  doc.setFillColor(...cor); doc.roundedRect(M, y, LW, 14, 2, 2, "F");
+  doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(13);
+  doc.text(a.classe, M + 5, y + 9); doc.text(`Nota geral: ${a.nota}/100`, W - M - 5, y + 9, { align: "right" }); y += 21;
+
+  titulo("Contato");
+  texto(`WhatsApp: ${txt("whats")}   E-mail: ${txt("email") || "-"}`);
+  texto(`Mora em: ${txt("cidade")}${txt("bairro") ? " – " + txt("bairro") : ""}   Deslocamento: ${txt("deslocamento")} (${txt("transporte")})`);
+  texto(`Pode começar: ${txt("inicio")}`);
+
+  titulo("Notas por competência");
+  Object.keys(DIM).forEach(k => {
+    pula(7); const p = a.dims[k];
+    doc.setFont("helvetica", "normal"); doc.setFontSize(10); doc.setTextColor(22, 32, 28);
+    doc.text(DIM[k].nome, M, y);
+    doc.setFillColor(225, 231, 228); doc.rect(M + 58, y - 3.2, 100, 4, "F");
+    doc.setFillColor(...(p >= 70 ? [15, 122, 90] : p >= 50 ? [196, 132, 20] : [179, 38, 30])); doc.rect(M + 58, y - 3.2, p, 4, "F");
+    doc.text(p + "%", M + 162, y); y += 6.5;
+  });
+
+  if (a.elim.length) { titulo("Eliminatórios"); a.elim.forEach(e => texto("• " + e, 10, "bold", [179, 38, 30])); }
+  titulo("Pontos de atenção");
+  (a.alertas.length ? a.alertas : ["Nenhum alerta relevante."]).forEach(e => texto("• " + e));
+  titulo("Perguntas sugeridas para a entrevista");
+  a.perguntas.forEach((p, i) => texto(`${i + 1}. ${p}`));
+
+  titulo("Experiência");
+  texto(`Último emprego: ${txt("ult_empresa")} – ${txt("ult_cargo")} (${txt("ult_tempo")})`);
+  texto(`Empregos nos últimos 3 anos: ${txt("n_empregos")}   Experiência e-commerce/logística: ${txt("exp_ecom")}`);
+  texto(`Liderança: ${txt("exp_lider")}`);
+  texto(`Motivo da saída: ${txt("motivo")}`);
+  texto(`Nas palavras do candidato: "${txt("motivo_txt")}"`, 10, "italic");
+
+  titulo("Disponibilidade");
+  texto(`Carregar até ${CONFIG.PESO_KG} kg: ${form.querySelector('[name=peso]:checked').parentNode.textContent.trim()}`);
+  texto(`Fins de semana/feriados: ${form.querySelector('[name=fds]:checked').parentNode.textContent.trim()}${txt("fds_obs") ? " – " + txt("fds_obs") : ""}`);
+  texto(`Horas extras no pico: ${form.querySelector('[name=he]:checked').parentNode.textContent.trim()}`);
+
+  titulo("Planos e respostas abertas");
+  texto("Daqui a 3 anos: " + form.querySelector('[name=futuro]:checked').parentNode.textContent.trim());
+  [["O que aprendeu por conta própria", "aprendeu"], ["Situação de pressão", "pressao_txt"], ["O que faz um bom líder", "lider_txt"], ["Por que quer trabalhar aqui", "porque"]]
+    .forEach(([r, id]) => { y += 1; texto(r + ":", 10, "bold"); texto(txt(id) || "-"); });
+
+  titulo("Teste situacional (pontos de 0 a 3)");
+  a.sjtResp.forEach((s, i) => { y += 1; texto(`${i + 1}. ${s.q}`, 9, "bold"); texto(`→ ${s.r}  [${s.p}/3]`, 9, "normal", s.p >= 3 ? [15, 122, 90] : s.p === 0 ? [179, 38, 30] : [22, 32, 28]); });
+
+  titulo("Perfil (1 = discordo totalmente, 5 = concordo totalmente)");
+  a.lkResp.forEach(l => texto(`[${l.v}] ${l.t}`, 9));
+
+  y += 4; texto("Análise automática preliminar. Serve de apoio para a entrevista e não substitui a avaliação da pessoa.", 8, "italic", [91, 106, 100]);
+  return doc.output("blob");
+}
+
+/* ---------- Envio ---------- */
+form.addEventListener("submit", ev => {
+  ev.preventDefault();
+  const erro = document.getElementById("erro"); erro.hidden = true;
+  form.querySelectorAll(".invalid").forEach(e => e.classList.remove("invalid"));
+  const faltando = [...form.querySelectorAll("[required]")].filter(el => !el.checkValidity());
+  if (faltando.length) {
+    faltando.forEach(el => (el.type === "radio" ? el.closest(".field, .lk-item") : el).classList.add("invalid"));
+    erro.textContent = `Faltam ${new Set(faltando.map(e => e.name || e.id)).size} respostas obrigatórias (marcadas em vermelho).`;
+    erro.hidden = false; faltando[0].scrollIntoView({ behavior: "smooth", block: "center" }); return;
+  }
+  const btn = document.getElementById("btn"); btn.disabled = true; btn.textContent = "Enviando…";
+  try {
+    const a = analisar();
+    const nome = txt("nome");
+    document.getElementById("e_subject").value = `Candidato: ${nome} · ${a.classe} (${a.nota}/100)`;
+    document.getElementById("e_nome").value = nome;
+    document.getElementById("e_whats").value = txt("whats");
+    document.getElementById("e_class").value = a.classe;
+    document.getElementById("e_nota").value = a.nota + "/100";
+    document.getElementById("e_resumo").value =
+      (a.elim.length ? "ELIMINATÓRIOS: " + a.elim.join(" ") + "\n" : "") +
+      "ALERTAS: " + (a.alertas.join(" | ") || "nenhum") + "\n" +
+      Object.keys(DIM).map(k => `${DIM[k].nome}: ${a.dims[k]}%`).join(" | ");
+    try {
+      const blob = gerarPDF(a);
+      const arq = new File([blob], `Candidato_${nome.replace(/[^\p{L}\d]+/gu, "_")}.pdf`, { type: "application/pdf" });
+      const dt = new DataTransfer(); dt.items.add(arq);
+      document.getElementById("e_pdf").files = dt.files;
+    } catch (e) { console.warn("PDF não anexado", e); }
+    document.getElementById("envio").submit();
+    setTimeout(() => { form.hidden = true; document.getElementById("ok").hidden = false; window.scrollTo(0, 0); }, 1500);
+  } catch (e) {
+    console.error(e); btn.disabled = false; btn.textContent = "Enviar minha ficha";
+    erro.textContent = "Não foi possível enviar. Verifique sua internet e tente de novo."; erro.hidden = false;
+  }
+});
+atualizaBarra();
+</script>
+</body>
+</html>
