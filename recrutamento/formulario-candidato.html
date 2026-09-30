@@ -85,7 +85,7 @@ button.send:disabled { opacity: .6; cursor: progress; }
   <div class="progress" aria-hidden="true"><i id="bar"></i></div>
 
   <header class="top">
-    <span class="label-tape">Processo seletivo · Cajamar/SP</span>
+    <span class="label-tape">Freelancer com efetivação · Cajamar/SP</span>
     <h1 id="titulo">Ficha do candidato</h1>
     <p class="lead">Queremos te conhecer melhor antes da conversa presencial. Leva cerca de 15 minutos. Não existe resposta "bonita": responda como você realmente age no dia a dia.</p>
   </header>
@@ -106,8 +106,8 @@ button.send:disabled { opacity: .6; cursor: progress; }
         <div class="field"><label class="req" for="cidade">Onde você mora?</label>
           <select id="cidade" name="cidade" required>
             <option value="">Selecione</option>
-            <option>Cajamar (Centro)</option><option>Cajamar (Jordanésia)</option><option>Cajamar (Polvilho)</option>
-            <option>Santana de Parnaíba</option><option>Pirapora do Bom Jesus</option><option>Franco da Rocha</option>
+            <option>Cajamar (Paraíso)</option><option>Cajamar (Centro)</option><option>Cajamar (Jordanésia)</option><option>Cajamar (Polvilho)</option>
+            <option>Cajamar (outro bairro)</option><option>Santana de Parnaíba</option><option>Pirapora do Bom Jesus</option><option>Franco da Rocha</option>
             <option>Caieiras</option><option>Jundiaí</option><option>São Paulo (capital)</option><option>Outra cidade</option>
           </select></div>
       </div>
@@ -167,20 +167,26 @@ button.send:disabled { opacity: .6; cursor: progress; }
     <!-- 3 -->
     <section class="card">
       <div class="sec-head"><span class="sec-num">03</span><h2>Disponibilidade e rotina da vaga</h2></div>
-      <p class="sec-note">A vaga é em operação de e-commerce: ritmo acelerado, trabalho em pé, movimentação de volumes e picos de demanda (Black Friday, Natal, datas promocionais).</p>
+      <p class="sec-note">A vaga é em operação de e-commerce, no Paraíso (Cajamar): ritmo acelerado, trabalho em pé, movimentação de volumes e picos de demanda (Black Friday, Natal, datas promocionais). Começa como freelancer, com possibilidade de efetivação.</p>
+      <div class="field"><span class="q-title req">Você consegue cumprir o horário de <b class="horario"></b>?</span>
+        <div class="opts">
+          <label class="opt"><input type="radio" name="horario" value="2" required><span>Sim, todos os dias</span></label>
+          <label class="opt"><input type="radio" name="horario" value="1"><span>Sim, mas tenho alguma restrição</span></label>
+          <label class="opt"><input type="radio" name="horario" value="0"><span>Não consigo</span></label>
+        </div>
+        <label class="hint" for="fds_obs">Se tem restrição, qual? (opcional)</label><input type="text" id="fds_obs" name="fds_obs"></div>
+      <div class="field"><span class="q-title req">Você aceita começar como freelancer, com possibilidade de efetivação conforme desempenho?</span>
+        <div class="opts">
+          <label class="opt"><input type="radio" name="freela" value="2" required><span>Sim</span></label>
+          <label class="opt"><input type="radio" name="freela" value="1"><span>Sim, mas preciso ser efetivado logo</span></label>
+          <label class="opt"><input type="radio" name="freela" value="0"><span>Não, só aceito registro desde o início</span></label>
+        </div></div>
       <div class="field"><span class="q-title req">Você consegue movimentar e carregar caixas de até <b class="peso"></b> kg várias vezes ao dia?</span>
         <div class="opts">
           <label class="opt"><input type="radio" name="peso" value="2" required><span>Sim, sem problema</span></label>
           <label class="opt"><input type="radio" name="peso" value="1"><span>Sim, com algumas limitações</span></label>
           <label class="opt"><input type="radio" name="peso" value="0"><span>Não consigo</span></label>
         </div></div>
-      <div class="field"><span class="q-title req">Tem disponibilidade para trabalhar em escala que inclua sábados, domingos ou feriados?</span>
-        <div class="opts">
-          <label class="opt"><input type="radio" name="fds" value="2" required><span>Sim, total</span></label>
-          <label class="opt"><input type="radio" name="fds" value="1"><span>Sim, mas com algumas restrições</span></label>
-          <label class="opt"><input type="radio" name="fds" value="0"><span>Não</span></label>
-        </div>
-        <label class="hint" for="fds_obs">Se tem restrição, qual? (opcional)</label><input type="text" id="fds_obs" name="fds_obs"></div>
       <div class="field"><span class="q-title req">Em época de pico, pode fazer horas extras?</span>
         <div class="opts">
           <label class="opt"><input type="radio" name="he" value="2" required><span>Sim</span></label>
@@ -254,23 +260,25 @@ button.send:disabled { opacity: .6; cursor: progress; }
 /* ===================== CONFIGURAÇÃO (edite aqui) ===================== */
 const CONFIG = {
   EMAIL_DESTINO: "jessica-thais@outlook.com.br",
-  CARGO: "Líder de Operações – E-commerce",
+  CARGO: "E-commerce – Freelancer",
+  HORARIO: "segunda a sexta, das 7h às 16h, e sábado, das 7h às 13h",
   PESO_KG: 25
 };
 /* ===================================================================== */
 
 document.getElementById("titulo").textContent = "Ficha do candidato · " + CONFIG.CARGO;
 document.querySelectorAll(".peso").forEach(e => e.textContent = CONFIG.PESO_KG);
+document.querySelectorAll(".horario").forEach(e => e.textContent = CONFIG.HORARIO);
 document.getElementById("envio").action = "https://formsubmit.co/" + CONFIG.EMAIL_DESTINO;
 
 /* Dimensões avaliadas e pesos na nota final */
 const DIM = {
-  lideranca:        { nome: "Liderança",               peso: 20 },
+  lideranca:        { nome: "Liderança",               peso: 10 },
   pressao:          { nome: "Resistência à pressão",   peso: 15 },
   esforco:          { nome: "Disposição física/ritmo", peso: 15 },
-  responsabilidade: { nome: "Responsabilidade",        peso: 15 },
+  responsabilidade: { nome: "Responsabilidade",        peso: 20 },
   proatividade:     { nome: "Proatividade/urgência",   peso: 10 },
-  equipe:           { nome: "Trabalho em equipe",      peso: 10 },
+  equipe:           { nome: "Relacionamento/equipe",   peso: 15 },
   crescimento:      { nome: "Vontade de crescer",      peso:  5 },
   permanencia:      { nome: "Tendência a permanecer",  peso: 10 }
 };
@@ -408,7 +416,7 @@ function analisar() {
   });
 
   // Fatos objetivos
-  const peso = +val("peso"), fds = +val("fds"), he = +val("he");
+  const peso = +val("peso"), hor = +val("horario"), freela = +val("freela"), he = +val("he");
   add("esforco", peso * 1.5, 3); add("esforco", he, 2);
   const lid = +val("exp_lider"); add("lideranca", lid, 3);
   const tempo = +val("ult_tempo"), nEmp = +val("n_empregos"), motivo = val("motivo"), futuro = val("futuro");
@@ -426,13 +434,15 @@ function analisar() {
   const elim = [], alertas = [], perguntas = [];
   if (val("maior18") === "Não") elim.push("Menor de 18 anos.");
   if (peso === 0) elim.push(`Declarou que não consegue carregar volumes de até ${CONFIG.PESO_KG} kg.`);
-  if (fds === 0) elim.push("Sem disponibilidade para escala com fins de semana/feriados.");
+  if (hor === 0) elim.push("Não consegue cumprir o horário da vaga.");
+  if (freela === 0) elim.push("Não aceita começar como freelancer.");
 
   const cidade = txt("cidade");
-  if (!cidade.startsWith("Cajamar") && !["Santana de Parnaíba", "Pirapora do Bom Jesus"].includes(cidade)) {
-    alertas.push(`Mora fora de Cajamar (${cidade}), deslocamento: ${txt("deslocamento")}.`);
-    perguntas.push("Como vai ser seu trajeto em dia de chuva, greve ou quando o turno terminar tarde?");
-  } else if (txt("deslocamento") === "Mais de 1 hora") alertas.push("Deslocamento acima de 1 hora.");
+  if (!cidade.startsWith("Cajamar") && cidade !== "Santana de Parnaíba") {
+    elim.push(`Mora fora da região exigida (${cidade}).`);
+  }
+  if (txt("deslocamento") !== "Até 20 minutos" && txt("deslocamento") !== "20 a 40 minutos") perguntas.push("Como vai ser seu trajeto para chegar às 7h, inclusive em dia de chuva ou greve?");
+  if (txt("deslocamento") === "Mais de 1 hora") alertas.push("Deslocamento acima de 1 hora.");
   if (tempo === 0 || tempo === 1) { alertas.push(`Ficou pouco tempo no último emprego (${txt("ult_tempo")}).`); perguntas.push("Você ficou pouco tempo no último emprego. O que faria você ficar aqui por anos?"); }
   if (nEmp >= 3) { alertas.push(`Rotatividade alta: ${txt("n_empregos")} empregos em 3 anos.`); perguntas.push("Conte a história de cada troca de emprego nos últimos 3 anos. O que se repetiu?"); }
   if (motivo === "conflito") { alertas.push("Saiu por conflito com liderança/colegas."); perguntas.push("Como era a relação com seu último líder? O que você faria diferente hoje?"); }
@@ -440,9 +450,10 @@ function analisar() {
   if (motivo === "empreender" || futuro === "negocio" || +val("lk10") >= 4) { alertas.push("Indica vontade de empreender / sair para negócio próprio."); perguntas.push("Se em 1 ano você juntar dinheiro, abriria seu negócio ou continuaria aqui? Por quê?"); }
   if (futuro === "outra_area") alertas.push("Pretende mudar de área nos próximos anos.");
   if (peso === 1) { alertas.push("Declarou limitações para carregar peso."); perguntas.push("Que tipo de limitação você tem para carregar peso? (Confirmar no exame admissional.)"); }
-  if (fds === 1) alertas.push("Restrição parcial para fins de semana: " + (txt("fds_obs") || "não detalhou") + ".");
+  if (hor === 1) { alertas.push("Tem restrição de horário: " + (txt("fds_obs") || "não detalhou") + "."); perguntas.push("Qual é exatamente a sua restrição de horário? Com que frequência ela acontece?"); }
+  if (freela === 1) { alertas.push("Aceita freelancer, mas precisa de efetivação rápida."); perguntas.push("Por quanto tempo você consegue ficar como freelancer antes de precisar do registro?"); }
   if (he === 0) alertas.push("Não faz horas extras em pico.");
-  if (lid === 0) alertas.push("Nunca liderou pessoas (vaga exige perfil de liderança).");
+  // Liderança é diferencial: não gera alerta, entra só na nota.
   if (sinc >= 2) { alertas.push("Possível resposta 'para agradar' (marcou que nunca perdeu a paciência e nunca se atrasou). Tratar as notas com cautela."); perguntas.push("Conte a última vez que você perdeu a paciência no trabalho."); }
   if (txt("inicio") === "Mais de 30 dias") alertas.push("Só pode começar em mais de 30 dias.");
 
@@ -519,7 +530,8 @@ function gerarPDF(a) {
 
   titulo("Disponibilidade");
   texto(`Carregar até ${CONFIG.PESO_KG} kg: ${form.querySelector('[name=peso]:checked').parentNode.textContent.trim()}`);
-  texto(`Fins de semana/feriados: ${form.querySelector('[name=fds]:checked').parentNode.textContent.trim()}${txt("fds_obs") ? " – " + txt("fds_obs") : ""}`);
+  texto(`Horário (${CONFIG.HORARIO}): ${form.querySelector('[name=horario]:checked').parentNode.textContent.trim()}${txt("fds_obs") ? " – " + txt("fds_obs") : ""}`);
+  texto(`Começar como freelancer: ${form.querySelector('[name=freela]:checked').parentNode.textContent.trim()}`);
   texto(`Horas extras no pico: ${form.querySelector('[name=he]:checked').parentNode.textContent.trim()}`);
 
   titulo("Planos e respostas abertas");
