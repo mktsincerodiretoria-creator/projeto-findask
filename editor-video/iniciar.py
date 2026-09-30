@@ -36,7 +36,10 @@ if __name__ == "__main__":
 
     # Com o acesso pelo celular ligado, escuta a rede Wi-Fi (o Windows pode pedir
     # permissão ao firewall na primeira vez: clique em "Permitir").
-    host = "0.0.0.0" if celular_ativo() else "127.0.0.1"
+    from app.acesso import modo_servidor
+
+    # No servidor (VPS) o Caddy recebe o https e repassa para cá: escuta só localmente.
+    host = "0.0.0.0" if celular_ativo() and not modo_servidor() else "127.0.0.1"
     os.environ["CF_HOST"] = host
     print(f"\nCorteFácil rodando em {url}  (feche esta janela para sair)")
     if host == "0.0.0.0":

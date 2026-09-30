@@ -1441,8 +1441,7 @@ window.addEventListener("hashchange", rotear);
   rotear();
   requestAnimationFrame(quadro);
   procurarAtualizacao();
-  // No celular os botões de configuração do computador ficam escondidos.
-  api("/api/celular").then(() => ($("#btn-celular").hidden = false)).catch(() => {
-    $("#btn-config").hidden = true;
-  });
+  // "📱 Celular" só no computador; num servidor (VPS) o acesso já é pela internet.
+  $("#btn-celular").hidden = !(estado.status.local && !estado.status.servidor);
+  $("#btn-config").hidden = !(estado.status.local || estado.status.servidor);
 })();

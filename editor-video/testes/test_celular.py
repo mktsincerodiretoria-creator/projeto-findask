@@ -82,3 +82,18 @@ def test_outro_site_nao_consegue_mandar_comandos(app_teste):
     pc = TestClient(main.app)
     r = pc.post("/api/config", json={"anthropic_api_key": "x"}, headers={"Origin": "https://site-malicioso.com"})
     assert r.status_code == 403
+
+
+def test_modo_servidor_pede_senha_ate_para_127(app_teste, monkeypatch):
+    """No VPS tudo chega pelo Caddy vindo de 127.0.0.1: mesmo assim tem que pedir senha."""
+    main, acesso = app_teste
+    monkeypatch.setenv("CF_SENHA", "cortefacil-teste")
+    via_caddy = TestClient(main.app, client=("127.0.0.1", 40000))
+    assert via_caddy.get("/api/projetos").status_code == 401
+    assert via_caddy.get("/api/status").status_code == 401
+    assert via_caddy.post("/api/entrar", json={"senha": "cortefacil-teste"}).status_code == 200
+    assert via_caddy.get("/api/projetos").status_code == 200
+    st = via_caddy.get("/api/status").json()
+    assert st["servidor"] is True and st["local"] is False
+    # As telas de "celular pelo Wi-Fi" não existem no servidor.
+    assert via_caddy.get("/api/celular").status_code == 403

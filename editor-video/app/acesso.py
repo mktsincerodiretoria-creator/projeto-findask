@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import os
 import secrets
 import socket
 import threading
@@ -24,8 +25,20 @@ _tentativas: list[float] = []
 _trava = threading.Lock()
 
 
+def modo_servidor() -> bool:
+    """Instalado num servidor (VPS): a senha vem de CF_SENHA e vale para todo mundo,
+    porque ali os pedidos chegam pelo Caddy (https) e sempre parecem vir de 127.0.0.1."""
+    return bool(os.environ.get("CF_SENHA"))
+
+
 def config() -> dict:
-    return projetos.config_app()
+    cfg = projetos.config_app()
+    if modo_servidor():
+        if not cfg.get("segredo"):
+            cfg["segredo"] = secrets.token_hex(16)
+            projetos.salvar_config_app(cfg)
+        cfg = {**cfg, "celular": True, "senha_celular": os.environ["CF_SENHA"]}
+    return cfg
 
 
 def celular_ativo() -> bool:
@@ -70,8 +83,12 @@ def conferir_senha(senha: str) -> str | None:
         return None
 
 
+def local(host_cliente: str) -> bool:
+    return host_cliente in LOCAIS and not modo_servidor()
+
+
 def autorizado(host_cliente: str, cookie: str | None) -> bool:
-    if host_cliente in LOCAIS:
+    if local(host_cliente):
         return True
     cfg = config()
     return bool(cfg.get("celular") and cookie and hmac.compare_digest(cookie, _token(cfg)))

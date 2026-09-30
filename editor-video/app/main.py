@@ -174,9 +174,11 @@ def tarefa_exportar(pid: str, opcoes: dict):
 # ---------------------------------------------------------------- API
 
 @app.get("/api/status")
-def status():
+def status(request: Request):
     return {
         "versao": VERSAO,
+        "servidor": acesso.modo_servidor(),
+        "local": acesso.local(request.client.host if request.client else ""),
         "ffmpeg": midia.ffmpeg_disponivel(),
         "ia_disponivel": _ia_disponivel(),
         "modelos": transcricao.MODELOS,
@@ -201,7 +203,7 @@ def entrar(dados: Entrada):
 
 
 def _so_no_computador(request: Request):
-    if (request.client.host if request.client else "") not in acesso.LOCAIS:
+    if not acesso.local(request.client.host if request.client else ""):
         raise HTTPException(403, "Isso só pode ser mudado no computador.")
 
 
