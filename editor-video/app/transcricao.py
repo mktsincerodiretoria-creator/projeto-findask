@@ -29,9 +29,13 @@ def _carregar(nome: str):
 
 def transcrever(wav: Path, modelo: str = "small", idioma: str = "pt", progresso=None) -> list[dict]:
     """Devolve [{i, texto, inicio, fim, prob}] para cada palavra falada."""
+    from .midia import ler_wav
+
     whisper = _carregar(modelo)
+    # Passa o áudio já decodificado (16 kHz mono): não depende do decodificador
+    # interno do faster-whisper, que quebrou com o PyAV 19.
     segmentos, info = whisper.transcribe(
-        str(wav),
+        ler_wav(wav),
         language=idioma or None,
         word_timestamps=True,
         initial_prompt=PROMPT_INICIAL,

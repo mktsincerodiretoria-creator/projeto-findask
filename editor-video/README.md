@@ -101,7 +101,7 @@ testes/           pytest (o teste ponta a ponta gera um vídeo com espeak-ng)
 ```
 
 ```bash
-pip install -r requirements.txt
+pip install -r requirements.txt -r requirements-dev.txt
 python -m pytest testes
 ```
 

@@ -12,7 +12,7 @@ from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent
 IGNORAR = {"testes", "dados", "ferramentas", "dist", "__pycache__", ".pytest_cache", ".venv"}
-IGNORAR_ARQUIVOS = {"iniciar.sh", "empacotar.py", ".gitignore", ".gitattributes"}
+IGNORAR_ARQUIVOS = {"requirements-dev.txt", "iniciar.sh", "empacotar.py", ".gitignore", ".gitattributes"}
 
 # Parte lida pelo cmd.exe. Os marcadores são montados por concatenação para que
 # o texto literal só exista nas linhas-marcador lá embaixo.

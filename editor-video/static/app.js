@@ -209,6 +209,7 @@ function acompanhar(pid) {
   mostrarTela("processando");
   $("#proc-erro").hidden = true;
   $("#proc-voltar").hidden = true;
+  $("#proc-tentar").hidden = true;
   $(".girando").hidden = false;
   const passo = async () => {
     let p;
@@ -228,12 +229,21 @@ function acompanhar(pid) {
       $("#proc-erro").textContent = p.erro;
       $("#proc-erro").hidden = false;
       $("#proc-voltar").hidden = false;
+      $("#proc-tentar").hidden = false;
+      $("#proc-tentar").dataset.pid = pid;
     }
   };
   passo();
   estado.poll = setInterval(passo, 1000);
 }
 $("#proc-voltar").addEventListener("click", () => (location.hash = ""));
+$("#proc-tentar").addEventListener("click", async () => {
+  const pid = $("#proc-tentar").dataset.pid;
+  try {
+    await enviar(`/api/projetos/${pid}/analisar`, "POST", { retranscrever: true });
+    acompanhar(pid);
+  } catch (e) { aviso(e.message, true); }
+});
 
 /* ------------------------------------------------------------ editor */
 
