@@ -20,15 +20,17 @@ vai para a IA, e apenas se você ativar a revisão inteligente).
 
 ## Instalação
 
-### Windows
+### Windows (o jeito fácil)
 
-1. Descompacte o ZIP (botão direito → **Extrair tudo**).
-2. Dê dois cliques em **`iniciar.bat`**.
-   - Se aparecer "O Windows protegeu o computador", clique em **Mais informações → Executar assim mesmo**.
-   - Na primeira vez ele baixa e instala sozinho o Python, o ffmpeg e o resto (uns 5 a 10 minutos,
-     cerca de 1 GB). Tudo fica dentro da pasta `ferramentas`, sem mexer no resto do computador.
-   - Se o Windows pedir permissão para instalar o "Microsoft Visual C++", clique em **Sim**.
-3. O editor abre no navegador. Das próximas vezes, é só dar dois cliques em `iniciar.bat` de novo.
+1. Baixe o arquivo **`Instalar CorteFacil.bat`** (gerado com `python empacotar.py`, fica em `dist/`).
+2. Dê dois cliques nele. Se aparecer "O Windows protegeu o computador", clique em
+   **Mais informações → Executar assim mesmo**.
+3. Ele instala tudo sozinho em `%LOCALAPPDATA%\CorteFacil` (fora do OneDrive, sem pedir
+   administrador), cria o ícone **CorteFácil** na Área de Trabalho e abre o editor.
+   Na primeira vez leva uns 5 a 10 minutos (baixa cerca de 1 GB).
+4. Das próximas vezes, clique no ícone **CorteFácil** na Área de Trabalho.
+
+Para atualizar, rode um `Instalar CorteFacil.bat` mais novo: seus projetos são mantidos.
 
 ### Mac
 

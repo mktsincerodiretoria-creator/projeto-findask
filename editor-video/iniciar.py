@@ -2,6 +2,7 @@
 import os
 import sys
 import threading
+import urllib.request
 import webbrowser
 
 import uvicorn
@@ -17,6 +18,13 @@ if __name__ == "__main__":
         print("\n[ERRO] ffmpeg não encontrado. Instale seguindo o README.md e abra de novo.\n")
         sys.exit(1)
     url = f"http://127.0.0.1:{PORTA}"
+    try:
+        # Já está aberto (ícone clicado duas vezes)? Só mostra a página de novo.
+        urllib.request.urlopen(f"{url}/api/status", timeout=1)
+        webbrowser.open(url)
+        sys.exit(0)
+    except OSError:
+        pass
     print(f"\nCorteFácil rodando em {url}  (feche esta janela para sair)\n")
     if "--sem-navegador" not in sys.argv:
         threading.Timer(1.5, lambda: webbrowser.open(url)).start()

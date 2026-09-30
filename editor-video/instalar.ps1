@@ -1,5 +1,8 @@
 ﻿# CorteFácil: instala tudo o que precisa (só na primeira vez) e abre o editor.
 # Python e ffmpeg ficam dentro da pasta "ferramentas", sem mexer no resto do computador.
+# Com -CriarAtalhos (usado pelo "Instalar CorteFacil.bat"), cria o ícone na Área de Trabalho.
+
+param([switch]$CriarAtalhos)
 
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
@@ -96,6 +99,25 @@ try {
         & $Python -m pip install --disable-pip-version-check --no-warn-script-location -r $requisitos
         if ($LASTEXITCODE -ne 0) { throw "Falha ao instalar os componentes do editor." }
         Set-Content -Path $marca -Value $hash
+    }
+
+    if ($CriarAtalhos) {
+        Passo "Criando o ícone CorteFácil na Área de Trabalho..."
+        $shell = New-Object -ComObject WScript.Shell
+        $destinos = @(
+            [Environment]::GetFolderPath("Desktop"),
+            (Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs")
+        )
+        foreach ($pasta in $destinos) {
+            $atalho = $shell.CreateShortcut((Join-Path $pasta "CorteFácil.lnk"))
+            $atalho.TargetPath = Join-Path $Base "iniciar.bat"
+            $atalho.WorkingDirectory = $Base
+            $atalho.IconLocation = (Join-Path $Base "static\icone.ico") + ",0"
+            $atalho.Description = "CorteFácil - editor inteligente de vídeo"
+            $atalho.Save()
+        }
+        Write-Host ""
+        Write-Host "PRONTO! Das próximas vezes, clique no ícone CorteFácil na Área de Trabalho." -ForegroundColor Green
     }
 
     Passo "Abrindo o CorteFácil no navegador... (deixe esta janela aberta enquanto usa)"
