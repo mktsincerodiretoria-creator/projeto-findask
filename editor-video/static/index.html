@@ -15,8 +15,9 @@
     <span class="topo-nome" id="nome-projeto"></span>
     <div class="topo-acoes">
       <button class="btn-atualizar" id="btn-atualizar" hidden>⬆ Nova versão</button>
-      <button class="btn-fantasma" id="btn-config" title="Configurações">⚙ Configurações</button>
-      <button class="btn-primario" id="btn-exportar" hidden>⬇ Exportar</button>
+      <button class="btn-fantasma" id="btn-celular" title="Usar no celular" hidden>📱 <span class="rotulo">Celular</span></button>
+      <button class="btn-fantasma" id="btn-config" title="Configurações">⚙ <span class="rotulo">Configurações</span></button>
+      <button class="btn-primario" id="btn-exportar" hidden>⬇ <span class="rotulo">Exportar</span></button>
     </div>
   </header>
 
@@ -115,10 +116,12 @@
         </div>
 
         <div class="aba-conteudo" id="aba-texto" hidden>
-          <p class="dica">Clique numa palavra para ir até ela. Selecione várias (arraste ou
-            Shift+clique) para cortar ou restaurar. Duplo clique corrige o texto da legenda.</p>
+          <p class="dica">Clique numa palavra para ir até ela. Para selecionar várias, arraste
+            (ou, no celular, toque na primeira e depois na última) e escolha cortar ou restaurar.
+            "Corrigir" (ou duplo clique) muda o texto da legenda.</p>
           <div class="barra-selecao" id="barra-selecao" hidden>
             <span id="selecao-info"></span>
+            <button class="btn-mini" id="corrigir-palavra" hidden>✎ Corrigir</button>
             <button class="btn-mini perigo" id="cortar-selecao">✂ Cortar</button>
             <button class="btn-mini" id="restaurar-selecao">↺ Restaurar</button>
           </div>
@@ -240,6 +243,45 @@
       <div class="dialogo-acoes" id="atu-acoes">
         <button value="cancelar" class="btn-fantasma">Depois</button>
         <button type="button" id="atu-aplicar" class="btn-primario">Atualizar agora</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- ============ CELULAR ============ -->
+  <dialog id="dlg-celular" class="dialogo">
+    <form method="dialog" class="dialogo-corpo">
+      <h2>📱 Usar no celular</h2>
+      <div id="cel-desligado">
+        <p>Edite pelo celular usando o programa que está aberto neste computador.</p>
+        <ul class="novidades">
+          <li>O celular precisa estar no <b>mesmo Wi-Fi</b> deste computador.</li>
+          <li>O computador precisa ficar <b>ligado</b>, com o CorteFácil aberto.</li>
+          <li>O celular pede uma <b>senha de 6 números</b>, que aparece aqui.</li>
+        </ul>
+        <p class="dica">Ao ativar, o programa reinicia. Se o Windows perguntar sobre o
+          <b>Firewall</b>, marque "Redes privadas" e clique em <b>Permitir acesso</b>.</p>
+      </div>
+      <div id="cel-reiniciando" hidden>
+        <div class="girando"></div>
+        <p>Reiniciando o CorteFácil… Se o Windows perguntar sobre o Firewall, clique em <b>Permitir acesso</b>.</p>
+      </div>
+      <div id="cel-ligado" hidden>
+        <ol class="passos-celular">
+          <li>Abra a <b>câmera</b> do celular e aponte para o código:</li>
+        </ol>
+        <div class="qr" id="cel-qr"></div>
+        <p class="dica centro">ou digite no navegador do celular: <b id="cel-endereco"></b></p>
+        <ol class="passos-celular" start="2">
+          <li>Digite a senha: <span class="senha-grande" id="cel-senha"></span></li>
+        </ol>
+        <p class="dica">Não abriu? Confira se o celular está no mesmo Wi-Fi (não nos dados móveis)
+          e se o Firewall do Windows permitiu o CorteFácil.</p>
+      </div>
+      <div class="dialogo-acoes">
+        <button value="cancelar" class="btn-fantasma">Fechar</button>
+        <button type="button" class="btn-mini" id="cel-nova-senha">Trocar senha</button>
+        <button type="button" class="btn-mini perigo" id="cel-desativar">Desligar</button>
+        <button type="button" id="cel-ativar" class="btn-primario">Ativar acesso pelo celular</button>
       </div>
     </form>
   </dialog>

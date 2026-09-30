@@ -32,7 +32,16 @@ if __name__ == "__main__":
     reiniciando = marca.exists()
     if reiniciando:
         marca.unlink()
-    print(f"\nCorteFácil rodando em {url}  (feche esta janela para sair)\n")
+    from app.acesso import celular_ativo, ip_da_rede
+
+    # Com o acesso pelo celular ligado, escuta a rede Wi-Fi (o Windows pode pedir
+    # permissão ao firewall na primeira vez: clique em "Permitir").
+    host = "0.0.0.0" if celular_ativo() else "127.0.0.1"
+    os.environ["CF_HOST"] = host
+    print(f"\nCorteFácil rodando em {url}  (feche esta janela para sair)")
+    if host == "0.0.0.0":
+        print(f"No celular (mesmo Wi-Fi): http://{ip_da_rede()}:{PORTA}")
+    print()
     if "--sem-navegador" not in sys.argv and not reiniciando:
         threading.Timer(1.5, lambda: webbrowser.open(url)).start()
-    uvicorn.run("app.main:app", host="127.0.0.1", port=PORTA, log_level="warning")
+    uvicorn.run("app.main:app", host=host, port=PORTA, log_level="warning")

@@ -43,6 +43,7 @@ const video = $("#video");
 async function api(url, opcoes = {}) {
   const headers = typeof opcoes.body === "string" ? { "Content-Type": "application/json" } : {};
   const r = await fetch(url, { ...opcoes, headers });
+  if (r.status === 401) { location.href = "/entrar.html"; throw new Error("Digite a senha."); }
   if (!r.ok) {
     let msg = r.statusText;
     try { msg = (await r.json()).detail || msg; } catch { /* resposta sem JSON */ }
@@ -500,16 +501,21 @@ function renderTranscricao() {
 }
 
 let arrastandoPalavras = false;
+let ultimoToque = false;   // o último clique veio de um dedo (celular)?
+document.addEventListener("pointerdown", (e) => (ultimoToque = e.pointerType === "touch"), true);
 $("#transcricao").addEventListener("mousedown", (e) => {
   const span = e.target.closest(".p");
   if (!span || e.target.tagName === "INPUT") return;
   const i = +span.dataset.i;
-  if (e.shiftKey && estado.ancoraPalavra != null) {
+  const s = estado.selPalavras;
+  // No celular não tem Shift: toque na primeira palavra e depois na última.
+  const estender = e.shiftKey || (ultimoToque && s && s.a === s.b && s.a !== i);
+  if (estender && estado.ancoraPalavra != null) {
     selecionarPalavras(estado.ancoraPalavra, i);
   } else {
     estado.ancoraPalavra = i;
     selecionarPalavras(i, i);
-    arrastandoPalavras = true;
+    arrastandoPalavras = !ultimoToque;
   }
   irPara(estado.projeto.palavras[i].inicio);
 });
@@ -537,6 +543,7 @@ function atualizarBarraSelecao() {
   barra.hidden = false;
   const n = s.b - s.a + 1;
   $("#selecao-info").textContent = `${n} palavra${n > 1 ? "s" : ""} · ${fmt(pal[s.a].inicio, true)}–${fmt(pal[s.b].fim, true)}`;
+  $("#corrigir-palavra").hidden = n !== 1;
 }
 
 function intervaloDasPalavras(a, b) {
@@ -578,8 +585,15 @@ $("#restaurar-selecao").addEventListener("click", () => {
 
 $("#transcricao").addEventListener("dblclick", (e) => {
   const span = e.target.closest(".p");
+  if (span) editarPalavra(+span.dataset.i);
+});
+$("#corrigir-palavra").addEventListener("click", () => {
+  if (estado.selPalavras) editarPalavra(estado.selPalavras.a);
+});
+
+function editarPalavra(i) {
+  const span = $(`#transcricao .p[data-i="${i}"]`);
   if (!span) return;
-  const i = +span.dataset.i;
   const original = estado.projeto.palavras[i].texto;
   span.innerHTML = `<input value="${escapar(original)}">`;
   const input = $("input", span);
@@ -600,7 +614,7 @@ $("#transcricao").addEventListener("dblclick", (e) => {
     if (ev.key === "Escape") concluir(false);
   });
   input.addEventListener("blur", () => concluir(true), { once: true });
-});
+}
 
 /* ---------- reprodução ---------- */
 
@@ -1009,7 +1023,7 @@ $("#comparar").addEventListener("pointerleave", soltarComparar);
 const rolagem = $("#lt-rolagem");
 const canvas = $("#lt-canvas");
 const ctx = canvas.getContext("2d");
-const ALTURA_LT = 120;
+let ALTURA_LT = 120;
 let pps = 60;   // pixels por segundo
 
 function montarLegendaCores() {
@@ -1021,6 +1035,7 @@ function montarLegendaCores() {
 function redimensionarLinhaTempo() {
   const dpr = window.devicePixelRatio || 1;
   const largura = rolagem.clientWidth;
+  ALTURA_LT = rolagem.clientHeight || 120;
   canvas.width = largura * dpr;
   canvas.height = ALTURA_LT * dpr;
   canvas.style.width = `${largura}px`;
@@ -1319,6 +1334,56 @@ $("#atu-aplicar").addEventListener("click", async () => {
   setTimeout(esperar, 2500);
 });
 
+/* ------------------------------------------------------------ celular */
+
+const dlgCel = $("#dlg-celular");
+
+async function abrirCelular() {
+  const info = await api("/api/celular");
+  $("#cel-desligado").hidden = info.ativo;
+  $("#cel-ligado").hidden = !info.ativo || !info.escutando;
+  $("#cel-reiniciando").hidden = !(info.ativo && !info.escutando);
+  if (info.ativo) {
+    $("#cel-qr").innerHTML = info.qr;
+    $("#cel-endereco").textContent = info.endereco;
+    $("#cel-senha").textContent = info.senha;
+  }
+  if (!dlgCel.open) dlgCel.showModal();
+  return info;
+}
+
+async function mudarCelular(ativo) {
+  try {
+    await enviar("/api/celular", "POST", { ativo });
+  } catch (e) { aviso(e.message, true); return; }
+  $("#cel-desligado").hidden = $("#cel-ligado").hidden = true;
+  $("#cel-reiniciando").hidden = false;
+  // O programa reabre escutando a rede; espera ele voltar.
+  const limite = Date.now() + 120000;
+  const esperar = async () => {
+    const info = await api("/api/celular").catch(() => null);
+    if (info && info.ativo === ativo && info.escutando === ativo) {
+      if (ativo) abrirCelular(); else { dlgCel.close(); aviso("Acesso pelo celular desligado."); }
+      return;
+    }
+    if (Date.now() > limite) {
+      $("#cel-reiniciando").textContent = "Feche a janela preta e abra o CorteFácil de novo pelo ícone.";
+      return;
+    }
+    setTimeout(esperar, 1500);
+  };
+  setTimeout(esperar, 2500);
+}
+
+$("#btn-celular").addEventListener("click", abrirCelular);
+$("#cel-ativar").addEventListener("click", () => mudarCelular(true));
+$("#cel-desativar").addEventListener("click", () => mudarCelular(false));
+$("#cel-nova-senha").addEventListener("click", async () => {
+  const r = await api("/api/celular/nova-senha", { method: "POST" });
+  $("#cel-senha").textContent = r.senha;
+  aviso("Senha trocada. Os celulares que já tinham entrado vão pedir a senha nova.");
+});
+
 /* ------------------------------------------------------------ configurações */
 
 function abrirConfig() {
@@ -1376,4 +1441,8 @@ window.addEventListener("hashchange", rotear);
   rotear();
   requestAnimationFrame(quadro);
   procurarAtualizacao();
+  // No celular os botões de configuração do computador ficam escondidos.
+  api("/api/celular").then(() => ($("#btn-celular").hidden = false)).catch(() => {
+    $("#btn-config").hidden = true;
+  });
 })();

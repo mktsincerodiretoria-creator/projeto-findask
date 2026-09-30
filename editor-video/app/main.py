@@ -10,12 +10,12 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse, Response
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import analise, atualizacao, exportar, filtros, legendas, midia, projetos, transcricao
+from . import acesso, analise, atualizacao, exportar, filtros, legendas, midia, projetos, transcricao
 from .versao import VERSAO
 
 ESTATICOS = Path(__file__).resolve().parent.parent / "static"
@@ -43,6 +43,22 @@ async def ciclo_de_vida(_app):
 
 
 app = FastAPI(title="CorteFácil", lifespan=ciclo_de_vida)
+PORTA = int(os.environ.get("PORTA", "8765"))
+
+
+@app.middleware("http")
+async def proteger(request: Request, chamar):
+    # Pedido de escrita vindo de outro site aberto no navegador: recusa.
+    origem = request.headers.get("origin")
+    if request.method not in ("GET", "HEAD") and origem and origem.split("://")[-1] != request.headers.get("host"):
+        return JSONResponse({"detail": "Origem não permitida."}, status_code=403)
+    caminho = request.url.path
+    cliente = request.client.host if request.client else ""
+    if caminho in acesso.LIVRES or acesso.autorizado(cliente, request.cookies.get(acesso.COOKIE)):
+        return await chamar(request)
+    if caminho.startswith("/api/"):
+        return JSONResponse({"detail": "Digite a senha do CorteFácil."}, status_code=401)
+    return RedirectResponse("/entrar.html")
 
 
 def _chave_ia() -> Optional[str]:
@@ -168,6 +184,64 @@ def status():
         "estilo_padrao": legendas.ESTILO_PADRAO,
         "exportacao_padrao": exportar.OPCOES_PADRAO,
     }
+
+
+class Entrada(BaseModel):
+    senha: str
+
+
+@app.post("/api/entrar")
+def entrar(dados: Entrada):
+    token = acesso.conferir_senha(dados.senha)
+    if not token:
+        raise HTTPException(401, "Senha errada. Confira a senha na tela do computador.")
+    resposta = JSONResponse({"ok": True})
+    resposta.set_cookie(acesso.COOKIE, token, max_age=30 * 24 * 3600, httponly=True, samesite="lax")
+    return resposta
+
+
+def _so_no_computador(request: Request):
+    if (request.client.host if request.client else "") not in acesso.LOCAIS:
+        raise HTTPException(403, "Isso só pode ser mudado no computador.")
+
+
+@app.get("/api/celular")
+def info_celular(request: Request):
+    _so_no_computador(request)
+    cfg = acesso.config()
+    ativo = bool(cfg.get("celular"))
+    endereco = f"http://{acesso.ip_da_rede()}:{PORTA}"
+    # "escutando" = o servidor já foi reiniciado aceitando conexões da rede.
+    return {
+        "ativo": ativo,
+        "escutando": os.environ.get("CF_HOST") == "0.0.0.0",
+        "endereco": endereco,
+        "senha": cfg.get("senha_celular", "") if ativo else "",
+        "qr": acesso.qr_svg(endereco) if ativo else "",
+    }
+
+
+class PedidoCelular(BaseModel):
+    ativo: bool
+
+
+@app.post("/api/celular")
+def mudar_celular(pedido: PedidoCelular, request: Request):
+    _so_no_computador(request)
+    if _ocupado():
+        raise HTTPException(409, "Espere a análise ou a exportação terminar.")
+    acesso.ativar(pedido.ativo)
+    # O servidor precisa reabrir escutando (ou não) a rede: reinicia pelo código 42.
+    projetos.RAIZ.mkdir(parents=True, exist_ok=True)
+    (projetos.RAIZ / ".reiniciando").write_text("celular")
+    threading.Timer(1.0, lambda: os._exit(42)).start()
+    return {"ok": True}
+
+
+@app.post("/api/celular/nova-senha")
+def trocar_senha_celular(request: Request):
+    _so_no_computador(request)
+    return {"senha": acesso.nova_senha()}
 
 
 class ConfigApp(BaseModel):
