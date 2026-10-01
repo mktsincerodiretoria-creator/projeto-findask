@@ -1,0 +1,7 @@
+dados/
+ferramentas/
+dist/
+testes/
+.venv/
+**/__pycache__/
+.pytest_cache/

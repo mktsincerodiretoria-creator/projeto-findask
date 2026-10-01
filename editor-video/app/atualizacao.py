@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import urllib.parse
 import urllib.request
 from pathlib import Path, PurePosixPath
@@ -52,6 +53,11 @@ def _manifesto() -> dict:
 
 
 def verificar() -> dict:
+    if os.environ.get("CF_CONTAINER"):
+        # Num container os arquivos voltam ao original quando ele reinicia:
+        # quem atualiza é o painel (EasyPanel: botão Deploy baixa a versão nova).
+        return {"atual": VERSAO, "ha_atualizacao": False,
+                "erro": "No servidor, atualize pelo botão Deploy do EasyPanel."}
     try:
         m = _manifesto()
     except Exception:  # noqa: BLE001 - sem internet não é erro para a pessoa

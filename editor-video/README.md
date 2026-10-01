@@ -57,6 +57,13 @@ O editor abre em <http://127.0.0.1:8765>. Para sair, feche a janela do terminal.
 > (Whisper, de 75 MB a 3 GB conforme o modelo escolhido). Depois funciona offline.
 > Se o computador tiver placa de vídeo NVIDIA, ela é usada automaticamente.
 
+### No EasyPanel (ou outro painel com Docker)
+
+Crie um serviço **App** com: fonte **Git** `https://github.com/mktsincerodiretoria-creator/projeto-findask.git`,
+ramo `claude/video-editing-subtitles-che65w`, pasta de build `/editor-video`, build por **Dockerfile**;
+variável `CF_SENHA` (senha de acesso); volume montado em `/dados`; domínio apontando para a porta **8765**.
+Para atualizar, clique em **Deploy** no painel.
+
 ### Num servidor (VPS) com o seu domínio
 
 Para abrir de qualquer lugar (celular, outro computador) em `https://editor.seudominio.com.br`:
