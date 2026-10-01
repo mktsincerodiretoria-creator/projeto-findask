@@ -15,7 +15,7 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Resp
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import acesso, analise, atualizacao, exportar, filtros, legendas, midia, projetos, transcricao
+from . import acesso, analise, atualizacao, exportar, filtros, legendas, midia, movimento, projetos, transcricao
 from .versao import VERSAO
 
 ESTATICOS = Path(__file__).resolve().parent.parent / "static"
@@ -139,8 +139,20 @@ def processar(pid: str, retranscrever: bool = True):
                 traceback.print_exc()
                 comentario = f"A revisão com IA falhou ({e}). Os cortes automáticos continuam valendo."
         manuais = [c for c in dados.get("cortes", []) if c.get("origem") == "manual"]
+        cortes = sorted(cortes + manuais, key=lambda c: c["inicio"])
+
+        # Rosto e zooms automáticos: se falhar, o resto da edição continua valendo.
+        _etapa(pid, "Procurando o rosto para o enquadramento", 0.94)
+        try:
+            if movimento.carregar_trilha(p) is None:
+                amostras = movimento.detectar_rosto(p / "previa.mp4", meta["largura"], meta["altura"],
+                                                    duracao=meta["duracao"])
+                movimento.salvar_trilha(p, movimento.suavizar(amostras))
+        except Exception:  # noqa: BLE001
+            traceback.print_exc()
+        mov = movimento.refazer_automaticos(dados.get("movimento"), palavras, cortes, meta["duracao"])
         projetos.atualizar(
-            pid, cortes=sorted(cortes + manuais, key=lambda c: c["inicio"]),
+            pid, cortes=cortes, movimento=mov,
             comentario_ia=comentario, status="pronto", etapa="Pronto", progresso=1.0, erro=None,
         )
     except Exception as e:  # noqa: BLE001 - qualquer falha vira mensagem para a pessoa
@@ -161,6 +173,7 @@ def tarefa_exportar(pid: str, opcoes: dict):
             p, p / dados["original"], dados["meta"], dados["palavras"], dados["cortes"],
             dados.get("estilo_legenda", {}), opcoes, f"video_editado_{n}", progresso=prog,
             filtro=dados.get("filtro"),
+            mov=dados.get("movimento"), trilha=movimento.carregar_trilha(p),
         )
         dados = projetos.carregar(pid)
         dados["exportacoes"] = dados.get("exportacoes", []) + [resultado]
@@ -361,6 +374,7 @@ class Edicao(BaseModel):
     textos: Optional[dict[int, str]] = None   # índice da palavra -> texto corrigido
     estilo_legenda: Optional[dict] = None
     filtro: Optional[dict] = None             # {"id": "cinema", "intensidade": 0.8}
+    movimento: Optional[dict] = None          # tracking, zoom base e lista de zooms
 
 
 @app.put("/api/projetos/{pid}/edicao")
@@ -376,6 +390,8 @@ def salvar_edicao(pid: str, edicao: Edicao):
                 dados["palavras"][i]["texto"] = texto.strip() or dados["palavras"][i]["texto"]
     if edicao.estilo_legenda is not None:
         dados["estilo_legenda"] = {**legendas.ESTILO_PADRAO, **edicao.estilo_legenda}
+    if edicao.movimento is not None:
+        dados["movimento"] = movimento.normalizar(edicao.movimento)
     if edicao.filtro is not None:
         fid = edicao.filtro.get("id", "natural")
         dados["filtro"] = {
@@ -401,6 +417,40 @@ def legendas_previa(pid: str):
 # ---------------------------------------------------------------- filtros de cor
 
 _trava_miniaturas = threading.Lock()
+
+
+# ---------------------------------------------------------------- zoom e rosto
+
+@app.get("/api/projetos/{pid}/movimento")
+def obter_movimento(pid: str):
+    dados = _projeto_ou_404(pid)
+    trilha = movimento.carregar_trilha(projetos.pasta(pid))
+    return {"movimento": movimento.normalizar(dados.get("movimento")), "trilha": trilha}
+
+
+@app.post("/api/projetos/{pid}/rosto/detectar")
+def detectar_rosto(pid: str):
+    """Para projetos antigos (feitos antes do tracking existir)."""
+    dados = _projeto_ou_404(pid)
+    p, meta = projetos.pasta(pid), dados["meta"]
+    trilha = movimento.suavizar(movimento.detectar_rosto(p / "previa.mp4", meta["largura"], meta["altura"],
+                                                         duracao=meta["duracao"]))
+    movimento.salvar_trilha(p, trilha)
+    return {"trilha": trilha}
+
+
+class PedidoZooms(BaseModel):
+    movimento: dict
+
+
+@app.post("/api/projetos/{pid}/movimento/automatico")
+def refazer_zooms(pid: str, pedido: PedidoZooms):
+    """Refaz os zooms automáticos com a sensibilidade/intensidade escolhidas (os manuais ficam)."""
+    dados = _projeto_ou_404(pid)
+    mov = movimento.refazer_automaticos(pedido.movimento, dados["palavras"], dados["cortes"],
+                                        dados["meta"]["duracao"])
+    projetos.atualizar(pid, movimento=mov)
+    return mov
 
 
 @app.get("/api/filtros")

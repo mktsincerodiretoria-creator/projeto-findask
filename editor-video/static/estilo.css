@@ -125,7 +125,9 @@ button:disabled { cursor: not-allowed; opacity: .5; }
 .editor-grade { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 420px; }
 .palco { display: flex; flex-direction: column; min-height: 0; padding: 14px; gap: 10px; }
 .video-caixa { position: relative; flex: 1; min-height: 0; background: #000; border-radius: var(--raio); overflow: hidden; display: flex; align-items: center; justify-content: center; }
-.video-caixa video { max-width: 100%; max-height: 100%; display: block; }
+/* O quadro tem o tamanho exato da imagem; o zoom acontece dentro dele (overflow escondido). */
+.quadro { position: relative; overflow: hidden; flex: none; }
+.quadro video { width: 100%; height: 100%; display: block; transform-origin: 0 0; }
 .legenda-previa { position: absolute; left: 0; right: 0; text-align: center; pointer-events: none; padding: 0 6%; line-height: 1.2; }
 .legenda-previa span.bloco { display: inline; padding: .08em .3em; -webkit-box-decoration-break: clone; box-decoration-break: clone; border-radius: .15em; }
 .controles { display: flex; align-items: center; gap: 16px; }
@@ -232,7 +234,7 @@ button:disabled { cursor: not-allowed; opacity: .5; }
 }
 
 /* ---------- filtros ---------- */
-.video-filtro { position: absolute; pointer-events: none; }
+.video-filtro { position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; transform-origin: 0 0; }
 .grade-filtros { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 10px 0 16px; }
 .filtro-item { background: none; border: 2px solid transparent; border-radius: 10px; padding: 0; overflow: hidden; text-align: center; color: var(--texto-2); font-size: 12px; }
 .filtro-item img { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; background: var(--fundo-3); }
@@ -311,3 +313,18 @@ body { touch-action: manipulation; }
   .barra-tamanho-botao { width: 28px; height: 28px; margin: -14px 0 0 -14px; }
   .grade-opcoes, .form-legenda { gap: 18px; }
 }
+
+/* ---------- zoom e tracking ---------- */
+.botoes-linha { display: flex; gap: 8px; flex-wrap: wrap; margin: 14px 0 4px; }
+.subtitulo { font-size: 14px; margin: 18px 0 4px; }
+.subtitulo span { color: var(--texto-2); font-weight: 400; }
+.lista-zooms { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 8px; }
+.zoom-item { background: var(--fundo-3); border: 1px solid var(--borda); border-left: 4px solid #a57cff; border-radius: 8px; padding: 8px 10px; display: grid; grid-template-columns: 1fr auto; gap: 6px 8px; align-items: center; }
+.zoom-item.inativo { opacity: .55; }
+.zoom-item.foco { outline: 2px solid #a57cff; }
+.zoom-titulo { font-size: 13px; font-weight: 600; cursor: pointer; }
+.zoom-titulo small { color: var(--texto-2); font-weight: 400; margin-left: 6px; }
+.zoom-acoes { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+.zoom-ajustes { grid-column: 1 / -1; display: flex; gap: 10px; align-items: center; font-size: 12px; color: var(--texto-2); flex-wrap: wrap; }
+.zoom-ajustes input[type=range] { width: 110px; accent-color: #a57cff; }
+.zoom-ajustes select { background: var(--fundo-2); border: 1px solid var(--borda); border-radius: 6px; color: var(--texto); padding: 2px 4px; }

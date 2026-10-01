@@ -17,6 +17,9 @@ Um "CapCut simplificado" para vídeos falados. Você envia o vídeo e ele:
 - **Filtros de cor cinematográficos**: Cinema (teal & orange), Filme Quente, Hora Dourada, Matte,
   Nórdico, Bleach Suave, Pastel, Suspense, Vintage 70 e Noir, com intensidade ajustável. A prévia
   mostra exatamente a cor que sai na exportação.
+- **Zoom dinâmico com rastreamento de rosto**: o enquadramento acompanha o rosto e o programa
+  coloca zoom in/zoom out suaves nas falas de destaque (sem exagero). Você ajusta a sensibilidade
+  e a intensidade, arrasta cada zoom na linha do tempo ou remove.
 - **Exporta em alta resolução** (original, 1080p, 2K ou 4K) com a legenda gravada no vídeo e/ou em `.srt`.
 
 Tudo roda **no seu computador**: o vídeo não é enviado para nenhum servidor (só o texto da fala
@@ -91,6 +94,9 @@ Para abrir de qualquer lugar (celular, outro computador) em `https://editor.seud
      para cortar ou restaurar; **duplo clique** corrige o texto da legenda.
    - **Legenda**: arraste a barra ao lado do vídeo para mudar o tamanho; escolha 1 ou 2 linhas,
      largura, fonte, cores, posição, maiúsculas e destaque da palavra.
+   - **Zoom**: liga/desliga o rastreamento de rosto e os zooms automáticos, ajusta sensibilidade
+     (quantos zooms) e intensidade (quão perto). **＋ Zoom aqui** coloca um no ponto atual; arraste a
+     faixa roxa da linha do tempo para mover ou esticar, e ✕ remove.
    - **Filtros**: escolha um look de cor e a intensidade. Segure "ver o original" para comparar.
    - **Ajustes**: mude os valores e clique em **Aplicar ajustes** (instantâneo), rode a
      **revisão com IA** ou transcreva de novo com um modelo mais preciso.
@@ -125,6 +131,7 @@ app/
   transcricao.py  faster-whisper com tempo por palavra
   legendas.py     agrupamento, SRT e ASS (legenda gravada)
   exportar.py     cortes + legenda + codificação com ffmpeg
+  movimento.py    rastreamento de rosto (OpenCV/YuNet) e zooms automáticos
   midia.py        ffprobe, extração de áudio, prévia, forma de onda
 static/           interface (HTML/CSS/JS puro, sem build)
 testes/           pytest (o teste ponta a ponta gera um vídeo com espeak-ng)

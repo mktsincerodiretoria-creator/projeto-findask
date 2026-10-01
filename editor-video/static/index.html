@@ -74,8 +74,10 @@
     <div class="editor-grade">
       <section class="palco">
         <div class="video-caixa" id="video-caixa">
-          <video id="video" playsinline preload="auto"></video>
-          <canvas id="video-filtro" class="video-filtro" hidden></canvas>
+          <div class="quadro" id="quadro">
+            <video id="video" playsinline preload="auto"></video>
+            <canvas id="video-filtro" class="video-filtro" hidden></canvas>
+          </div>
           <div class="legenda-previa" id="legenda-previa"></div>
           <div class="barra-tamanho" id="barra-tamanho" hidden title="Arraste para mudar o tamanho da legenda">
             <div class="barra-tamanho-trilho"></div>
@@ -101,6 +103,7 @@
           <button class="aba ativa" data-aba="cortes">Cortes</button>
           <button class="aba" data-aba="texto">Texto</button>
           <button class="aba" data-aba="legenda">Legenda</button>
+          <button class="aba" data-aba="zoom">Zoom</button>
           <button class="aba" data-aba="filtros">Filtros</button>
           <button class="aba" data-aba="ajustes">Ajustes</button>
         </nav>
@@ -130,6 +133,21 @@
 
         <div class="aba-conteudo" id="aba-legenda" hidden>
           <div class="form-legenda" id="form-legenda"></div>
+        </div>
+
+        <div class="aba-conteudo" id="aba-zoom" hidden>
+          <p class="dica">Movimentos de câmera que prendem a atenção: o quadro segue o seu rosto e
+            aproxima (zoom in) e afasta (zoom out) nos momentos de destaque.</p>
+          <div class="grade-opcoes" id="opcoes-movimento"></div>
+          <div class="botoes-linha">
+            <button class="btn-secundario" id="refazer-zooms">↻ Refazer zooms automáticos</button>
+            <button class="btn-fantasma" id="adicionar-zoom">＋ Zoom aqui</button>
+          </div>
+          <p class="dica" id="info-rosto"></p>
+          <h3 class="subtitulo">Zooms do vídeo <span id="contagem-zooms"></span></h3>
+          <p class="dica">Arraste a faixa roxa na linha do tempo para mover; puxe as pontas para
+            mudar a duração. Ou use ◀ ▶ aqui.</p>
+          <ul class="lista-zooms" id="lista-zooms"></ul>
         </div>
 
         <div class="aba-conteudo" id="aba-filtros" hidden>

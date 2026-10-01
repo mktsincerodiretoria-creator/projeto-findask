@@ -271,6 +271,13 @@ async function abrirEditor(p) {
   carregarLut(p.filtro.id);
   $("#grade-filtros").dataset.pid = "";
   if (abaAtiva() === "filtros") montarFiltros();
+  try {
+    const r = await api(`/api/projetos/${p.id}/movimento`);
+    estado.mov = r.movimento;
+    estado.trilha = r.trilha;
+  } catch { estado.mov = null; estado.trilha = null; }
+  montarMovimento();
+  renderZooms();
   montarFormLegenda();
   montarLegendaCores();
   posicionarBarraTamanho();
@@ -415,7 +422,7 @@ $("#desativar-visiveis").addEventListener("click", () => alternarVisiveis(false)
 /* ---------- histórico e salvamento ---------- */
 
 function guardarHistorico() {
-  estado.historico.push(JSON.stringify(cortes()));
+  estado.historico.push(JSON.stringify({ cortes: cortes(), zooms: estado.mov?.zooms || [] }));
   if (estado.historico.length > 80) estado.historico.shift();
   $("#desfazer").disabled = false;
 }
@@ -423,8 +430,11 @@ function guardarHistorico() {
 function desfazer() {
   const anterior = estado.historico.pop();
   if (!anterior) return;
-  estado.projeto.cortes = JSON.parse(anterior);
+  const antes = JSON.parse(anterior);
+  estado.projeto.cortes = antes.cortes;
+  if (estado.mov) estado.mov.zooms = antes.zooms;
   $("#desfazer").disabled = !estado.historico.length;
+  renderZooms();
   alterou();
 }
 $("#desfazer").addEventListener("click", desfazer);
@@ -448,7 +458,7 @@ function salvarAgora() {
   const textos = estado.textosPendentes;
   estado.textosPendentes = {};
   salvando = salvando.then(() => enviar(`/api/projetos/${p.id}/edicao`, "PUT", {
-    cortes: p.cortes, textos, estilo_legenda: p.estilo_legenda, filtro: p.filtro,
+    cortes: p.cortes, textos, estilo_legenda: p.estilo_legenda, filtro: p.filtro, movimento: estado.mov,
   })).then(() => carregarLegendas()).catch((e) => aviso("Não consegui salvar: " + e.message, true));
   return salvando;
 }
@@ -659,6 +669,7 @@ function quadro() {
   }
   $("#tempo-atual").textContent = fmt(t, true);
   $("#tempo-final").textContent = fmt(tempoFinal(t), true);
+  aplicarMovimento(t);
   desenharFiltro();
   atualizarLegendaPrevia(t);
   destacarPalavra(t);
@@ -718,7 +729,7 @@ function atualizarLegendaPrevia(t) {
   }
   // Área real da imagem dentro da caixa (o vídeo é centralizado).
   const caixa = $("#video-caixa").getBoundingClientRect();
-  const vr = video.getBoundingClientRect();
+  const vr = quadroRect();
   const menor = Math.min(vr.width, vr.height);
   const fs = (menor * es.tamanho) / 100 / 1.15;
   const contorno = (es.contorno * menor) / 1080;
@@ -766,7 +777,7 @@ function posicionarBarraTamanho() {
   barraTam.hidden = !visivel;
   if (!visivel) return;
   const caixa = $("#video-caixa").getBoundingClientRect();
-  const vr = video.getBoundingClientRect();
+  const vr = quadroRect();
   barraTam.style.left = `${Math.max(8, vr.left - caixa.left + 10)}px`;
   const f = (TAM_MAX - estilo().tamanho) / (TAM_MAX - TAM_MIN);   // 0 = topo (maior)
   $("#barra-tamanho-botao").style.top = `${Math.min(1, Math.max(0, f)) * 100}%`;
@@ -966,10 +977,7 @@ function desenharFiltro() {
   telaFiltro.hidden = !ativo;
   if (!ativo) return;
   const caixa = $("#video-caixa").getBoundingClientRect();
-  const vr = video.getBoundingClientRect();
-  Object.assign(telaFiltro.style, {
-    left: `${vr.left - caixa.left}px`, top: `${vr.top - caixa.top}px`, width: `${vr.width}px`, height: `${vr.height}px`,
-  });
+  const vr = quadroRect();
   const dpr = Math.min(2, window.devicePixelRatio || 1);
   const w = Math.round(vr.width * dpr), h = Math.round(vr.height * dpr);
   if (telaFiltro.width !== w || telaFiltro.height !== h) { telaFiltro.width = w; telaFiltro.height = h; }
@@ -1017,6 +1025,242 @@ const soltarComparar = () => (comparando = false);
 $("#comparar").addEventListener("pointerdown", () => (comparando = true));
 $("#comparar").addEventListener("pointerup", soltarComparar);
 $("#comparar").addEventListener("pointerleave", soltarComparar);
+
+/* ------------------------------------------------------------ zoom e tracking */
+
+// Mesma conta do app/movimento.py: a prévia mostra exatamente o que sai na exportação.
+const ZOOM_MAX = 1.35, RAMPA = 0.35, ALTURA_ROSTO = 0.10;
+const suaveJS = (x) => { x = Math.min(1, Math.max(0, x)); return x * x * (3 - 2 * x); };
+
+function zoomEm(t, m) {
+  let extra = 0;   // sobrepostos não somam: vale o mais forte
+  for (const zm of m.zooms) {
+    if (!zm.ativo || t < zm.inicio || t > zm.fim) continue;
+    let e = 1;
+    if (zm.estilo !== "corte") {
+      const r = Math.min(RAMPA, (zm.fim - zm.inicio) / 3);
+      e = suaveJS(Math.min((t - zm.inicio) / r, (zm.fim - t) / r, 1));
+    }
+    extra = Math.max(extra, zm.intensidade * e);
+  }
+  return Math.min(1 + m.zoom_base + extra, ZOOM_MAX);
+}
+
+function centroEm(t, m, tr) {
+  if (!m.tracking || !tr || !tr.t || !tr.t.length) return [0.5, 0.5];
+  const ts = tr.t;
+  if (t <= ts[0]) return [tr.x[0], tr.y[0]];
+  if (t >= ts[ts.length - 1]) return [tr.x[ts.length - 1], tr.y[ts.length - 1]];
+  let lo = 0, hi = ts.length - 1;
+  while (hi - lo > 1) { const md = (lo + hi) >> 1; if (ts[md] <= t) lo = md; else hi = md; }
+  const f = (t - ts[lo]) / (ts[hi] - ts[lo]);
+  return [tr.x[lo] + (tr.x[hi] - tr.x[lo]) * f, tr.y[lo] + (tr.y[hi] - tr.y[lo]) * f];
+}
+
+function janelaMov(t) {
+  const m = estado.mov;
+  if (!m) return [1, 0, 0];
+  const z = zoomEm(t, m), w = 1 / z;
+  const [fx, fy] = centroEm(t, m, estado.trilha);
+  const cx = Math.min(Math.max(fx, w / 2), 1 - w / 2);
+  const cy = Math.min(Math.max(fy + ALTURA_ROSTO * w, w / 2), 1 - w / 2);
+  return [z, cx - w / 2, cy - w / 2];
+}
+
+const quadroEl = $("#quadro");
+const quadroRect = () => quadroEl.getBoundingClientRect();
+
+function ajustarQuadro() {
+  const caixa = $("#video-caixa");
+  if (!video.videoWidth) return;
+  const esc = Math.min(caixa.clientWidth / video.videoWidth, caixa.clientHeight / video.videoHeight);
+  quadroEl.style.width = `${Math.floor(video.videoWidth * esc)}px`;
+  quadroEl.style.height = `${Math.floor(video.videoHeight * esc)}px`;
+  legendaAtual = "";
+  posicionarBarraTamanho();
+}
+new ResizeObserver(ajustarQuadro).observe($("#video-caixa"));
+video.addEventListener("loadedmetadata", ajustarQuadro);
+
+let transformAtual = "";
+function aplicarMovimento(t) {
+  const [z, x0, y0] = janelaMov(t);
+  const r = quadroRect();
+  const tr = z > 1.0005 ? `scale(${z.toFixed(4)}) translate(${(-x0 * r.width).toFixed(2)}px, ${(-y0 * r.height).toFixed(2)}px)` : "";
+  if (tr === transformAtual) return;
+  transformAtual = tr;
+  video.style.transform = tr;
+  telaFiltro.style.transform = tr;
+}
+
+function montarMovimento() {
+  const m = estado.mov;
+  const el = $("#opcoes-movimento");
+  if (!m) { el.innerHTML = `<p class="vazio">Zoom indisponível neste projeto.</p>`; return; }
+  el.innerHTML = [
+    campoAlternar("tracking", "Seguir o rosto (tracking)", "Quando o vídeo está aproximado, o quadro acompanha você", m.tracking),
+    campoFaixa("zoom_base", "Aproximação fixa", "Deixa o vídeo sempre um pouco mais perto, dando espaço para o tracking", Math.round(m.zoom_base * 100), 0, 20, 1, "%"),
+    campoAlternar("auto", "Zooms automáticos", "Coloca zoom in / zoom out em começos de frase, perguntas e destaques", m.auto),
+    campoFaixa("sensibilidade", "Sensibilidade", "Poucos zooms ← → muitos zooms", Math.round(m.sensibilidade * 100), 0, 100, 5, "%"),
+    campoFaixa("intensidade", "Intensidade do zoom", "Quanto aproxima. 10–15% é sutil e profissional", Math.round(m.intensidade * 100), 3, 25, 1, "%"),
+    `<div class="campo">Estilo do zoom <div class="segmentado" data-seg-mov="estilo">
+      <button type="button" data-v="suave" class="${m.estilo === "suave" ? "ativo" : ""}">Suave (aproxima devagar)</button>
+      <button type="button" data-v="corte" class="${m.estilo === "corte" ? "ativo" : ""}">Corte seco (punch-in)</button></div></div>`,
+  ].join("");
+  for (const r of $$("input[type=range]", el)) {
+    r.addEventListener("input", () => (r.previousElementSibling.textContent = r.value + r.dataset.unidade));
+  }
+  infoRosto();
+}
+
+function infoRosto() {
+  const tr = estado.trilha;
+  const el = $("#info-rosto");
+  if (!tr) {
+    el.innerHTML = `Este projeto ainda não tem o rosto mapeado. <button class="btn-mini" id="procurar-rosto">Procurar rosto</button>`;
+    $("#procurar-rosto").addEventListener("click", async (e) => {
+      e.target.disabled = true;
+      e.target.textContent = "Procurando…";
+      try {
+        estado.trilha = (await api(`/api/projetos/${estado.projeto.id}/rosto/detectar`, { method: "POST" })).trilha;
+      } catch (err) { aviso(err.message, true); }
+      infoRosto();
+    });
+  } else if (!tr.t.length) {
+    el.textContent = "Não encontrei um rosto na maior parte do vídeo: os zooms ficam centralizados.";
+  } else {
+    el.textContent = `✓ Rosto encontrado em ${Math.round(tr.cobertura * 100)}% do vídeo.`;
+  }
+}
+
+let refazerTimer = null;
+function agendarRefazer() {
+  clearTimeout(refazerTimer);
+  refazerTimer = setTimeout(async () => {
+    try {
+      estado.mov = await enviar(`/api/projetos/${estado.projeto.id}/movimento/automatico`, "POST", { movimento: estado.mov });
+      renderZooms();
+      desenharLinhaTempo();
+    } catch (e) { aviso(e.message, true); }
+  }, 450);
+}
+
+$("#opcoes-movimento").addEventListener("input", (e) => {
+  const i = e.target.closest("[data-chave]");
+  if (!i || !estado.mov) return;
+  const k = i.dataset.chave;
+  estado.mov[k] = i.type === "checkbox" ? i.checked : parseFloat(i.value) / 100;
+  if (k === "tracking" || k === "zoom_base") { transformAtual = "x"; agendarSalvar(); }
+  else agendarRefazer();
+});
+$("#opcoes-movimento").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-seg-mov] button");
+  if (!b) return;
+  $$("button", b.parentElement).forEach((x) => x.classList.toggle("ativo", x === b));
+  estado.mov.estilo = b.dataset.v;
+  agendarRefazer();
+});
+$("#refazer-zooms").addEventListener("click", () => {
+  guardarHistorico();
+  estado.mov.auto = true;
+  montarMovimento();
+  agendarRefazer();
+  aviso("Zooms automáticos refeitos. Os que você mexeu ficam como estão.");
+});
+$("#adicionar-zoom").addEventListener("click", () => {
+  if (!estado.mov) return;
+  guardarHistorico();
+  const t = video.currentTime;
+  estado.mov.zooms.push({
+    id: novoId(), inicio: +t.toFixed(3), fim: +Math.min(duracao(), t + 2.5).toFixed(3),
+    intensidade: estado.mov.intensidade, estilo: estado.mov.estilo, origem: "manual", ativo: true,
+  });
+  estado.mov.zooms.sort((a, b) => a.inicio - b.inicio);
+  alterouMovimento();
+});
+
+function alterouMovimento() {
+  transformAtual = "x";
+  renderZooms();
+  desenharLinhaTempo();
+  agendarSalvar();
+}
+
+function renderZooms() {
+  const lista = $("#lista-zooms");
+  const zs = estado.mov?.zooms || [];
+  $("#contagem-zooms").textContent = zs.length ? `(${zs.filter((z) => z.ativo).length} ativos)` : "";
+  if (!zs.length) {
+    lista.innerHTML = `<li class="vazio">Nenhum zoom. Ligue os automáticos ou use “＋ Zoom aqui”.</li>`;
+    return;
+  }
+  lista.innerHTML = zs.map((z, i) => `
+    <li class="zoom-item ${z.ativo ? "" : "inativo"}" data-id="${z.id}">
+      <div class="zoom-titulo" data-ir>Zoom ${i + 1} · ${fmt(z.inicio, true)}
+        <small>${(z.fim - z.inicio).toFixed(1)}s · ${z.origem === "auto" ? "automático" : "seu"}</small></div>
+      <div class="zoom-acoes">
+        <button class="icone" data-ver title="Ver este zoom">▶</button>
+        <button class="icone" data-mover="-0.5" title="Mover para trás">◀</button>
+        <button class="icone" data-mover="0.5" title="Mover para frente">▶▶</button>
+        <label class="alternar" title="Ligar/desligar"><input type="checkbox" data-ativo ${z.ativo ? "checked" : ""}><span class="alternar-trilho"></span></label>
+        <button class="icone" data-apagar title="Remover">✕</button>
+      </div>
+      <div class="zoom-ajustes">
+        <span>Duração <button class="btn-mini" data-dur="-0.5">−</button> <button class="btn-mini" data-dur="0.5">+</button></span>
+        <label>Intensidade <input type="range" min="3" max="25" step="1" value="${Math.round(z.intensidade * 100)}" data-intens> ${Math.round(z.intensidade * 100)}%</label>
+        <select data-estilo><option value="suave" ${z.estilo === "suave" ? "selected" : ""}>Suave</option>
+          <option value="corte" ${z.estilo === "corte" ? "selected" : ""}>Corte seco</option></select>
+      </div>
+    </li>`).join("");
+}
+
+function zoomPorId(id) { return estado.mov.zooms.find((z) => z.id === id); }
+function mexeuNoZoom(z) { z.origem = "manual"; }   // os automáticos refeitos não apagam o que você ajustou
+
+$("#lista-zooms").addEventListener("click", (e) => {
+  const li = e.target.closest(".zoom-item");
+  if (!li) return;
+  const z = zoomPorId(li.dataset.id);
+  const dur = duracao();
+  if (e.target.closest("[data-ativo]")) { guardarHistorico(); z.ativo = e.target.checked; mexeuNoZoom(z); alterouMovimento(); return; }
+  if (e.target.closest(".alternar")) return;
+  if (e.target.closest("[data-apagar]")) {
+    guardarHistorico();
+    estado.mov.zooms = estado.mov.zooms.filter((x) => x !== z);
+    alterouMovimento();
+    return;
+  }
+  const mover = e.target.closest("[data-mover]");
+  if (mover) {
+    guardarHistorico();
+    const d = Math.max(-z.inicio, Math.min(dur - z.fim, parseFloat(mover.dataset.mover)));
+    z.inicio = +(z.inicio + d).toFixed(3); z.fim = +(z.fim + d).toFixed(3);
+    mexeuNoZoom(z); alterouMovimento(); irPara(z.inicio - 0.3);
+    return;
+  }
+  const dd = e.target.closest("[data-dur]");
+  if (dd) {
+    guardarHistorico();
+    z.fim = +Math.max(z.inicio + 0.6, Math.min(dur, z.fim + parseFloat(dd.dataset.dur))).toFixed(3);
+    mexeuNoZoom(z); alterouMovimento();
+    return;
+  }
+  if (e.target.closest("[data-ver]") || e.target.closest("[data-ir]")) {
+    estado.ouvindo = { fim: Math.min(dur, z.fim + 0.5) };
+    video.currentTime = Math.max(0, z.inicio - 0.6);
+    video.play();
+  }
+});
+$("#lista-zooms").addEventListener("change", (e) => {
+  const li = e.target.closest(".zoom-item");
+  if (!li) return;
+  const z = zoomPorId(li.dataset.id);
+  if (e.target.matches("[data-intens]")) { guardarHistorico(); z.intensidade = e.target.value / 100; }
+  else if (e.target.matches("[data-estilo]")) { guardarHistorico(); z.estilo = e.target.value; }
+  else return;
+  mexeuNoZoom(z);
+  alterouMovimento();
+});
 
 /* ------------------------------------------------------------ linha do tempo */
 
@@ -1074,7 +1318,7 @@ function desenharLinhaTempo() {
   const t0 = rolagem.scrollLeft / pps;
   const t1 = t0 + largura / pps;
   const X = (t) => (t - t0) * pps;
-  const topo = 20, base = ALTURA_LT - 6, meio = (topo + base) / 2, amp = (base - topo) / 2;
+  const topo = 20, base = ALTURA_LT - 17, meio = (topo + base) / 2, amp = (base - topo) / 2;
 
   ctx.clearRect(0, 0, largura, ALTURA_LT);
   ctx.fillStyle = "#0f1115";
@@ -1122,6 +1366,25 @@ function desenharLinhaTempo() {
     }
   }
 
+  // zooms: faixa roxa embaixo (arraste para mover, puxe as pontas para mudar a duração)
+  for (const z of estado.mov?.zooms || []) {
+    if (z.fim < t0 || z.inicio > t1) continue;
+    const xa = X(z.inicio), xb = X(z.fim);
+    const y = ALTURA_LT - FAIXA_ZOOM;
+    ctx.fillStyle = z.ativo ? "rgba(165,124,255,.9)" : "rgba(165,124,255,.25)";
+    ctx.fillRect(xa, y, xb - xa, FAIXA_ZOOM - 2);
+    if (z.ativo) {
+      ctx.fillStyle = "rgba(255,255,255,.85)";
+      ctx.fillRect(xa, y, 2, FAIXA_ZOOM - 2);
+      ctx.fillRect(xb - 2, y, 2, FAIXA_ZOOM - 2);
+      if (xb - xa > 46) {
+        ctx.fillStyle = "#1b1530";
+        ctx.font = "bold 9px system-ui";
+        ctx.fillText(`ZOOM ${Math.round(z.intensidade * 100)}%`, xa + 5, y + 9);
+      }
+    }
+  }
+
   // seleção
   if (estado.selecao) {
     const xa = X(estado.selecao.a), xb = X(estado.selecao.b);
@@ -1153,11 +1416,46 @@ const tempoNoCanvas = (e) => (rolagem.scrollLeft + e.clientX - canvas.getBoundin
 const corteEm = (t) => [...cortes()].reverse().find((c) => t >= c.inicio && t <= c.fim && (c.tipo !== "silencio" || c.ativo))
   || cortes().find((c) => t >= c.inicio && t <= c.fim);
 
+const FAIXA_ZOOM = 13;
+const naFaixaZoom = (e) => e.clientY - canvas.getBoundingClientRect().top >= ALTURA_LT - FAIXA_ZOOM - 2;
+function zoomNoPonto(e) {
+  if (!estado.mov || !naFaixaZoom(e)) return null;
+  const t = tempoNoCanvas(e), folga = 6 / pps;
+  const z = estado.mov.zooms.find((x) => t >= x.inicio - folga && t <= x.fim + folga);
+  if (!z) return null;
+  const modo = Math.abs(t - z.inicio) <= folga ? "inicio" : Math.abs(t - z.fim) <= folga ? "fim" : "mover";
+  return { z, modo };
+}
+
 let arrastandoLT = null;
+let arrastandoZoom = null;
 canvas.addEventListener("mousedown", (e) => {
+  const alvo = zoomNoPonto(e);
+  if (alvo) {
+    arrastandoZoom = { ...alvo, x: e.clientX, t: tempoNoCanvas(e), ini: alvo.z.inicio, fim: alvo.z.fim, mexeu: false };
+    return;
+  }
   arrastandoLT = { x: e.clientX, t: tempoNoCanvas(e) };
 });
 window.addEventListener("mousemove", (e) => {
+  if (arrastandoZoom) {
+    const a = arrastandoZoom;
+    if (!a.mexeu && Math.abs(e.clientX - a.x) <= 3) return;
+    if (!a.mexeu) { guardarHistorico(); a.mexeu = true; }
+    const d = tempoNoCanvas(e) - a.t, dur = duracao();
+    if (a.modo === "mover") {
+      const dd = Math.max(-a.ini, Math.min(dur - a.fim, d));
+      a.z.inicio = +(a.ini + dd).toFixed(3); a.z.fim = +(a.fim + dd).toFixed(3);
+    } else if (a.modo === "inicio") {
+      a.z.inicio = +Math.max(0, Math.min(a.fim - 0.6, a.ini + d)).toFixed(3);
+    } else {
+      a.z.fim = +Math.min(dur, Math.max(a.ini + 0.6, a.fim + d)).toFixed(3);
+    }
+    $("#lt-dica").textContent = `Zoom: ${fmt(a.z.inicio, true)} – ${fmt(a.z.fim, true)} (${(a.z.fim - a.z.inicio).toFixed(1)}s)`;
+    transformAtual = "x";
+    desenharLinhaTempo();
+    return;
+  }
   if (arrastandoLT) {
     if (Math.abs(e.clientX - arrastandoLT.x) > 4) {
       const t = Math.max(0, Math.min(duracao(), tempoNoCanvas(e)));
@@ -1169,12 +1467,34 @@ window.addEventListener("mousemove", (e) => {
     return;
   }
   if (e.target !== canvas) return;
+  const zAlvo = zoomNoPonto(e);
+  canvas.style.cursor = !zAlvo ? "crosshair" : zAlvo.modo === "mover" ? "grab" : "ew-resize";
+  if (zAlvo) {
+    $("#lt-dica").textContent = `Zoom ${Math.round(zAlvo.z.intensidade * 100)}% ${zAlvo.z.estilo === "corte" ? "corte seco" : "suave"} — arraste para mover, puxe as pontas para mudar a duração`;
+    return;
+  }
   const c = corteEm(tempoNoCanvas(e));
   $("#lt-dica").textContent = c
     ? `${c.titulo}${c.ativo ? "" : " (desligado)"} — ${c.motivo}`
     : "Clique para ir até o ponto · arraste para selecionar um trecho e cortar";
 });
 window.addEventListener("mouseup", (e) => {
+  if (arrastandoZoom) {
+    const a = arrastandoZoom;
+    arrastandoZoom = null;
+    if (a.mexeu) {
+      a.z.origem = "manual";
+      estado.mov.zooms.sort((x, y) => x.inicio - y.inicio);
+      alterouMovimento();
+    } else {
+      irPara(a.z.inicio);
+      $$(".aba").find((b) => b.dataset.aba === "zoom").click();
+      $$(".zoom-item.foco").forEach((el) => el.classList.remove("foco"));
+      const el = $(`.zoom-item[data-id="${a.z.id}"]`);
+      if (el) { el.classList.add("foco"); el.scrollIntoView({ block: "nearest", behavior: "smooth" }); }
+    }
+    return;
+  }
   if (!arrastandoLT) return;
   const clique = Math.abs(e.clientX - arrastandoLT.x) <= 4;
   const t = arrastandoLT.t;

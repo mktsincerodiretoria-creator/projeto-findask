@@ -1,11 +1,11 @@
 """Versão do CorteFácil e de onde vêm as atualizações."""
 
-VERSAO = "1.2.0"
+VERSAO = "1.3.0"
 
 NOVIDADES = [
-    "Use no celular: botão 📱 Celular com QR Code (mesmo Wi-Fi) e senha",
-    "Tela adaptada para celular: toque na primeira e na última palavra para cortar",
-    "Pode ser instalado num servidor (VPS) com o seu domínio e https",
+    "Nova aba Zoom: o vídeo segue o seu rosto (enquadramento automático)",
+    "Zoom in/zoom out automáticos nas falas fortes, com sensibilidade e intensidade ajustáveis",
+    "Arraste os zooms na linha do tempo (faixa roxa) para mudar de lugar, ou remova com ✕",
 ]
 
 # Repositório público de onde o programa baixa as atualizações.
