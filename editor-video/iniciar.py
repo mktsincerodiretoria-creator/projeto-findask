@@ -42,10 +42,11 @@ if __name__ == "__main__":
     host = "0.0.0.0" if celular_ativo() and not modo_servidor() else "127.0.0.1"
     if os.environ.get("CF_ESCUTAR"):
         # Em container (EasyPanel/Docker) o proxy chega pela rede interna do Docker.
-        if not modo_servidor():
-            print("\n[ERRO] Defina a variável CF_SENHA (senha de acesso) no Environment e faça o Deploy.\n")
-            sys.exit(1)
-        host = os.environ["CF_ESCUTAR"]
+        # Escuta na 80 e na PORTA: o domínio do painel funciona com qualquer uma das duas.
+        from app.container import rodar_em_container
+
+        rodar_em_container(os.environ["CF_ESCUTAR"], sorted({80, PORTA}), modo_servidor())
+        sys.exit(0)
     os.environ["CF_HOST"] = host
     print(f"\nCorteFácil rodando em {url}  (feche esta janela para sair)")
     if host == "0.0.0.0" and not os.environ.get("CF_ESCUTAR"):

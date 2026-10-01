@@ -19,5 +19,5 @@ ENV EDITOR_DADOS=/dados \
     PORTA=8765 \
     PYTHONUNBUFFERED=1
 VOLUME /dados
-EXPOSE 8765
+EXPOSE 80 8765
 CMD ["python", "iniciar.py", "--sem-navegador"]
