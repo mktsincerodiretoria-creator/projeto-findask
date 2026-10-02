@@ -1,2 +1,5 @@
 node_modules
 out
+# Vídeos e imagens de origem ficam só na máquina, não vão para o Git
+public/*
+!public/.gitkeep

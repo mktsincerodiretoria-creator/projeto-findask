@@ -2,7 +2,7 @@
   "name": "editor-video",
   "private": true,
   "scripts": {
-    "studio": "remotion studio",
+    "studio": "remotion studio --port 3100 --no-open",
     "render": "remotion render Teste out/teste.mp4"
   },
   "dependencies": {
