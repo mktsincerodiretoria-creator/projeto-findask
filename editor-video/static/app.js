@@ -145,7 +145,8 @@ async function carregarInicio() {
   const rotulos = { pronto: "Pronto", erro: "Erro", processando: "Analisando", na_fila: "Na fila", enviado: "Enviando" };
   lista.innerHTML = itens.map((p) => `
     <li data-id="${p.id}">
-      <span class="nome">${escapar(p.nome)}</span>
+      <span class="nome">${escapar(p.nome)}${estado.status.usuario?.admin && p.dono && p.dono !== "admin"
+        ? `<span class="selo-dono">👤 ${escapar(p.dono)}</span>` : ""}</span>
       <span class="info">${p.meta ? fmt(p.meta.duracao) + " · " + p.meta.largura + "×" + p.meta.altura : ""}</span>
       <span class="info">${new Date(p.criado_em * 1000).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}</span>
       <span class="selo ${p.status}">${rotulos[p.status] || p.status}</span>
@@ -1725,6 +1726,98 @@ $("#cfg-salvar").addEventListener("click", async () => {
   rotear();
 });
 
+/* ------------------------------------------------------------ contas de usuário */
+
+function senhaAleatoria() {
+  const letras = "abcdefghjkmnpqrstuvwxyz23456789";
+  const n = crypto.getRandomValues(new Uint32Array(8));
+  return Array.from(n, (x) => letras[x % letras.length]).join("");
+}
+
+async function carregarUsuarios() {
+  const lista = await api("/api/usuarios");
+  $("#lista-usuarios").innerHTML = lista.map((u) => `
+    <div class="usuario-linha">
+      <span class="nome"><b>${escapar(u.login)}</b>${u.admin ? " (você)" : ""}</span>
+      <span class="dica">${u.projetos} vídeo${u.projetos === 1 ? "" : "s"}</span>
+      ${u.admin ? "" : `
+        <button type="button" class="btn-mini" data-senha="${escapar(u.login)}">Nova senha</button>
+        <button type="button" class="btn-mini perigo" data-remover="${escapar(u.login)}">Remover</button>`}
+    </div>`).join("");
+}
+
+function mostrarConvite(login, senha) {
+  $("#convite").textContent = `Acesse o CorteFácil:\n${location.origin}\nUsuário: ${login}\nSenha: ${senha}`;
+  $("#convite-caixa").hidden = false;
+}
+
+$("#btn-usuarios").addEventListener("click", async () => {
+  $("#usuarios-erro").textContent = "";
+  $("#convite-caixa").hidden = true;
+  $("#novo-login").value = "";
+  $("#nova-senha-usuario").value = senhaAleatoria();
+  await carregarUsuarios().catch((e) => aviso(e.message, true));
+  $("#dlg-usuarios").showModal();
+});
+
+$("#criar-usuario").addEventListener("click", async () => {
+  const login = $("#novo-login").value.trim().toLowerCase(), senha = $("#nova-senha-usuario").value.trim();
+  $("#usuarios-erro").textContent = "";
+  try {
+    const r = await enviar("/api/usuarios", "POST", { login, senha });
+    mostrarConvite(r.login, senha);
+    $("#novo-login").value = "";
+    $("#nova-senha-usuario").value = senhaAleatoria();
+    await carregarUsuarios();
+  } catch (e) { $("#usuarios-erro").textContent = e.message; }
+});
+
+$("#lista-usuarios").addEventListener("click", async (e) => {
+  const trocar = e.target.closest("[data-senha]"), remover = e.target.closest("[data-remover]");
+  $("#usuarios-erro").textContent = "";
+  try {
+    if (trocar) {
+      const login = trocar.dataset.senha, senha = senhaAleatoria();
+      if (!confirm(`Criar uma senha nova para "${login}"? A senha antiga para de funcionar.`)) return;
+      await enviar(`/api/usuarios/${encodeURIComponent(login)}/senha`, "POST", { senha });
+      mostrarConvite(login, senha);
+    } else if (remover) {
+      const login = remover.dataset.remover;
+      if (!confirm(`Remover "${login}"? A pessoa não consegue mais entrar. Os vídeos dela passam para você.`)) return;
+      await api(`/api/usuarios/${encodeURIComponent(login)}`, { method: "DELETE" });
+      aviso(`Usuário ${login} removido.`);
+    } else return;
+    await carregarUsuarios();
+    if (!estado.projeto) carregarInicio();
+  } catch (err) { $("#usuarios-erro").textContent = err.message; }
+});
+
+$("#copiar-convite").addEventListener("click", async () => {
+  try { await navigator.clipboard.writeText($("#convite").textContent); aviso("Copiado!"); }
+  catch { aviso("Selecione o texto e copie.", true); }
+});
+
+$("#btn-conta").addEventListener("click", () => {
+  const u = estado.status.usuario;
+  $("#conta-titulo").textContent = u.login;
+  $("#conta-trocar").hidden = u.admin;
+  $("#conta-admin-dica").hidden = !u.admin;
+  $("#conta-erro").textContent = "";
+  $("#conta-atual").value = $("#conta-nova").value = "";
+  $("#dlg-conta").showModal();
+});
+$("#conta-salvar").addEventListener("click", async () => {
+  try {
+    await enviar("/api/minha-senha", "POST", { atual: $("#conta-atual").value, senha: $("#conta-nova").value });
+    $("#dlg-conta").close();
+    aviso("Senha trocada.");
+  } catch (e) { $("#conta-erro").textContent = e.message; }
+});
+$("#conta-sair").addEventListener("click", async () => {
+  await api("/api/sair", { method: "POST" }).catch(() => null);
+  location.href = "/entrar.html";
+});
+
 /* ------------------------------------------------------------ navegação */
 
 $("#ir-inicio").addEventListener("click", (e) => { e.preventDefault(); location.hash = ""; });
@@ -1763,5 +1856,9 @@ window.addEventListener("hashchange", rotear);
   procurarAtualizacao();
   // "📱 Celular" só no computador; num servidor (VPS) o acesso já é pela internet.
   $("#btn-celular").hidden = !(estado.status.local && !estado.status.servidor);
-  $("#btn-config").hidden = !(estado.status.local || estado.status.servidor);
+  const u = estado.status.usuario;
+  $("#btn-config").hidden = !(estado.status.local || (estado.status.servidor && u?.admin));
+  $("#btn-usuarios").hidden = !u?.admin;
+  $("#btn-conta").hidden = !u;
+  if (u) $("#conta-nome").textContent = u.login;
 })();

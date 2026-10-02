@@ -1,11 +1,11 @@
 """Versão do CorteFácil e de onde vêm as atualizações."""
 
-VERSAO = "1.3.0"
+VERSAO = "1.4.0"
 
 NOVIDADES = [
-    "Nova aba Zoom: o vídeo segue o seu rosto (enquadramento automático)",
-    "Zoom in/zoom out automáticos nas falas fortes, com sensibilidade e intensidade ajustáveis",
-    "Arraste os zooms na linha do tempo (faixa roxa) para mudar de lugar, ou remova com ✕",
+    "No servidor: contas de usuário (botão 👥 Usuários) — cada pessoa vê só os vídeos dela",
+    "Botão 👤 para trocar a própria senha e sair",
+    "Zoom dinâmico com rastreamento de rosto (aba Zoom)",
 ]
 
 # Repositório público de onde o programa baixa as atualizações.

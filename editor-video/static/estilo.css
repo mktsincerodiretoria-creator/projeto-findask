@@ -271,6 +271,18 @@ button:disabled { cursor: not-allowed; opacity: .5; }
 .caixa-entrar { background: var(--fundo-2); border: 1px solid var(--borda); border-radius: 16px; padding: 28px 22px; width: min(360px, 100%); display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center; }
 .caixa-entrar h1 { margin: 0; font-size: 22px; }
 .caixa-entrar input { width: 100%; font-size: 30px; letter-spacing: 8px; text-align: center; padding: 10px; border-radius: 10px; border: 1px solid var(--borda); background: var(--fundo-3); color: var(--texto); }
+.caixa-entrar .campo-usuario { font-size: 18px; letter-spacing: 0; }
+.caixa-entrar #senha { font-size: 18px; letter-spacing: 2px; }
+.caixa-entrar .pequena { font-size: 12px; margin: 0; }
+.lista-usuarios { display: grid; gap: 6px; max-height: 40vh; overflow: auto; }
+.usuario-linha { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--borda); border-radius: 10px; background: var(--fundo-3); }
+.usuario-linha .nome { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.usuario-linha .dica { margin: 0; }
+.form-usuario { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; align-items: end; }
+.form-usuario input { width: 100%; }
+.convite { white-space: pre-wrap; background: var(--fundo-3); border: 1px solid var(--borda); border-radius: 10px; padding: 10px; font-size: 13px; user-select: all; }
+.selo-dono { font-size: 11px; color: var(--texto-2, #9aa); margin-left: 6px; }
+@media (max-width: 560px) { .form-usuario { grid-template-columns: 1fr; } }
 .caixa-entrar .btn-primario { width: 100%; padding: 12px; font-size: 16px; }
 .erro-texto { color: var(--perigo); min-height: 1.2em; margin: 0; }
 

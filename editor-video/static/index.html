@@ -16,6 +16,8 @@
     <div class="topo-acoes">
       <button class="btn-atualizar" id="btn-atualizar" hidden>⬆ Nova versão</button>
       <button class="btn-fantasma" id="btn-celular" title="Usar no celular" hidden>📱 <span class="rotulo">Celular</span></button>
+      <button class="btn-fantasma" id="btn-usuarios" title="Contas de usuário" hidden>👥 <span class="rotulo">Usuários</span></button>
+      <button class="btn-fantasma" id="btn-conta" title="Minha conta" hidden>👤 <span class="rotulo" id="conta-nome"></span></button>
       <button class="btn-fantasma" id="btn-config" title="Configurações">⚙ <span class="rotulo">Configurações</span></button>
       <button class="btn-primario" id="btn-exportar" hidden>⬇ <span class="rotulo">Exportar</span></button>
     </div>
@@ -321,6 +323,55 @@
       <div class="dialogo-acoes">
         <button value="cancelar" class="btn-fantasma">Cancelar</button>
         <button type="button" id="cfg-salvar" class="btn-primario">Salvar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- ============ USUÁRIOS (só o admin, no servidor) ============ -->
+  <dialog id="dlg-usuarios" class="dialogo">
+    <form method="dialog" class="dialogo-corpo">
+      <h2>👥 Usuários</h2>
+      <p class="dica">Cada pessoa entra com o próprio usuário e senha e só vê os vídeos dela.
+        Você (admin) vê os vídeos de todos.</p>
+      <div class="lista-usuarios" id="lista-usuarios"></div>
+      <hr class="separador">
+      <b>Criar usuário</b>
+      <div class="form-usuario">
+        <label class="campo">Usuário
+          <input type="text" id="novo-login" autocapitalize="none" spellcheck="false" maxlength="30" placeholder="ex: maria">
+        </label>
+        <label class="campo">Senha
+          <input type="text" id="nova-senha-usuario" maxlength="60" autocomplete="off">
+        </label>
+        <button type="button" class="btn-primario" id="criar-usuario">Criar</button>
+      </div>
+      <p class="erro-texto" id="usuarios-erro"></p>
+      <div id="convite-caixa" hidden>
+        <p class="dica">Pronto! Envie para a pessoa (toque para selecionar e copiar):</p>
+        <div class="convite" id="convite"></div>
+        <button type="button" class="btn-mini" id="copiar-convite">Copiar</button>
+      </div>
+      <div class="dialogo-acoes">
+        <button value="fechar" class="btn-fantasma">Fechar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- ============ MINHA CONTA ============ -->
+  <dialog id="dlg-conta" class="dialogo">
+    <form method="dialog" class="dialogo-corpo">
+      <h2>👤 <span id="conta-titulo"></span></h2>
+      <div id="conta-trocar">
+        <label class="campo">Senha atual <input type="password" id="conta-atual" autocomplete="current-password"></label>
+        <label class="campo">Nova senha <input type="password" id="conta-nova" autocomplete="new-password"></label>
+        <button type="button" class="btn-mini" id="conta-salvar">Trocar minha senha</button>
+      </div>
+      <p class="dica" id="conta-admin-dica" hidden>A sua senha (admin) é a <b>CF_SENHA</b>. Para trocar:
+        EasyPanel → cortefacil → Environment → mude CF_SENHA → Deploy.</p>
+      <p class="erro-texto" id="conta-erro"></p>
+      <div class="dialogo-acoes">
+        <button type="button" class="btn-mini perigo" id="conta-sair">Sair</button>
+        <button value="fechar" class="btn-fantasma">Fechar</button>
       </div>
     </form>
   </dialog>

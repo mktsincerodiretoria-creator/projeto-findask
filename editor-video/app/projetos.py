@@ -24,13 +24,14 @@ def pasta(pid: str) -> Path:
     return PASTA_PROJETOS / pid
 
 
-def criar(nome: str, extensao: str) -> tuple[str, Path]:
+def criar(nome: str, extensao: str, dono: str | None = None) -> tuple[str, Path]:
     pid = uuid.uuid4().hex[:12]
     p = pasta(pid)
     p.mkdir(parents=True)
     dados = {
         "id": pid,
         "nome": nome,
+        "dono": dono,           # login de quem enviou (no servidor); None = o dono do programa
         "criado_em": time.time(),
         "original": f"original{extensao}",
         "status": "enviado",
@@ -73,6 +74,10 @@ def atualizar(pid: str, **campos) -> dict:
         return dados
 
 
+def dono_de(dados: dict) -> str:
+    return dados.get("dono") or "admin"
+
+
 def listar() -> list[dict]:
     if not PASTA_PROJETOS.exists():
         return []
@@ -82,7 +87,8 @@ def listar() -> list[dict]:
             d = carregar(p.name)
         except (KeyError, json.JSONDecodeError):
             continue
-        itens.append({k: d.get(k) for k in ("id", "nome", "criado_em", "status", "etapa", "progresso", "meta")})
+        item = {k: d.get(k) for k in ("id", "nome", "criado_em", "status", "etapa", "progresso", "meta")}
+        itens.append({**item, "dono": dono_de(d)})
     return sorted(itens, key=lambda d: d["criado_em"], reverse=True)
 
 

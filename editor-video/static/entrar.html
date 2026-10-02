@@ -12,8 +12,11 @@
     <img src="icone.png" alt="" width="64" height="64">
     <h1>CorteFácil</h1>
     <p class="dica">Digite a senha de acesso do CorteFácil.</p>
-    <input id="senha" autocomplete="one-time-code" maxlength="40"
-      placeholder="senha" autofocus>
+    <input id="usuario" class="campo-usuario" autocomplete="username" autocapitalize="none"
+      spellcheck="false" maxlength="30" placeholder="usuário" autofocus>
+    <input id="senha" type="password" autocomplete="current-password" maxlength="60"
+      placeholder="senha">
+    <p class="dica pequena">Se você é o dono, deixe o usuário em branco (ou digite <b>admin</b>).</p>
     <button class="btn-primario" type="submit">Entrar</button>
     <p class="erro-texto" id="erro"></p>
   </form>
@@ -22,7 +25,10 @@
       e.preventDefault();
       const r = await fetch("/api/entrar", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ senha: document.getElementById("senha").value }),
+        body: JSON.stringify({
+          usuario: document.getElementById("usuario").value,
+          senha: document.getElementById("senha").value,
+        }),
       });
       if (r.ok) location.href = "/";
       else document.getElementById("erro").textContent =

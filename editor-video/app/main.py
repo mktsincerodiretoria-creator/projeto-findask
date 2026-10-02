@@ -54,11 +54,32 @@ async def proteger(request: Request, chamar):
         return JSONResponse({"detail": "Origem não permitida."}, status_code=403)
     caminho = request.url.path
     cliente = request.client.host if request.client else ""
-    if caminho in acesso.LIVRES or acesso.autorizado(cliente, request.cookies.get(acesso.COOKIE)):
+    quem = acesso.usuario(cliente, request.cookies.get(acesso.COOKIE))
+    request.state.usuario = quem
+    if quem and not quem["admin"]:
+        # Cada pessoa só enxerga os próprios projetos.
+        partes = caminho.split("/")
+        if len(partes) > 3 and partes[1:3] == ["api", "projetos"] and partes[3]:
+            try:
+                dono = projetos.dono_de(projetos.carregar(partes[3]))
+            except KeyError:
+                dono = None
+            if dono != quem["login"]:
+                return JSONResponse({"detail": "Projeto não encontrado."}, status_code=404)
+    if caminho in acesso.LIVRES or quem:
         return await chamar(request)
     if caminho.startswith("/api/"):
         return JSONResponse({"detail": "Digite a senha do CorteFácil."}, status_code=401)
     return RedirectResponse("/entrar.html")
+
+
+def _usuario(request: Request) -> dict:
+    return getattr(request.state, "usuario", None) or {"login": None, "admin": False}
+
+
+def _so_admin(request: Request):
+    if not _usuario(request)["admin"]:
+        raise HTTPException(403, "Só o dono do CorteFácil (admin) pode fazer isso.")
 
 
 def _chave_ia() -> Optional[str]:
@@ -192,6 +213,7 @@ def status(request: Request):
         "versao": VERSAO,
         "servidor": acesso.modo_servidor(),
         "local": acesso.local(request.client.host if request.client else ""),
+        "usuario": _usuario(request) if acesso.modo_servidor() else None,
         "ffmpeg": midia.ffmpeg_disponivel(),
         "ia_disponivel": _ia_disponivel(),
         "modelos": transcricao.MODELOS,
@@ -203,15 +225,118 @@ def status(request: Request):
 
 class Entrada(BaseModel):
     senha: str
+    usuario: str = ""
 
 
 @app.post("/api/entrar")
 def entrar(dados: Entrada):
-    token = acesso.conferir_senha(dados.senha)
+    token = acesso.conferir_senha(dados.senha, dados.usuario)
     if not token:
+        if acesso.modo_servidor():
+            raise HTTPException(401, "Usuário ou senha errados. Depois de várias tentativas, espere 1 minuto.")
         raise HTTPException(401, "Senha errada. Confira a senha na tela do computador.")
     resposta = JSONResponse({"ok": True})
     resposta.set_cookie(acesso.COOKIE, token, max_age=30 * 24 * 3600, httponly=True, samesite="lax")
+    return resposta
+
+
+@app.post("/api/sair")
+def sair():
+    resposta = JSONResponse({"ok": True})
+    resposta.delete_cookie(acesso.COOKIE)
+    return resposta
+
+
+# ---------------------------------------------------------------- contas de usuário (servidor)
+
+def _so_no_servidor():
+    if not acesso.modo_servidor():
+        raise HTTPException(404, "Contas de usuário só existem no CorteFácil instalado no servidor.")
+
+
+@app.get("/api/usuarios")
+def listar_usuarios(request: Request):
+    _so_no_servidor()
+    _so_admin(request)
+    contagem: dict[str, int] = {}
+    for item in projetos.listar():
+        contagem[item["dono"]] = contagem.get(item["dono"], 0) + 1
+    lista = [{"login": acesso.ADMIN, "admin": True, "projetos": contagem.get(acesso.ADMIN, 0)}]
+    for login, u in sorted(acesso.usuarios().items()):
+        lista.append({"login": login, "admin": False, "projetos": contagem.get(login, 0),
+                      "criado_em": u.get("criado_em")})
+    return lista
+
+
+class NovoUsuario(BaseModel):
+    login: str
+    senha: str
+
+
+@app.post("/api/usuarios")
+def criar_usuario(novo: NovoUsuario, request: Request):
+    _so_no_servidor()
+    _so_admin(request)
+    try:
+        acesso.criar_usuario(novo.login, novo.senha)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {"login": acesso.normalizar_login(novo.login)}
+
+
+class NovaSenha(BaseModel):
+    senha: str
+    atual: str = ""
+
+
+@app.post("/api/usuarios/{login}/senha")
+def redefinir_senha(login: str, pedido: NovaSenha, request: Request):
+    _so_no_servidor()
+    _so_admin(request)
+    if login == acesso.ADMIN:
+        raise HTTPException(400, "A senha do admin é a CF_SENHA: troque no painel (EasyPanel → Environment).")
+    try:
+        acesso.trocar_senha_usuario(login, pedido.senha)
+    except KeyError:
+        raise HTTPException(404, "Usuário não encontrado.")
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {"ok": True}
+
+
+@app.delete("/api/usuarios/{login}")
+def remover_usuario(login: str, request: Request):
+    _so_no_servidor()
+    _so_admin(request)
+    if login == acesso.ADMIN:
+        raise HTTPException(400, "O admin não pode ser removido.")
+    try:
+        acesso.remover_usuario(login)
+    except KeyError:
+        raise HTTPException(404, "Usuário não encontrado.")
+    # Os vídeos da pessoa não somem: passam para o admin.
+    for item in projetos.listar():
+        if item["dono"] == login:
+            projetos.atualizar(item["id"], dono=acesso.ADMIN)
+    return {"ok": True}
+
+
+@app.post("/api/minha-senha")
+def trocar_minha_senha(pedido: NovaSenha, request: Request):
+    _so_no_servidor()
+    quem = _usuario(request)
+    if quem["login"] in (None, acesso.ADMIN):
+        raise HTTPException(400, "A senha do admin é a CF_SENHA: troque no painel (EasyPanel → Environment).")
+    if not acesso.conferir_senha(pedido.atual, quem["login"]):
+        raise HTTPException(400, "A senha atual não confere.")
+    try:
+        acesso.trocar_senha_usuario(quem["login"], pedido.senha)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    # A senha mudou: entrega o cookie novo para continuar conectado neste aparelho.
+    resposta = JSONResponse({"ok": True})
+    resposta.set_cookie(acesso.COOKIE, acesso.token_usuario(quem["login"]),
+                        max_age=30 * 24 * 3600, httponly=True, samesite="lax")
     return resposta
 
 
@@ -264,7 +389,8 @@ class ConfigApp(BaseModel):
 
 
 @app.post("/api/config")
-def salvar_config(cfg: ConfigApp):
+def salvar_config(cfg: ConfigApp, request: Request):
+    _so_admin(request)
     atual = projetos.config_app()
     atual["anthropic_api_key"] = cfg.anthropic_api_key.strip()
     projetos.salvar_config_app(atual)
@@ -272,17 +398,21 @@ def salvar_config(cfg: ConfigApp):
 
 
 @app.get("/api/projetos")
-def listar_projetos():
-    return projetos.listar()
+def listar_projetos(request: Request):
+    quem = _usuario(request)
+    itens = projetos.listar()
+    if not quem["admin"]:
+        itens = [i for i in itens if i["dono"] == quem["login"]]
+    return itens
 
 
 @app.post("/api/projetos")
-async def novo_projeto(arquivo: UploadFile = File(...), config: str = Form("{}")):
+async def novo_projeto(request: Request, arquivo: UploadFile = File(...), config: str = Form("{}")):
     nome = Path(arquivo.filename or "video.mp4").name
     extensao = Path(nome).suffix.lower()
     if extensao not in EXTENSOES:
         raise HTTPException(400, f"Formato {extensao or 'desconhecido'} não suportado.")
-    pid, p = projetos.criar(nome, extensao)
+    pid, p = projetos.criar(nome, extensao, dono=_usuario(request)["login"])
     with open(p / f"original{extensao}", "wb") as destino:
         while bloco := await arquivo.read(8 * 1024 * 1024):
             destino.write(bloco)
@@ -494,7 +624,8 @@ def _ocupado() -> bool:
 
 
 @app.post("/api/atualizacao/aplicar")
-def aplicar_atualizacao():
+def aplicar_atualizacao(request: Request):
+    _so_admin(request)
     if _ocupado():
         raise HTTPException(409, "Espere a análise ou a exportação terminar antes de atualizar.")
     try:
