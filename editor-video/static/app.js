@@ -283,7 +283,10 @@ async function abrirEditor(p) {
     estado.mov = r.movimento;
     estado.trilha = r.trilha;
   } catch { estado.mov = null; estado.trilha = null; }
+  estado.enq = { ...ENQ_PADRAO, ...(p.enquadramento || {}) };
   montarMovimento();
+  montarFormato();
+  ajustarQuadro();
   renderZooms();
   montarFormLegenda();
   montarLegendaCores();
@@ -428,7 +431,7 @@ $("#desativar-visiveis").addEventListener("click", () => alternarVisiveis(false)
 
 /* ---------- histórico e salvamento ---------- */
 
-const fotoEdicao = () => JSON.stringify({ cortes: cortes(), zooms: estado.mov?.zooms || [] });
+const fotoEdicao = () => JSON.stringify({ cortes: cortes(), zooms: estado.mov?.zooms || [], enq: estado.enq });
 
 function botoesHistorico() {
   $("#desfazer").disabled = !estado.historico.length;
@@ -446,6 +449,7 @@ function voltarPara(foto) {
   const antes = JSON.parse(foto);
   estado.projeto.cortes = antes.cortes;
   if (estado.mov) estado.mov.zooms = antes.zooms;
+  if (antes.enq) { estado.enq = antes.enq; montarFormato(); ajustarQuadro(); transformAtual = "x"; }
   botoesHistorico();
   renderZooms();
   alterou();
@@ -490,6 +494,7 @@ function salvarAgora() {
   estado.textosPendentes = {};
   salvando = salvando.then(() => enviar(`/api/projetos/${p.id}/edicao`, "PUT", {
     cortes: p.cortes, textos, estilo_legenda: p.estilo_legenda, filtro: p.filtro, movimento: estado.mov,
+    enquadramento: estado.enq,
   })).then(() => carregarLegendas()).catch((e) => aviso("Não consegui salvar: " + e.message, true));
   return salvando;
 }
@@ -913,6 +918,7 @@ $("#video-caixa").addEventListener("click", (e) => {
 $$(".aba").forEach((aba) => aba.addEventListener("click", () => {
   $$(".aba").forEach((a) => a.classList.toggle("ativa", a === aba));
   for (const c of $$(".aba-conteudo")) c.hidden = c.id !== `aba-${aba.dataset.aba}`;
+  $("#video-caixa").classList.toggle("enquadrando", aba.dataset.aba === "formato");
   legendaAtual = "";
   posicionarBarraTamanho();
   if (aba.dataset.aba === "filtros") montarFiltros();
@@ -1038,9 +1044,8 @@ function desenharFiltro() {
   telaFiltro.hidden = !ativo;
   if (!ativo) return;
   const caixa = $("#video-caixa").getBoundingClientRect();
-  const vr = quadroRect();
   const dpr = Math.min(2, window.devicePixelRatio || 1);
-  const w = Math.round(vr.width * dpr), h = Math.round(vr.height * dpr);
+  const w = Math.round(video.offsetWidth * dpr), h = Math.round(video.offsetHeight * dpr);
   if (telaFiltro.width !== w || telaFiltro.height !== h) { telaFiltro.width = w; telaFiltro.height = h; }
   gl.viewport(0, 0, w, h);
   gl.activeTexture(gl.TEXTURE0);
@@ -1118,25 +1123,54 @@ function centroEm(t, m, tr) {
   return [tr.x[lo] + (tr.x[hi] - tr.x[lo]) * f, tr.y[lo] + (tr.y[hi] - tr.y[lo]) * f];
 }
 
-function janelaMov(t) {
-  const m = estado.mov;
-  if (!m) return [1, 0, 0];
-  const z = zoomEm(t, m), w = 1 / z;
-  const [fx, fy] = centroEm(t, m, estado.trilha);
-  const cx = Math.min(Math.max(fx, w / 2), 1 - w / 2);
-  const cy = Math.min(Math.max(fy + ALTURA_ROSTO * w, w / 2), 1 - w / 2);
-  return [z, cx - w / 2, cy - w / 2];
+/* ---------- formato e enquadramento (mesma conta do movimento.py: prévia = exportação) ---------- */
+
+const FORMATOS = { original: null, "9:16": [9, 16], "1:1": [1, 1], "4:5": [4, 5], "16:9": [16, 9] };
+const ENQ_PADRAO = { formato: "original", escala: 1, x: 0, y: 0, rotacao: 0 };
+const enq = () => estado.enq || ENQ_PADRAO;
+
+// largura/altura do vídeo final
+function proporcaoQuadro() {
+  const f = FORMATOS[enq().formato];
+  if (f) return f[0] / f[1];
+  const m = estado.projeto?.meta;
+  return video.videoWidth ? video.videoWidth / video.videoHeight : m ? m.largura / m.altura : 16 / 9;
+}
+
+// [a, b, e, f]: leva o ponto (x, y) do vídeo (w x h) para o quadro (W x H):
+// x' = a·x − b·y + e ; y' = b·x + a·y + f
+function geometria(t, w, h, W, H) {
+  const m = estado.mov, q = enq();
+  const z = m ? zoomEm(t, m) : 1;
+  const s = Math.min(W / w, H / h) * q.escala * z;
+  let px = w / 2, py = h / 2;
+  if (m && m.tracking && estado.trilha?.t?.length) {
+    const [fx, fy] = centroEm(t, m, estado.trilha);
+    const forca = m.forca_tracking ?? 0.7;
+    const ex = W / 2 / s, ey = H / 2 / s;
+    if (ex < w / 2) px = Math.min(Math.max(w / 2 + forca * (fx * w - w / 2), ex), w - ex);
+    if (ey < h / 2) {
+      const alvo = fy * h + ALTURA_ROSTO * 2 * ey;
+      py = Math.min(Math.max(h / 2 + forca * (alvo - h / 2), ey), h - ey);
+    }
+  }
+  const th = q.rotacao * Math.PI / 180, a = s * Math.cos(th), b = s * Math.sin(th);
+  const cx = W / 2 + q.x * W, cy = H / 2 + q.y * H;
+  return [a, b, cx - (a * px - b * py), cy - (b * px + a * py)];
 }
 
 const quadroEl = $("#quadro");
 const quadroRect = () => quadroEl.getBoundingClientRect();
 
+// O quadro tem o formato do vídeo final (9:16, 1:1...); o vídeo fica dentro dele.
 function ajustarQuadro() {
   const caixa = $("#video-caixa");
   if (!video.videoWidth) return;
-  const esc = Math.min(caixa.clientWidth / video.videoWidth, caixa.clientHeight / video.videoHeight);
-  quadroEl.style.width = `${Math.floor(video.videoWidth * esc)}px`;
-  quadroEl.style.height = `${Math.floor(video.videoHeight * esc)}px`;
+  const ar = proporcaoQuadro();
+  const alt = Math.min(caixa.clientWidth / ar, caixa.clientHeight);
+  quadroEl.style.width = `${Math.floor(alt * ar)}px`;
+  quadroEl.style.height = `${Math.floor(alt)}px`;
+  transformAtual = "x";
   legendaAtual = "";
   posicionarBarraTamanho();
 }
@@ -1155,7 +1189,7 @@ function ajustarCaixaCelular() {
     return;
   }
   const largura = caixa.clientWidth || window.innerWidth - 16;
-  const proporcao = video.videoWidth ? video.videoHeight / video.videoWidth : 16 / 9;
+  const proporcao = 1 / proporcaoQuadro();
   // vídeo deitado: no mínimo uma caixa 16:9 (faixas pretas em cima e embaixo)
   const natural = Math.max(largura * proporcao, largura * 9 / 16);
   const limite = window.innerHeight * (editor.classList.contains("compacto") ? ALTURA_COMPACTA : ALTURA_CHEIA);
@@ -1179,21 +1213,165 @@ $("#tela-editor").addEventListener("scroll", () => {
 
 let transformAtual = "";
 function aplicarMovimento(t) {
-  const [z, x0, y0] = janelaMov(t);
-  const r = quadroRect();
-  const tr = z > 1.0005 ? `scale(${z.toFixed(4)}) translate(${(-x0 * r.width).toFixed(2)}px, ${(-y0 * r.height).toFixed(2)}px)` : "";
-  if (tr === transformAtual) return;
-  transformAtual = tr;
-  video.style.transform = tr;
-  telaFiltro.style.transform = tr;
+  const vw = video.videoWidth, vh = video.videoHeight;
+  const W = quadroEl.clientWidth, H = quadroEl.clientHeight;
+  if (!vw || !W || !H) return;
+  // o elemento <video> tem o tamanho "inteiro no quadro"; a matriz faz o resto
+  const c0 = Math.min(W / vw, H / vh);
+  const [a, b, e, f] = geometria(t, vw, vh, W, H);
+  const tam = [vw * c0, vh * c0].map((v) => `${v.toFixed(2)}px`);
+  const tr = `matrix(${(a / c0).toFixed(5)}, ${(b / c0).toFixed(5)}, ${(-b / c0).toFixed(5)}, ${(a / c0).toFixed(5)}, ${e.toFixed(2)}, ${f.toFixed(2)})`;
+  if (tr + tam === transformAtual) return;
+  transformAtual = tr + tam;
+  for (const el of [video, telaFiltro]) {
+    el.style.width = tam[0];
+    el.style.height = tam[1];
+    el.style.transform = tr;
+  }
 }
+
+/* ---------- aba Formato: escolha do formato, gestos no vídeo e tracking ---------- */
+
+function montarFormato() {
+  const q = enq();
+  $$("#formatos button").forEach((b) => b.classList.toggle("ativo", b.dataset.formato === q.formato));
+  $("#enq-escala").value = Math.round(q.escala * 100);
+  $("#enq-escala-valor").textContent = `${Math.round(q.escala * 100)}%`;
+  $("#enq-rotacao").value = Math.round(q.rotacao);
+  $("#enq-rotacao-valor").textContent = `${Math.round(q.rotacao)}°`;
+  const m = estado.mov;
+  $("#opcoes-tracking").innerHTML = m ? [
+    campoAlternar("tracking", "Seguir o rosto", "O enquadramento acompanha você", m.tracking),
+    campoFaixa("forca_tracking", "Intensidade do tracking", "Fica no centro ← → segue o rosto de perto",
+      Math.round((m.forca_tracking ?? 0.7) * 100), 0, 100, 5, "%"),
+  ].join("") : `<p class="vazio">Tracking indisponível neste projeto.</p>`;
+  for (const r of $$("#opcoes-tracking input[type=range]")) {
+    r.addEventListener("input", () => (r.previousElementSibling.textContent = r.value + r.dataset.unidade));
+  }
+  infoRosto();
+}
+
+function mudouEnquadramento({ formato = false } = {}) {
+  const q = estado.enq;
+  q.escala = Math.min(5, Math.max(0.2, q.escala));
+  q.x = Math.min(1.5, Math.max(-1.5, q.x));
+  q.y = Math.min(1.5, Math.max(-1.5, q.y));
+  q.rotacao = ((q.rotacao % 360) + 540) % 360 - 180;
+  if (formato) { ajustarQuadro(); ajustarCaixaCelular(); legendaAtual = ""; }
+  transformAtual = "x";
+  montarFormato();
+  agendarSalvar();
+}
+
+// quanto aumentar para o vídeo cobrir o quadro todo (sem faixas pretas), também girado 90°
+function escalaPreencher() {
+  const av = (video.videoWidth || 16) / (video.videoHeight || 9), ac = proporcaoQuadro();
+  const c = Math.min(ac / av, 1);                     // "inteiro" (quadro com altura 1)
+  const giro = Math.abs(Math.round(enq().rotacao / 90)) % 2 === 1;
+  const [lv, hv] = giro ? [1, av] : [av, 1];          // tamanho do vídeo já girado
+  return Math.max(ac / (lv * c), 1 / (hv * c));
+}
+
+$("#formatos").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-formato]");
+  if (!b || !estado.enq) return;
+  guardarHistorico();
+  Object.assign(estado.enq, { formato: b.dataset.formato, escala: 1, x: 0, y: 0 });
+  mudouEnquadramento({ formato: true });
+});
+$("#enq-escala").addEventListener("pointerdown", () => guardarHistorico());
+$("#enq-escala").addEventListener("input", (e) => { estado.enq.escala = +e.target.value / 100; mudouEnquadramento(); });
+$("#enq-rotacao").addEventListener("pointerdown", () => guardarHistorico());
+$("#enq-rotacao").addEventListener("input", (e) => { estado.enq.rotacao = +e.target.value; mudouEnquadramento(); });
+$("#aba-formato").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-enq]");
+  if (!b || !estado.enq) return;
+  guardarHistorico();
+  const q = estado.enq;
+  if (b.dataset.enq === "inteiro") Object.assign(q, { escala: 1, x: 0, y: 0 });
+  else if (b.dataset.enq === "preencher") Object.assign(q, { escala: escalaPreencher(), x: 0, y: 0 });
+  else if (b.dataset.enq === "centralizar") Object.assign(q, { x: 0, y: 0, rotacao: 0 });
+  else if (b.dataset.enq === "esquerda") q.rotacao -= 90;
+  else if (b.dataset.enq === "direita") q.rotacao += 90;
+  mudouEnquadramento();
+});
+$("#opcoes-tracking").addEventListener("input", (e) => {
+  const i = e.target.closest("[data-chave]");
+  if (!i || !estado.mov) return;
+  estado.mov[i.dataset.chave] = i.type === "checkbox" ? i.checked : parseFloat(i.value) / 100;
+  transformAtual = "x";
+  agendarSalvar();
+});
+
+// Gestos no vídeo (só com a aba Formato aberta): 1 dedo move, 2 dedos aumentam/diminuem e giram.
+const caixaVideo = $("#video-caixa");
+const enquadrando = () => abaAtiva() === "formato" && !!estado.enq && !caixaVideo.classList.contains("cheia");
+let gestoEnq = null;
+const ima = (v, alvo, folga) => (Math.abs(v - alvo) < folga ? alvo : v);   // "gruda" no centro / no reto
+
+function infoDedos(ts) {
+  if (ts.length < 2) return { x: ts[0].clientX, y: ts[0].clientY };
+  const [p, q] = [ts[0], ts[1]];
+  return { x: (p.clientX + q.clientX) / 2, y: (p.clientY + q.clientY) / 2,
+    d: Math.hypot(q.clientX - p.clientX, q.clientY - p.clientY),
+    ang: Math.atan2(q.clientY - p.clientY, q.clientX - p.clientX) * 180 / Math.PI };
+}
+
+function comecarGesto(pontos) {
+  gestoEnq = { ini: infoDedos(pontos), enq: { ...estado.enq }, n: pontos.length };
+}
+
+function moverGesto(pontos) {
+  const g = gestoEnq, a = infoDedos(pontos), q = estado.enq;
+  const W = quadroEl.clientWidth || 1, H = quadroEl.clientHeight || 1;
+  if (pontos.length !== g.n) { comecarGesto(pontos); return; }   // pôs ou tirou um dedo
+  q.x = ima(g.enq.x + (a.x - g.ini.x) / W, 0, 0.015);
+  q.y = ima(g.enq.y + (a.y - g.ini.y) / H, 0, 0.015);
+  if (pontos.length >= 2 && g.ini.d > 10) {
+    q.escala = g.enq.escala * a.d / g.ini.d;
+    const giro = g.enq.rotacao + (a.ang - g.ini.ang);
+    q.rotacao = ima(ima(ima(giro, 0, 4), 90, 4), -90, 4);
+  }
+  mudouEnquadramento();
+}
+
+caixaVideo.addEventListener("touchstart", (e) => {
+  if (!enquadrando() || e.target.closest("button, .barra-tamanho")) return;
+  e.preventDefault();
+  if (!gestoEnq) guardarHistorico();
+  comecarGesto(e.touches);
+}, { passive: false });
+caixaVideo.addEventListener("touchmove", (e) => {
+  if (!gestoEnq) return;
+  e.preventDefault();
+  moverGesto(e.touches);
+}, { passive: false });
+caixaVideo.addEventListener("touchend", (e) => {
+  if (!gestoEnq) return;
+  if (e.touches.length) comecarGesto(e.touches); else gestoEnq = null;
+});
+caixaVideo.addEventListener("mousedown", (e) => {
+  if (!enquadrando() || e.target.closest("button, .barra-tamanho")) return;
+  e.preventDefault();
+  guardarHistorico();
+  comecarGesto([e]);
+  const mover = (ev) => moverGesto([ev]);
+  const soltar = () => { gestoEnq = null; window.removeEventListener("mousemove", mover); window.removeEventListener("mouseup", soltar); };
+  window.addEventListener("mousemove", mover);
+  window.addEventListener("mouseup", soltar);
+});
+caixaVideo.addEventListener("wheel", (e) => {
+  if (!enquadrando()) return;
+  e.preventDefault();
+  estado.enq.escala *= Math.exp(-e.deltaY * 0.0015);
+  mudouEnquadramento();
+}, { passive: false });
 
 function montarMovimento() {
   const m = estado.mov;
   const el = $("#opcoes-movimento");
   if (!m) { el.innerHTML = `<p class="vazio">Zoom indisponível neste projeto.</p>`; return; }
   el.innerHTML = [
-    campoAlternar("tracking", "Seguir o rosto (tracking)", "Quando o vídeo está aproximado, o quadro acompanha você", m.tracking),
     campoFaixa("zoom_base", "Aproximação fixa", "Deixa o vídeo sempre um pouco mais perto, dando espaço para o tracking", Math.round(m.zoom_base * 100), 0, 20, 1, "%"),
     campoAlternar("auto", "Zooms automáticos", "Coloca zoom in / zoom out em começos de frase, perguntas e destaques", m.auto),
     campoFaixa("sensibilidade", "Sensibilidade", "Poucos zooms ← → muitos zooms", Math.round(m.sensibilidade * 100), 0, 100, 5, "%"),
@@ -1753,7 +1931,8 @@ function renderExportacoes() {
 $("#btn-exportar").addEventListener("click", () => {
   const p = estado.projeto;
   const m = p.meta;
-  $("#exp-info").textContent = `Vídeo final com ${fmt(tempoFinal(m.duracao))} · original ${m.largura}×${m.altura} a ${Math.round(m.fps)} fps.`;
+  const formato = enq().formato === "original" ? "formato original" : `formato ${enq().formato}`;
+  $("#exp-info").textContent = `Vídeo final com ${fmt(tempoFinal(m.duracao))} · ${formato} · original ${m.largura}×${m.altura} a ${Math.round(m.fps)} fps.`;
   $("#exp-progresso").hidden = true;
   $("#exp-erro").hidden = true;
   $("#exp-opcoes").hidden = false;

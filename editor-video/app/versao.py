@@ -1,11 +1,11 @@
 """Versão do CorteFácil e de onde vêm as atualizações."""
 
-VERSAO = "1.6.3"
+VERSAO = "1.7.0"
 
 NOVIDADES = [
-    "Celular: vídeo em pé aparece inteiro (até 60% da tela); deitado fica centralizado com faixas pretas",
-    "Celular: ao rolar, o vídeo diminui e fica preso no alto junto com a linha do tempo",
-    "Celular: toque ou arraste na linha do tempo e a agulha vai direto para o seu dedo",
+    "Nova aba Formato: 9:16, 1:1, 4:5, 16:9 — arraste, aumente com dois dedos e gire o vídeo no quadro",
+    "Tracking do rosto com liga/desliga e barra de intensidade (aba Formato)",
+    "Exportação com a cor certa em vídeos HDR do iPhone e sem zoom automático ligado por padrão",
 ]
 
 # Repositório público de onde o programa baixa as atualizações.

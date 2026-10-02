@@ -133,7 +133,7 @@ def processar(pid: str, retranscrever: bool = True):
 
         if not (p / "previa.mp4").exists():
             _etapa(pid, "Preparando a prévia", 0.03)
-            midia.gerar_previa(original, p / "previa.mp4")
+            midia.gerar_previa(original, p / "previa.mp4", meta)
         if not (p / "audio.wav").exists():
             _etapa(pid, "Extraindo o áudio", 0.12)
             midia.extrair_audio(original, p / "audio.wav")
@@ -200,6 +200,7 @@ def tarefa_exportar(pid: str, opcoes: dict):
             dados.get("estilo_legenda", {}), opcoes, f"video_editado_{n}", progresso=prog,
             filtro=dados.get("filtro"),
             mov=dados.get("movimento"), trilha=movimento.carregar_trilha(p),
+            enq=dados.get("enquadramento"),
         )
         dados = projetos.carregar(pid)
         dados["exportacoes"] = dados.get("exportacoes", []) + [resultado]
@@ -551,6 +552,7 @@ class Edicao(BaseModel):
     estilo_legenda: Optional[dict] = None
     filtro: Optional[dict] = None             # {"id": "cinema", "intensidade": 0.8}
     movimento: Optional[dict] = None          # tracking, zoom base e lista de zooms
+    enquadramento: Optional[dict] = None      # formato (9:16, 1:1...), escala, posição e giro
 
 
 @app.put("/api/projetos/{pid}/edicao")
@@ -568,6 +570,8 @@ def salvar_edicao(pid: str, edicao: Edicao):
         dados["estilo_legenda"] = {**legendas.ESTILO_PADRAO, **edicao.estilo_legenda}
     if edicao.movimento is not None:
         dados["movimento"] = movimento.normalizar(edicao.movimento)
+    if edicao.enquadramento is not None:
+        dados["enquadramento"] = movimento.normalizar_enquadramento(edicao.enquadramento)
     if edicao.filtro is not None:
         fid = edicao.filtro.get("id", "natural")
         dados["filtro"] = {

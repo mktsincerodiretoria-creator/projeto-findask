@@ -105,6 +105,7 @@
       <aside class="painel">
         <nav class="abas" role="tablist">
           <button class="aba ativa" data-aba="cortes"><span class="aba-icone">✂️</span>Cortes</button>
+          <button class="aba" data-aba="formato"><span class="aba-icone">📐</span>Formato</button>
           <button class="aba" data-aba="texto"><span class="aba-icone">📝</span>Texto</button>
           <button class="aba" data-aba="legenda"><span class="aba-icone">💬</span>Legenda</button>
           <button class="aba" data-aba="zoom"><span class="aba-icone">🔍</span>Zoom</button>
@@ -139,6 +140,34 @@
           <div class="form-legenda" id="form-legenda"></div>
         </div>
 
+        <div class="aba-conteudo" id="aba-formato" hidden>
+          <div class="formatos" id="formatos">
+            <button type="button" data-formato="original"><i style="aspect-ratio:auto;width:22px;height:22px;border-style:dashed"></i>Original</button>
+            <button type="button" data-formato="9:16"><i style="aspect-ratio:9/16"></i>9:16<small>Reels, TikTok</small></button>
+            <button type="button" data-formato="1:1"><i style="aspect-ratio:1/1"></i>1:1<small>Quadrado</small></button>
+            <button type="button" data-formato="4:5"><i style="aspect-ratio:4/5"></i>4:5<small>Feed</small></button>
+            <button type="button" data-formato="16:9"><i style="aspect-ratio:16/9"></i>16:9<small>YouTube</small></button>
+          </div>
+          <p class="dica destaque-dica">✋ Arraste o vídeo para mover · 🤏 dois dedos para aumentar, diminuir e girar
+            <span class="so-pc">(no computador: arraste com o mouse e use a rodinha)</span></p>
+          <div class="faixa"><label>Tamanho</label><output id="enq-escala-valor">100%</output>
+            <input type="range" id="enq-escala" min="20" max="400" step="1" value="100"></div>
+          <div class="faixa"><label>Girar</label><output id="enq-rotacao-valor">0°</output>
+            <input type="range" id="enq-rotacao" min="-180" max="180" step="1" value="0"></div>
+          <div class="botoes-linha">
+            <button type="button" class="btn-mini" data-enq="inteiro">▣ Inteiro</button>
+            <button type="button" class="btn-mini" data-enq="preencher">⬛ Preencher</button>
+            <button type="button" class="btn-mini" data-enq="centralizar">✛ Centralizar</button>
+            <button type="button" class="btn-mini" data-enq="esquerda">⟲ 90°</button>
+            <button type="button" class="btn-mini" data-enq="direita">⟳ 90°</button>
+          </div>
+          <h3 class="subtitulo">Seguir o rosto (tracking)</h3>
+          <div class="grade-opcoes" id="opcoes-tracking"></div>
+          <p class="dica">O tracking mexe o vídeo quando ele está maior que o quadro (Preencher,
+            Tamanho acima de 100% ou durante um zoom), mantendo o seu rosto no lugar certo.</p>
+          <p class="dica" id="info-rosto"></p>
+        </div>
+
         <div class="aba-conteudo" id="aba-zoom" hidden>
           <p class="dica">Movimentos de câmera que prendem a atenção: o quadro segue o seu rosto e
             aproxima (zoom in) e afasta (zoom out) nos momentos de destaque.</p>
@@ -147,7 +176,6 @@
             <button class="btn-secundario" id="refazer-zooms">↻ Refazer zooms automáticos</button>
             <button class="btn-fantasma" id="adicionar-zoom">＋ Zoom aqui</button>
           </div>
-          <p class="dica" id="info-rosto"></p>
           <h3 class="subtitulo">Zooms do vídeo <span id="contagem-zooms"></span></h3>
           <p class="dica">Arraste a faixa roxa na linha do tempo para mover; puxe as pontas para
             mudar a duração. Ou use ◀ ▶ aqui.</p>

@@ -32,8 +32,9 @@ ALTURA_ROSTO = 0.10      # deixa o rosto um pouco acima do meio do quadro
 
 MOVIMENTO_PADRAO = {
     "tracking": True,        # o quadro segue o rosto quando está aproximado
+    "forca_tracking": 0.7,   # 0 = fica no centro, 1 = segue o rosto por completo
     "zoom_base": 0.0,        # aproximação fixa (0 a 0.2) para o tracking ter espaço
-    "auto": True,            # zooms automáticos nos momentos de destaque
+    "auto": False,           # zooms automáticos nos momentos de destaque (você liga na aba Zoom)
     "sensibilidade": 0.4,    # 0 = poucos zooms, 1 = muitos
     "intensidade": 0.12,     # 12% de aproximação
     "estilo": "suave",
@@ -44,6 +45,7 @@ MOVIMENTO_PADRAO = {
 def normalizar(mov: dict | None) -> dict:
     mov = {**MOVIMENTO_PADRAO, **(mov or {})}
     mov["zoom_base"] = min(0.2, max(0.0, float(mov["zoom_base"])))
+    mov["forca_tracking"] = min(1.0, max(0.0, float(mov["forca_tracking"])))
     mov["sensibilidade"] = min(1.0, max(0.0, float(mov["sensibilidade"])))
     mov["intensidade"] = min(0.25, max(0.03, float(mov["intensidade"])))
     mov["estilo"] = "corte" if mov["estilo"] == "corte" else "suave"
@@ -111,6 +113,72 @@ def janela(t: float, mov: dict, trilha: dict | None) -> tuple[float, float, floa
 
 def tem_efeito(mov: dict) -> bool:
     return mov["zoom_base"] > 0.001 or any(z["ativo"] for z in mov["zooms"])
+
+
+# ---------------------------------------------------------------- formato e enquadramento (igual no app.js)
+
+FORMATOS = {"original": None, "9:16": (9, 16), "1:1": (1, 1), "4:5": (4, 5), "16:9": (16, 9)}
+ENQUADRAMENTO_PADRAO = {"formato": "original", "escala": 1.0, "x": 0.0, "y": 0.0, "rotacao": 0.0}
+
+
+def normalizar_enquadramento(enq: dict | None) -> dict:
+    enq = {**ENQUADRAMENTO_PADRAO, **(enq or {})}
+    if enq["formato"] not in FORMATOS:
+        enq["formato"] = "original"
+    enq["escala"] = min(5.0, max(0.2, float(enq["escala"])))
+    enq["x"] = min(1.5, max(-1.5, float(enq["x"])))
+    enq["y"] = min(1.5, max(-1.5, float(enq["y"])))
+    r = float(enq["rotacao"]) % 360
+    enq["rotacao"] = r - 360 if r > 180 else r
+    return {k: enq[k] for k in ENQUADRAMENTO_PADRAO}
+
+
+def enquadramento_neutro(enq: dict) -> bool:
+    return (enq["formato"] == "original" and abs(enq["escala"] - 1) < 1e-3 and abs(enq["x"]) < 1e-4
+            and abs(enq["y"]) < 1e-4 and abs(enq["rotacao"]) < 1e-3)
+
+
+def tamanho_quadro(w: int, h: int, formato: str, lado: int | None = None) -> tuple[int, int]:
+    """Tamanho final (par) para o formato; ``lado`` = lado menor (None = o do vídeo original)."""
+    prop = FORMATOS.get(formato)
+    if prop is None:
+        if lado is None:
+            return int(round(w / 2) * 2), int(round(h / 2) * 2)
+        f = lado / min(w, h)
+        return int(round(w * f / 2) * 2), int(round(h * f / 2) * 2)
+    lado = lado or min(w, h)
+    pw, ph = prop
+    if pw <= ph:
+        W, H = lado, lado * ph / pw
+    else:
+        W, H = lado * pw / ph, lado
+    return int(round(W / 2) * 2), int(round(H / 2) * 2)
+
+
+def matriz(t: float, mov: dict, trilha: dict | None, enq: dict, w: float, h: float, W: float, H: float):
+    """Matriz 2x3 que leva um ponto do vídeo original (pixels w x h) para o quadro final (W x H).
+
+    O vídeo começa inteiro e centralizado no formato (sem cortar). Depois vêm a escala, o giro e o
+    deslocamento que você escolheu com os dedos, o zoom do momento e o tracking: o ponto do vídeo
+    que fica no centro anda em direção ao rosto, só até onde não aparece borda."""
+    import math
+
+    z = zoom_em(t, mov)
+    s = min(W / w, H / h) * enq["escala"] * z
+    px, py = w / 2, h / 2
+    if mov["tracking"] and trilha and trilha.get("t"):
+        fx, fy = centro_em(t, mov, trilha)
+        f = mov["forca_tracking"]
+        ex, ey = (W / 2) / s, (H / 2) / s           # metade do que aparece, em pixels do vídeo
+        if ex < w / 2:
+            px = min(max(w / 2 + f * (fx * w - w / 2), ex), w - ex)
+        if ey < h / 2:
+            alvo = fy * h + ALTURA_ROSTO * 2 * ey      # rosto um pouco acima do meio
+            py = min(max(h / 2 + f * (alvo - h / 2), ey), h - ey)
+    th = math.radians(enq["rotacao"])
+    a, b = s * math.cos(th), s * math.sin(th)
+    cx, cy = W / 2 + enq["x"] * W, H / 2 + enq["y"] * H
+    return np.float32([[a, -b, cx - (a * px - b * py)], [b, a, cy - (b * px + a * py)]])
 
 
 # ---------------------------------------------------------------- rastreamento de rosto

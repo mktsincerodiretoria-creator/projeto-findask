@@ -10,7 +10,7 @@ from testes.test_analise import falas
 
 
 def mov(**kw):
-    return m.normalizar({"tracking": True, **kw})
+    return m.normalizar({"tracking": True, "auto": True, **kw})
 
 
 def test_sem_zoom_o_quadro_fica_inteiro():

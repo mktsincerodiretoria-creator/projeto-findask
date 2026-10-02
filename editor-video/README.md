@@ -17,6 +17,9 @@ Um "CapCut simplificado" para vídeos falados. Você envia o vídeo e ele:
 - **Filtros de cor cinematográficos**: Cinema (teal & orange), Filme Quente, Hora Dourada, Matte,
   Nórdico, Bleach Suave, Pastel, Suspense, Vintage 70 e Noir, com intensidade ajustável. A prévia
   mostra exatamente a cor que sai na exportação.
+- **Formato**: Original, 9:16 (Reels/TikTok), 1:1, 4:5 (Feed) ou 16:9 (YouTube). O vídeo entra
+  inteiro; você arrasta, aumenta/diminui e gira com os dedos (ou mouse), ou usa Preencher/Centralizar.
+  Vídeos HDR do iPhone são convertidos com a cor certa.
 - **Zoom dinâmico com rastreamento de rosto**: o enquadramento acompanha o rosto e o programa
   coloca zoom in/zoom out suaves nas falas de destaque (sem exagero). Você ajusta a sensibilidade
   e a intensidade, arrasta cada zoom na linha do tempo ou remove.

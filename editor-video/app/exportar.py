@@ -10,14 +10,14 @@ import numpy as np
 from . import filtros, movimento
 from .analise import intervalos_mantidos
 from .legendas import gerar_ass, gerar_srt, montar_blocos
-from .midia import versao_ffmpeg
+from .midia import filtro_hdr, sondar, versao_ffmpeg
 
 OPCOES_PADRAO = {
     "resolucao": "original",   # original | 720 | 1080 | 1440 | 2160 (lado menor)
     "qualidade": "alta",       # maxima | alta | normal
     "legenda": "gravada",      # gravada | arquivo | nenhuma
     "velocidade": "normal",    # normal | rapida (codifica mais rápido, arquivo maior)
-    "melhorar": "suave",       # nao | suave | forte (menos ruído + mais nitidez)
+    "melhorar": "nao",         # nao | suave | forte (menos ruído + mais nitidez)
 }
 
 # "Melhorar imagem": tira o granulado antes de aumentar e devolve a nitidez depois.
@@ -55,7 +55,8 @@ def filtro_saida(largura, altura, orig_l, orig_a, com_legenda: bool, melhorar: s
 
 
 def montar_filtro(trechos, largura, altura, orig_l, orig_a, com_legenda: bool, com_cor: bool = False,
-                  quadros_brutos_fps: float | None = None, melhorar: str = "nao") -> str:
+                  quadros_brutos_fps: float | None = None, melhorar: str = "nao", hdr: list | None = None,
+                  tamanho_bruto: tuple[int, int] | None = None) -> str:
     """Corta e junta os trechos. Com ``quadros_brutos_fps`` a saída são quadros RGB crus a
     taxa fixa (o Python aplica zoom/tracking e outro ffmpeg finaliza)."""
     linhas = []
@@ -78,11 +79,14 @@ def montar_filtro(trechos, largura, altura, orig_l, orig_a, com_legenda: bool, c
     else:
         linhas.append(f"{''.join(pares)}concat=n={len(trechos)}:v=1:a=1[vc][ac]")
 
-    posterior = []
+    posterior = list(hdr or [])   # HDR do celular -> cor normal, antes de tudo
     if com_cor:
         # Filtro de cor antes da escala e da legenda (o texto não pode ficar colorido).
         posterior.append("lut3d=cor.cube:interp=tetrahedral")
     if quadros_brutos_fps:
+        if tamanho_bruto and tamanho_bruto != (orig_l, orig_a):
+            # reduz com boa qualidade antes do enquadramento (que então trabalha perto de 1:1)
+            posterior.append(f"scale={tamanho_bruto[0]}:{tamanho_bruto[1]}:flags=lanczos")
         posterior += [f"fps={quadros_brutos_fps}", "format=rgb24"]
     else:
         posterior += filtro_saida(largura, altura, orig_l, orig_a, com_legenda, melhorar)
@@ -92,16 +96,21 @@ def montar_filtro(trechos, largura, altura, orig_l, orig_a, com_legenda: bool, c
 
 def exportar(projeto_dir: Path, original: Path, meta: dict, palavras: list, cortes: list,
              estilo: dict, opcoes: dict, nome_saida: str, progresso=None, filtro: dict | None = None,
-             mov: dict | None = None, trilha: dict | None = None) -> dict:
+             mov: dict | None = None, trilha: dict | None = None, enq: dict | None = None) -> dict:
     opcoes = {**OPCOES_PADRAO, **(opcoes or {})}
     duracao = meta["duracao"]
+    if "hdr" not in meta:   # projetos antigos não guardavam isso
+        meta = {**meta, "hdr": sondar(original).get("hdr", False)}
+    hdr = filtro_hdr(meta)
+    enq = movimento.normalizar_enquadramento(enq)
     trechos = intervalos_mantidos(cortes, duracao)
     if not trechos:
         raise ValueError("Todos os trechos foram cortados: não sobrou nada para exportar.")
     total = sum(b - a for a, b in trechos)
 
-    largura, altura = dimensoes_saida(meta["largura"], meta["altura"], opcoes["resolucao"])
-    blocos = montar_blocos(palavras, cortes, duracao, estilo, meta["largura"] / meta["altura"])
+    lado = None if opcoes["resolucao"] == "original" else int(opcoes["resolucao"])
+    largura, altura = movimento.tamanho_quadro(meta["largura"], meta["altura"], enq["formato"], lado)
+    blocos = montar_blocos(palavras, cortes, duracao, estilo, largura / altura)
     arquivos = {"video": f"{nome_saida}.mp4"}
 
     legenda_ativa = opcoes["legenda"] != "nenhuma" and bool(blocos)
@@ -130,14 +139,14 @@ def exportar(projeto_dir: Path, original: Path, meta: dict, palavras: list, cort
     resultado = {**arquivos, "duracao": round(total, 2), "largura": largura, "altura": altura, "opcoes": opcoes}
 
     mov = movimento.normalizar(mov)
-    if movimento.tem_efeito(mov):
+    if movimento.tem_efeito(mov) or not movimento.enquadramento_neutro(enq):
         _exportar_com_movimento(projeto_dir, original, meta, trechos, total, largura, altura, gravar, com_cor,
                                 mov, trilha, flag_filtro, codificacao, arquivos["video"], progresso,
-                                opcoes["melhorar"])
+                                opcoes["melhorar"], enq, hdr)
         return resultado
 
     filtro = montar_filtro(trechos, largura, altura, meta["largura"], meta["altura"], gravar, com_cor,
-                           melhorar=opcoes["melhorar"])
+                           melhorar=opcoes["melhorar"], hdr=hdr)
     (projeto_dir / "filtro.txt").write_text(filtro, encoding="utf-8")
 
     cmd = [
@@ -192,12 +201,18 @@ def _tempo_original(trechos):
 
 
 def _exportar_com_movimento(projeto_dir, original, meta, trechos, total, largura, altura, gravar, com_cor,
-                            mov, trilha, flag_filtro, codificacao, saida, progresso, melhorar="nao"):
-    """Três etapas em fila: ffmpeg (cortes + cor) -> Python (zoom e tracking em cada quadro,
-    com precisão de subpixel) -> ffmpeg (escala, legenda e codificação)."""
+                            mov, trilha, flag_filtro, codificacao, saida, progresso, melhorar="nao",
+                            enq=None, hdr=None):
+    """Três etapas em fila: ffmpeg (cortes + cor) -> Python (formato, enquadramento, zoom e
+    tracking em cada quadro, com precisão de subpixel) -> ffmpeg (legenda e codificação)."""
     import cv2
 
-    w, h = meta["largura"], meta["altura"]
+    enq = movimento.normalizar_enquadramento(enq)
+    W, H = largura, altura
+    w0, h0 = meta["largura"], meta["altura"]
+    # Se o vídeo vai aparecer menor que o original, o ffmpeg reduz antes (lanczos, sem serrilhado).
+    pf = min(1.0, min(W / w0, H / h0) * max(1.0, enq["escala"]))
+    w, h = (w0, h0) if pf > 0.98 else (int(round(w0 * pf / 2) * 2), int(round(h0 * pf / 2) * 2))
     fps = meta.get("fps") or 30.0
     # 1) Áudio já cortado, num arquivo pronto antes de o vídeo começar.
     (projeto_dir / "filtro_audio.txt").write_text(montar_filtro_audio(trechos), encoding="utf-8")
@@ -211,7 +226,8 @@ def _exportar_com_movimento(projeto_dir, original, meta, trechos, total, largura
         raise RuntimeError(f"ffmpeg falhou no áudio: {proc.stderr[-1500:]}")
 
     # 2) Quadros crus (cortes + cor) -> Python (zoom/tracking) -> 3) ffmpeg final.
-    filtro = montar_filtro(trechos, largura, altura, w, h, gravar, com_cor, quadros_brutos_fps=fps)
+    filtro = montar_filtro(trechos, W, H, w0, h0, gravar, com_cor, quadros_brutos_fps=fps,
+                           hdr=hdr, tamanho_bruto=(w, h))
     (projeto_dir / "filtro.txt").write_text(filtro, encoding="utf-8")
     entrada = subprocess.Popen(
         ["ffmpeg", "-y", "-v", "error", "-i", str(original.resolve()), *flag_filtro,
@@ -219,9 +235,9 @@ def _exportar_com_movimento(projeto_dir, original, meta, trechos, total, largura
         cwd=projeto_dir, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
     )
     saida_proc = subprocess.Popen(
-        ["ffmpeg", "-y", "-v", "error", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{w}x{h}",
+        ["ffmpeg", "-y", "-v", "error", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}",
          "-r", str(fps), "-i", "pipe:0", "-i", "audio_final.wav",
-         "-vf", ",".join(filtro_saida(largura, altura, w, h, gravar, melhorar)),
+         "-vf", ",".join(filtro_saida(W, H, W, H, gravar, melhorar)),
          "-map", "0:v", "-map", "1:a", *codificacao, "-shortest", saida],
         cwd=projeto_dir, stdin=subprocess.PIPE, stderr=subprocess.PIPE,
     )
@@ -235,10 +251,10 @@ def _exportar_com_movimento(projeto_dir, original, meta, trechos, total, largura
             if len(bruto) < tamanho:
                 break
             quadro = np.frombuffer(bruto, np.uint8).reshape(h, w, 3)
-            z, x0, y0 = movimento.janela(para_original(n / fps), mov, trilha)
-            if z > 1.0005:
-                m = np.float32([[z, 0, -x0 * w * z], [0, z, -y0 * h * z]])
-                quadro = cv2.warpAffine(quadro, m, (w, h), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
+            m = movimento.matriz(para_original(n / fps), mov, trilha, enq, w, h, W, H)
+            ampliando = float(np.hypot(m[0, 0], m[1, 0])) > 1.02
+            quadro = cv2.warpAffine(quadro, m, (W, H), flags=cv2.INTER_CUBIC if ampliando else cv2.INTER_LINEAR,
+                                    borderMode=cv2.BORDER_CONSTANT, borderValue=(0, 0, 0))
             saida_proc.stdin.write(quadro.tobytes())
             n += 1
             if progresso and n % 15 == 0:
