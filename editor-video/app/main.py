@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -67,7 +67,12 @@ async def proteger(request: Request, chamar):
             if dono != quem["login"]:
                 return JSONResponse({"detail": "Projeto não encontrado."}, status_code=404)
     if caminho in acesso.LIVRES or quem:
-        return await chamar(request)
+        resposta = await chamar(request)
+        if not caminho.startswith("/api/"):
+            # O navegador (principalmente o Safari do iPhone) guardava a versão antiga do
+            # app.js/estilo.css depois de uma atualização: sempre confere se mudou.
+            resposta.headers.setdefault("Cache-Control", "no-cache")
+        return resposta
     if caminho.startswith("/api/"):
         return JSONResponse({"detail": "Digite a senha do CorteFácil."}, status_code=401)
     return RedirectResponse("/entrar.html")
@@ -724,6 +729,25 @@ def baixar(pid: str, nome: str):
     if nome not in permitidos:
         raise HTTPException(404, "Arquivo não encontrado.")
     return FileResponse(projetos.pasta(pid) / nome, filename=f"{Path(dados['nome']).stem}_{nome}")
+
+
+def _pagina(nome: str) -> HTMLResponse:
+    """Página com ?v=versão no CSS e no JS: depois de atualizar, ninguém fica com a cópia antiga."""
+    html = (ESTATICOS / nome).read_text(encoding="utf-8")
+    html = html.replace('href="estilo.css"', f'href="estilo.css?v={VERSAO}"')
+    html = html.replace('src="app.js"', f'src="app.js?v={VERSAO}"')
+    return HTMLResponse(html, headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/", include_in_schema=False)
+@app.get("/index.html", include_in_schema=False)
+def pagina_inicial():
+    return _pagina("index.html")
+
+
+@app.get("/entrar.html", include_in_schema=False)
+def pagina_entrar():
+    return _pagina("entrar.html")
 
 
 app.mount("/", StaticFiles(directory=ESTATICOS, html=True), name="estaticos")

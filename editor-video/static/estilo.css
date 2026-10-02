@@ -221,7 +221,7 @@ body.com-tela-cheia { overflow: hidden; }
 .zoom input { width: 120px; accent-color: var(--acento); }
 .lt-rolagem { position: relative; height: 156px; overflow-x: auto; overflow-y: hidden; border-radius: 8px; background: var(--fundo); }
 .lt-espaco { height: 1px; }
-.lt-rolagem, #lt-canvas { touch-action: pan-x; }   /* dois dedos = zoom da linha do tempo, não da página */
+.lt-rolagem, #lt-canvas { touch-action: none; }   /* o dedo move a agulha; dois dedos = zoom da linha do tempo */
 .lt-play { display: none; }
 .passos-chave { margin: 0; padding-left: 20px; display: grid; gap: 4px; }
 .passos-chave a { color: var(--acento); }
@@ -323,13 +323,17 @@ body { touch-action: manipulation; }
   /* Editor como no CapCut: vídeo em cima, controles, linha do tempo, e as ferramentas
      numa barra fixa embaixo. O conteúdo da ferramenta escolhida aparece abaixo da linha do tempo. */
   .editor { overflow-y: auto; display: flex; flex-direction: column; padding-bottom: calc(66px + env(safe-area-inset-bottom)); }
-  .editor-grade { display: contents; }
-  .palco { order: 1; padding: 8px 8px 0; gap: 8px; flex: none; }
+  /* Ordem no celular: vídeo, linha do tempo, controles, números, ferramentas. */
+  .editor-grade, .palco { display: contents; }
+  .video-caixa { order: 1; margin: 8px 8px 0; }
+  .controles { order: 3; margin: 8px 10px 0; }
+  .resumo { order: 4; margin: 8px 8px 10px; }
+
   /* A linha do tempo fica presa no alto quando você desce para usar uma ferramenta. */
   .linha-tempo { order: 2; border-top: 0; position: sticky; top: 0; z-index: 20; box-shadow: 0 6px 14px rgba(0, 0, 0, .35); }
-  .lt-play { display: block; width: 34px; height: 30px; font-size: 13px; border-radius: 8px; background: var(--acento); color: #04201e; border: 0; }
-  .painel { order: 3; flex: none; }
-  .video-caixa { height: 48vh; flex: none; }
+  .lt-play { display: block; -webkit-appearance: none; appearance: none; width: 38px; height: 32px; padding: 0; font-size: 14px; border-radius: 9px; background: var(--acento); color: #04201e; border: 0; font-family: system-ui, sans-serif; }
+  .painel { order: 5; flex: none; }
+  .video-caixa { height: 46vh; flex: none; border-radius: 12px; }
   .controles { gap: 10px; flex-wrap: nowrap; }
   .controles .btn-redondo { order: 2; }
   .tempos { order: 1; }
