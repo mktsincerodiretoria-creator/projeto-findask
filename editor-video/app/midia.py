@@ -111,3 +111,24 @@ def forma_de_onda(amostras: np.ndarray, taxa: int = TAXA_AUDIO) -> list[float]:
     picos = np.abs(amostras[: n * tam].reshape(n, tam)).max(axis=1)
     topo = float(np.percentile(picos, 99.5)) or 1.0
     return [round(float(v), 3) for v in np.clip(picos / topo, 0, 1)]
+
+
+ALTURA_QUADRO = 72   # altura de cada miniatura da linha do tempo (px)
+
+
+def gerar_quadros(previa: Path, pasta: Path, duracao: float, largura: int, altura: int) -> dict:
+    """Miniaturas do vídeo para a linha do tempo (como no CapCut), numa única imagem
+    lado a lado: quadros.jpg + quadros.json com o intervalo entre elas."""
+    l = max(2, round(ALTURA_QUADRO * largura / altura / 2) * 2)
+    # ~2 por segundo em vídeos curtos, no máximo 300 (e a imagem com menos de 60 mil px de largura).
+    n = int(max(1, min(300, duracao * 2, 60000 // l)))
+    # Um pouco menos que a duração: a trilha de vídeo às vezes acaba antes da de áudio.
+    passo = duracao * 0.98 / n
+    _rodar([
+        "ffmpeg", "-y", "-v", "error", "-i", str(previa),
+        "-vf", f"fps=1/{passo:.5f}:round=down,scale={l}:{ALTURA_QUADRO},tile={n}x1",
+        "-frames:v", "1", "-q:v", "5", str(pasta / "quadros.jpg"),
+    ])
+    info = {"n": n, "passo": passo, "largura": l, "altura": ALTURA_QUADRO}
+    (pasta / "quadros.json").write_text(json.dumps(info))
+    return info

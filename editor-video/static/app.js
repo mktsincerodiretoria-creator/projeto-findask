@@ -31,6 +31,8 @@ const estado = {
   selPalavras: null,    // {a, b} índices (transcrição)
   ancoraPalavra: null,
   historico: [],
+  refazer: [],
+  quadros: null,        // miniaturas da linha do tempo {n, passo, largura, altura, img}
   textosPendentes: {},
   ouvindo: null,
   poll: null,
@@ -252,6 +254,8 @@ $("#proc-tentar").addEventListener("click", async () => {
 async function abrirEditor(p) {
   estado.projeto = p;
   estado.historico = [];
+  estado.refazer = [];
+  $("#refazer").disabled = true;
   estado.selecao = estado.selPalavras = null;
   estado.filtro = null;
   mostrarTela("editor");
@@ -262,6 +266,7 @@ async function abrirEditor(p) {
     video.dataset.pid = p.id;
   }
   estado.onda = await api(`/api/projetos/${p.id}/onda`).catch(() => []);
+  carregarQuadros(p.id);
   montarOpcoes($("#opcoes-ajustes"), p.config, { inicial: false });
   $("#modelo-retranscrever").innerHTML = estado.status.modelos
     .map((m) => `<option ${m === (p.config.modelo || "small") ? "selected" : ""}>${m}</option>`).join("");
@@ -422,23 +427,44 @@ $("#desativar-visiveis").addEventListener("click", () => alternarVisiveis(false)
 
 /* ---------- histórico e salvamento ---------- */
 
+const fotoEdicao = () => JSON.stringify({ cortes: cortes(), zooms: estado.mov?.zooms || [] });
+
+function botoesHistorico() {
+  $("#desfazer").disabled = !estado.historico.length;
+  $("#refazer").disabled = !estado.refazer.length;
+}
+
 function guardarHistorico() {
-  estado.historico.push(JSON.stringify({ cortes: cortes(), zooms: estado.mov?.zooms || [] }));
+  estado.historico.push(fotoEdicao());
   if (estado.historico.length > 80) estado.historico.shift();
-  $("#desfazer").disabled = false;
+  estado.refazer = [];
+  botoesHistorico();
+}
+
+function voltarPara(foto) {
+  const antes = JSON.parse(foto);
+  estado.projeto.cortes = antes.cortes;
+  if (estado.mov) estado.mov.zooms = antes.zooms;
+  botoesHistorico();
+  renderZooms();
+  alterou();
 }
 
 function desfazer() {
   const anterior = estado.historico.pop();
   if (!anterior) return;
-  const antes = JSON.parse(anterior);
-  estado.projeto.cortes = antes.cortes;
-  if (estado.mov) estado.mov.zooms = antes.zooms;
-  $("#desfazer").disabled = !estado.historico.length;
-  renderZooms();
-  alterou();
+  estado.refazer.push(fotoEdicao());
+  voltarPara(anterior);
+}
+
+function refazer() {
+  const proxima = estado.refazer.pop();
+  if (!proxima) return;
+  estado.historico.push(fotoEdicao());
+  voltarPara(proxima);
 }
 $("#desfazer").addEventListener("click", desfazer);
+$("#refazer").addEventListener("click", refazer);
 
 function alterou() {
   atualizarTudo();
@@ -859,12 +885,33 @@ $("#form-legenda").addEventListener("click", (e) => {
 
 /* ---------- abas ---------- */
 
+// Tela cheia: usa a do navegador quando existe; no iPhone, o vídeo ocupa a tela pela página.
+function telaCheia(ligar) {
+  const caixa = $("#video-caixa");
+  caixa.classList.toggle("cheia", ligar);
+  document.body.classList.toggle("com-tela-cheia", ligar);
+  if (ligar && caixa.requestFullscreen) caixa.requestFullscreen().catch(() => {});
+  else if (!ligar && document.fullscreenElement) document.exitFullscreen().catch(() => {});
+}
+$("#btn-tela-cheia").addEventListener("click", () => telaCheia(true));
+$("#sair-tela-cheia").addEventListener("click", (e) => { e.stopPropagation(); telaCheia(false); });
+document.addEventListener("fullscreenchange", () => { if (!document.fullscreenElement) telaCheia(false); });
+$("#video-caixa").addEventListener("click", (e) => {
+  if ($("#video-caixa").classList.contains("cheia") && !e.target.closest("button, .barra-tamanho")) alternarPlay();
+});
+
 $$(".aba").forEach((aba) => aba.addEventListener("click", () => {
   $$(".aba").forEach((a) => a.classList.toggle("ativa", a === aba));
   for (const c of $$(".aba-conteudo")) c.hidden = c.id !== `aba-${aba.dataset.aba}`;
   legendaAtual = "";
   posicionarBarraTamanho();
   if (aba.dataset.aba === "filtros") montarFiltros();
+  // No celular as abas ficam embaixo (como no CapCut): mostra o conteúdo da aba escolhida.
+  if (celular.matches) {
+    const c = $(`#aba-${aba.dataset.aba}`), editor = $("#tela-editor");
+    const topo = c.getBoundingClientRect().top - editor.getBoundingClientRect().top + editor.scrollTop;
+    editor.scrollTo({ top: Math.max(0, topo - 8), behavior: "smooth" });
+  }
 }));
 
 /* ---------- ajustes / reanálise ---------- */
@@ -1308,6 +1355,41 @@ $("#zoom").addEventListener("input", (e) => {
   desenharLinhaTempo();
 });
 
+async function carregarQuadros(pid) {
+  estado.quadros = null;
+  const info = await api(`/api/projetos/${pid}/quadros`).catch(() => null);
+  if (!info || estado.projeto?.id !== pid) return;
+  const img = new Image();
+  img.onload = () => {
+    if (estado.projeto?.id !== pid) return;
+    estado.quadros = { ...info, img };
+    desenharLinhaTempo();
+  };
+  img.src = `/api/projetos/${pid}/quadros.jpg?n=${info.n}`;
+}
+
+// Faixa de imagens do vídeo (como no CapCut): uma miniatura atrás da outra.
+function desenharFilme(X, t0, largura, y, alt) {
+  const q = estado.quadros, fimX = Math.min(largura, X(duracao()));
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(Math.max(0, X(0)), y, fimX - Math.max(0, X(0)), alt);
+  ctx.clip();
+  if (!q) {
+    ctx.fillStyle = "#1c2130";
+    ctx.fillRect(0, y, largura, alt);
+  } else {
+    const dw = q.largura * alt / q.altura;
+    const inicio = X(0) + Math.floor((0 - X(0)) / dw) * dw;
+    for (let x = inicio; x < fimX; x += dw) {
+      const t = t0 + (x + dw / 2) / pps;
+      const i = Math.max(0, Math.min(q.n - 1, Math.floor(t / q.passo)));
+      ctx.drawImage(q.img, i * q.largura, 0, q.largura, q.altura, Math.round(x), y, Math.ceil(dw), alt);
+    }
+  }
+  ctx.restore();
+}
+
 function passoRegua() {
   for (const p of [0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600]) if (p * pps >= 70) return p;
   return 1200;
@@ -1319,7 +1401,10 @@ function desenharLinhaTempo() {
   const t0 = rolagem.scrollLeft / pps;
   const t1 = t0 + largura / pps;
   const X = (t) => (t - t0) * pps;
-  const topo = 20, base = ALTURA_LT - 17, meio = (topo + base) / 2, amp = (base - topo) / 2;
+  // régua | imagens do vídeo | forma de onda | zooms
+  const FILME = ALTURA_LT >= 140 ? 50 : 42;
+  const topo = 18, base = ALTURA_LT - 15;
+  const ondaTopo = topo + FILME + 3, meio = (ondaTopo + base) / 2, amp = (base - ondaTopo) / 2;
 
   ctx.clearRect(0, 0, largura, ALTURA_LT);
   ctx.fillStyle = "#0f1115";
@@ -1338,6 +1423,8 @@ function desenharLinhaTempo() {
   }
   ctx.stroke();
 
+  desenharFilme(X, t0, largura, topo, FILME);
+
   // forma de onda (50 pontos por segundo)
   const onda = estado.onda;
   ctx.fillStyle = "#4a5570";
@@ -1355,10 +1442,12 @@ function desenharLinhaTempo() {
     const cor = tipoInfo(c.tipo).cor;
     const xa = X(c.inicio), xb = X(c.fim);
     if (c.ativo) {
+      ctx.fillStyle = "rgba(8,10,14,.55)";   // trecho cortado fica escuro nas imagens
+      ctx.fillRect(xa, topo, xb - xa, FILME);
       ctx.fillStyle = hexParaRgba(cor, 0.33);
       ctx.fillRect(xa, topo, xb - xa, base - topo);
       ctx.fillStyle = cor;
-      ctx.fillRect(xa, topo - 4, xb - xa, 4);
+      ctx.fillRect(xa, topo - 3, xb - xa, 3);
     } else {
       ctx.setLineDash([3, 3]);
       ctx.strokeStyle = hexParaRgba(cor, 0.9);
@@ -1405,9 +1494,15 @@ function desenharLinhaTempo() {
   ctx.fill();
 }
 
+const celular = matchMedia("(max-width: 820px)");
+
 function seguirCursor(t) {
   if (video.paused || arrastandoLT) return;
   const x = t * pps;
+  if (celular.matches) {   // no celular o cursor fica no meio e o vídeo corre por baixo
+    rolagem.scrollLeft = x - rolagem.clientWidth / 2;
+    return;
+  }
   if (x < rolagem.scrollLeft || x > rolagem.scrollLeft + rolagem.clientWidth - 40) {
     rolagem.scrollLeft = x - 40;
   }
@@ -1527,7 +1622,10 @@ function cortarSelecaoLT() {
 document.addEventListener("keydown", (e) => {
   if ($("#tela-editor").hidden || e.target.closest("input, select, textarea, dialog[open]")) return;
   if (e.code === "Space") { e.preventDefault(); alternarPlay(); }
-  else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") { e.preventDefault(); desfazer(); }
+  else if (e.key === "Escape" && $("#video-caixa").classList.contains("cheia")) telaCheia(false);
+  else if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === "y" || (e.shiftKey && e.key.toLowerCase() === "z"))) {
+    e.preventDefault(); refazer();
+  } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") { e.preventDefault(); desfazer(); }
   else if (e.key === "Delete" || e.key === "Backspace") {
     if (estado.selecao) cortarSelecaoLT();
     else if (estado.selPalavras) $("#cortar-selecao").click();

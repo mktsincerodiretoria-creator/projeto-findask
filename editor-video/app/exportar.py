@@ -17,6 +17,13 @@ OPCOES_PADRAO = {
     "qualidade": "alta",       # maxima | alta | normal
     "legenda": "gravada",      # gravada | arquivo | nenhuma
     "velocidade": "normal",    # normal | rapida (codifica mais rápido, arquivo maior)
+    "melhorar": "suave",       # nao | suave | forte (menos ruído + mais nitidez)
+}
+
+# "Melhorar imagem": tira o granulado antes de aumentar e devolve a nitidez depois.
+MELHORIA = {
+    "suave": (["hqdn3d=1.2:1.0:4:3"], ["unsharp=5:5:0.45:3:3:0"]),
+    "forte": (["hqdn3d=2.2:1.8:6:5"], ["unsharp=5:5:0.85:3:3:0", "eq=contrast=1.03:saturation=1.06"]),
 }
 
 CRF = {"maxima": 14, "alta": 17, "normal": 21}
@@ -33,11 +40,13 @@ def dimensoes_saida(largura: int, altura: int, resolucao: str) -> tuple[int, int
     return int(round(alvo_l / 2) * 2), int(round(alvo_a / 2) * 2)
 
 
-def filtro_saida(largura, altura, orig_l, orig_a, com_legenda: bool) -> list[str]:
-    """Escala final, legenda gravada e formato de cor do arquivo."""
-    etapas = []
+def filtro_saida(largura, altura, orig_l, orig_a, com_legenda: bool, melhorar: str = "nao") -> list[str]:
+    """Melhoria de imagem, escala final, legenda gravada e formato de cor do arquivo."""
+    antes, depois = MELHORIA.get(melhorar, ([], []))
+    etapas = list(antes)
     if (largura, altura) != (orig_l, orig_a):
-        etapas.append(f"scale={largura}:{altura}:flags=lanczos")
+        etapas.append(f"scale={largura}:{altura}:flags=lanczos+accurate_rnd+full_chroma_int")
+    etapas += depois   # nitidez depois da escala (e antes da legenda: o texto não é afetado)
     etapas.append("setsar=1")
     if com_legenda:
         etapas.append("subtitles=legendas.ass")
@@ -46,7 +55,7 @@ def filtro_saida(largura, altura, orig_l, orig_a, com_legenda: bool) -> list[str
 
 
 def montar_filtro(trechos, largura, altura, orig_l, orig_a, com_legenda: bool, com_cor: bool = False,
-                  quadros_brutos_fps: float | None = None) -> str:
+                  quadros_brutos_fps: float | None = None, melhorar: str = "nao") -> str:
     """Corta e junta os trechos. Com ``quadros_brutos_fps`` a saída são quadros RGB crus a
     taxa fixa (o Python aplica zoom/tracking e outro ffmpeg finaliza)."""
     linhas = []
@@ -76,7 +85,7 @@ def montar_filtro(trechos, largura, altura, orig_l, orig_a, com_legenda: bool, c
     if quadros_brutos_fps:
         posterior += [f"fps={quadros_brutos_fps}", "format=rgb24"]
     else:
-        posterior += filtro_saida(largura, altura, orig_l, orig_a, com_legenda)
+        posterior += filtro_saida(largura, altura, orig_l, orig_a, com_legenda, melhorar)
     linhas.append(f"[vc]{','.join(posterior)}[vout]")
     return ";\n".join(linhas)
 
@@ -123,10 +132,12 @@ def exportar(projeto_dir: Path, original: Path, meta: dict, palavras: list, cort
     mov = movimento.normalizar(mov)
     if movimento.tem_efeito(mov):
         _exportar_com_movimento(projeto_dir, original, meta, trechos, total, largura, altura, gravar, com_cor,
-                                mov, trilha, flag_filtro, codificacao, arquivos["video"], progresso)
+                                mov, trilha, flag_filtro, codificacao, arquivos["video"], progresso,
+                                opcoes["melhorar"])
         return resultado
 
-    filtro = montar_filtro(trechos, largura, altura, meta["largura"], meta["altura"], gravar, com_cor)
+    filtro = montar_filtro(trechos, largura, altura, meta["largura"], meta["altura"], gravar, com_cor,
+                           melhorar=opcoes["melhorar"])
     (projeto_dir / "filtro.txt").write_text(filtro, encoding="utf-8")
 
     cmd = [
@@ -181,7 +192,7 @@ def _tempo_original(trechos):
 
 
 def _exportar_com_movimento(projeto_dir, original, meta, trechos, total, largura, altura, gravar, com_cor,
-                            mov, trilha, flag_filtro, codificacao, saida, progresso):
+                            mov, trilha, flag_filtro, codificacao, saida, progresso, melhorar="nao"):
     """Três etapas em fila: ffmpeg (cortes + cor) -> Python (zoom e tracking em cada quadro,
     com precisão de subpixel) -> ffmpeg (escala, legenda e codificação)."""
     import cv2
@@ -210,7 +221,7 @@ def _exportar_com_movimento(projeto_dir, original, meta, trechos, total, largura
     saida_proc = subprocess.Popen(
         ["ffmpeg", "-y", "-v", "error", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{w}x{h}",
          "-r", str(fps), "-i", "pipe:0", "-i", "audio_final.wav",
-         "-vf", ",".join(filtro_saida(largura, altura, w, h, gravar)),
+         "-vf", ",".join(filtro_saida(largura, altura, w, h, gravar, melhorar)),
          "-map", "0:v", "-map", "1:a", *codificacao, "-shortest", saida],
         cwd=projeto_dir, stdin=subprocess.PIPE, stderr=subprocess.PIPE,
     )

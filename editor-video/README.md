@@ -20,6 +20,9 @@ Um "CapCut simplificado" para vídeos falados. Você envia o vídeo e ele:
 - **Zoom dinâmico com rastreamento de rosto**: o enquadramento acompanha o rosto e o programa
   coloca zoom in/zoom out suaves nas falas de destaque (sem exagero). Você ajusta a sensibilidade
   e a intensidade, arrasta cada zoom na linha do tempo ou remove.
+- **Linha do tempo como no CapCut**: imagens do vídeo, forma de onda, cortes e zooms; tela cheia,
+  desfazer e refazer. No celular as ferramentas ficam numa barra embaixo.
+- **Melhorar imagem** ao exportar: tira o granulado e devolve a nitidez (suave ou forte).
 - **Exporta em alta resolução** (original, 1080p, 2K ou 4K) com a legenda gravada no vídeo e/ou em `.srt`.
 
 Tudo roda **no seu computador**: o vídeo não é enviado para nenhum servidor (só o texto da fala

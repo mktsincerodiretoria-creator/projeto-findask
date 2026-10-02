@@ -81,6 +81,7 @@
             <canvas id="video-filtro" class="video-filtro" hidden></canvas>
           </div>
           <div class="legenda-previa" id="legenda-previa"></div>
+          <button class="sair-tela-cheia" id="sair-tela-cheia" title="Sair da tela cheia">✕</button>
           <div class="barra-tamanho" id="barra-tamanho" hidden title="Arraste para mudar o tamanho da legenda">
             <div class="barra-tamanho-trilho"></div>
             <div class="barra-tamanho-botao" id="barra-tamanho-botao"></div>
@@ -96,18 +97,19 @@
             <input type="checkbox" id="pular-cortes" checked>
             <span class="alternar-trilho"></span> Prévia com cortes
           </label>
+          <button class="btn-icone" id="btn-tela-cheia" title="Tela cheia">⛶</button>
         </div>
         <div class="resumo" id="resumo"></div>
       </section>
 
       <aside class="painel">
         <nav class="abas" role="tablist">
-          <button class="aba ativa" data-aba="cortes">Cortes</button>
-          <button class="aba" data-aba="texto">Texto</button>
-          <button class="aba" data-aba="legenda">Legenda</button>
-          <button class="aba" data-aba="zoom">Zoom</button>
-          <button class="aba" data-aba="filtros">Filtros</button>
-          <button class="aba" data-aba="ajustes">Ajustes</button>
+          <button class="aba ativa" data-aba="cortes"><span class="aba-icone">✂️</span>Cortes</button>
+          <button class="aba" data-aba="texto"><span class="aba-icone">📝</span>Texto</button>
+          <button class="aba" data-aba="legenda"><span class="aba-icone">💬</span>Legenda</button>
+          <button class="aba" data-aba="zoom"><span class="aba-icone">🔍</span>Zoom</button>
+          <button class="aba" data-aba="filtros"><span class="aba-icone">🎨</span>Filtros</button>
+          <button class="aba" data-aba="ajustes"><span class="aba-icone">⚙️</span>Ajustes</button>
         </nav>
 
         <div class="aba-conteudo" id="aba-cortes">
@@ -187,7 +189,8 @@
         <span class="lt-titulo">Linha do tempo</span>
         <div class="legenda-cores" id="legenda-cores"></div>
         <div class="lt-direita">
-          <button class="btn-mini" id="desfazer" title="Desfazer (Ctrl+Z)" disabled>↶ Desfazer</button>
+          <button class="btn-mini" id="desfazer" title="Desfazer (Ctrl+Z)" disabled>↶ <span class="rotulo">Desfazer</span></button>
+          <button class="btn-mini" id="refazer" title="Refazer (Ctrl+Y)" disabled>↷ <span class="rotulo">Refazer</span></button>
           <button class="btn-mini perigo" id="cortar-trecho" hidden>✂ Cortar trecho</button>
           <label class="zoom">🔍 <input type="range" id="zoom" min="10" max="400" value="60"></label>
         </div>
@@ -212,6 +215,13 @@
             <option value="1080">Full HD (1080p)</option>
             <option value="1440">2K (1440p)</option>
             <option value="2160">4K (2160p)</option>
+          </select>
+        </label>
+        <label class="campo">Melhorar imagem
+          <select name="melhorar">
+            <option value="nao">Não mexer</option>
+            <option value="suave" selected>Suave — menos granulado e mais nítido (recomendado)</option>
+            <option value="forte">Forte — para vídeo escuro ou de celular antigo</option>
           </select>
         </label>
         <label class="campo">Qualidade

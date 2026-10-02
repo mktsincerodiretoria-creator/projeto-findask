@@ -585,6 +585,31 @@ def legendas_previa(pid: str):
     )
 
 
+_trava_quadros = threading.Lock()
+
+
+@app.get("/api/projetos/{pid}/quadros")
+def quadros(pid: str):
+    """Miniaturas da linha do tempo (geradas na primeira vez que o projeto abre)."""
+    dados = _projeto_ou_404(pid)
+    p, meta = projetos.pasta(pid), dados.get("meta")
+    if not meta or not (p / "previa.mp4").exists():
+        raise HTTPException(404, "Prévia ainda não gerada.")
+    with _trava_quadros:
+        arq = p / "quadros.json"
+        if not arq.exists() or not (p / "quadros.jpg").exists():
+            return midia.gerar_quadros(p / "previa.mp4", p, meta["duracao"], meta["largura"], meta["altura"])
+        return json.loads(arq.read_text())
+
+
+@app.get("/api/projetos/{pid}/quadros.jpg")
+def quadros_imagem(pid: str):
+    arq = projetos.pasta(pid) / "quadros.jpg"
+    if not arq.exists():
+        raise HTTPException(404, "Miniaturas ainda não geradas.")
+    return FileResponse(arq, media_type="image/jpeg")
+
+
 # ---------------------------------------------------------------- filtros de cor
 
 _trava_miniaturas = threading.Lock()
