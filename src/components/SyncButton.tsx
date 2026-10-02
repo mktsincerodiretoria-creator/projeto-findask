@@ -69,7 +69,14 @@ export default function SyncButton({ accountId, onSyncComplete }: SyncButtonProp
 
         if (failed.length > 0 && failed.length === results.length) {
           setIsError(true);
-          setStatus(`Erro: ${failed.map((f) => f.error).join(", ")}`);
+          const firstError = failed[0]?.error || "";
+          if (firstError.includes("ML_CLIENT_SECRET") || firstError.includes("client_secret")) {
+            setStatus("ML_CLIENT_SECRET nao configurado. Adicione nas variaveis de ambiente.");
+          } else if (firstError.includes("Token refresh failed")) {
+            setStatus("Token expirado. Reconecte sua conta ML em Contas.");
+          } else {
+            setStatus(`Erro: ${firstError.substring(0, 150)}`);
+          }
         } else if (results.length === 0) {
           setIsError(true);
           setStatus("Nenhuma conta ML ativa. Configure em Contas.");

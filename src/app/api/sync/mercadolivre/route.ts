@@ -168,6 +168,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (!process.env.ML_CLIENT_SECRET) {
+      return NextResponse.json(
+        { error: "ML_CLIENT_SECRET nao configurado. Adicione nas variaveis de ambiente." },
+        { status: 400 }
+      );
+    }
+
     const results = [];
 
     for (const account of accounts) {

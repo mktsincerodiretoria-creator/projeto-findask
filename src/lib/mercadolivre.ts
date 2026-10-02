@@ -68,6 +68,9 @@ export async function exchangeCodeForToken(code: string) {
 
 // Renova access_token usando refresh_token
 export async function refreshAccessToken(refreshToken: string) {
+        if (!ML_CONFIG.clientId || !ML_CONFIG.clientSecret) {
+                throw new Error("ML_CLIENT_ID ou ML_CLIENT_SECRET nao configurados. Adicione nas variaveis de ambiente.");
+        }
         const response = await fetch(ML_TOKEN_URL, {
                   method: "POST",
                   headers: {
