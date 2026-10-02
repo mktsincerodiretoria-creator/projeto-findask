@@ -67,26 +67,40 @@ export async function POST(request: NextRequest) {
     const colFreteTotal = findCol(headers, "custo do frete", "custo de frete");
     const colFreteVend = findCol(headers, "frete vendedor", "frete vend", "seller shipping");
     const colOrderId = findCol(headers, "id do pedido/ajuste", "id do pedido", "id da venda", "nº pedido", "order_sn", "order id", "n. pedido");
-    const colStatus = findCol(headers, "status");
+    const colStatus = findCol(headers, "status pedido", "status");
     const colAffiliate = findCol(headers, "comissões de afiliados", "comissão afiliado", "afiliado", "affiliate");
     const colTransactionType = findCol(headers, "tipo de transação", "tipo de transacao", "transaction_type");
     const colSettlement = findCol(headers, "valor total a ser liquidado");
 
-    // Busca ou cria conta para a plataforma
-    let account = await prisma.account.findFirst({
-      where: { platform: platform as "MERCADO_LIVRE" | "SHOPEE" | "TIKTOK_SHOP" | "AMAZON" },
-    });
+    // Coluna "Conta" para multi-account
+    const colAccount = findCol(headers, "conta", "account", "loja", "seller");
 
-    if (!account) {
-      account = await prisma.account.create({
-        data: {
-          platform: platform as "MERCADO_LIVRE" | "SHOPEE" | "TIKTOK_SHOP" | "AMAZON",
-          platformId: `import_${platform.toLowerCase()}`,
-          accessToken: "imported",
-          nickname: `${platform} (importado)`,
-        },
-      });
+    // Cache de contas por nome
+    const accountCache: Record<string, typeof account> = {};
+    async function getAccount(accountName?: string) {
+      const key = accountName || `default_${platform}`;
+      if (accountCache[key]) return accountCache[key];
+
+      let acc = accountName
+        ? await prisma.account.findFirst({ where: { nickname: accountName, platform: platform as "MERCADO_LIVRE" | "SHOPEE" | "TIKTOK_SHOP" | "AMAZON" } })
+        : await prisma.account.findFirst({ where: { platform: platform as "MERCADO_LIVRE" | "SHOPEE" | "TIKTOK_SHOP" | "AMAZON" } });
+
+      if (!acc) {
+        acc = await prisma.account.create({
+          data: {
+            platform: platform as "MERCADO_LIVRE" | "SHOPEE" | "TIKTOK_SHOP" | "AMAZON",
+            platformId: `import_${(accountName || platform).toLowerCase().replace(/\s/g, "_")}`,
+            accessToken: "imported",
+            nickname: accountName || `${platform} (importado)`,
+          },
+        });
+      }
+      accountCache[key] = acc;
+      return acc;
     }
+
+    // Compat: single account fallback
+    let account = await getAccount();
 
     let imported = 0;
     let updated = 0;
@@ -134,6 +148,10 @@ export async function POST(request: NextRequest) {
       fee += affiliateFee;
       const orderId = colOrderId >= 0 ? cols[colOrderId]?.trim() : `IMP-${i}-${Date.now()}`;
       const status = colStatus >= 0 ? cols[colStatus] : "paid";
+      const accountName = colAccount >= 0 ? cols[colAccount]?.trim() : undefined;
+
+      // Resolve account for this row
+      if (accountName) account = await getAccount(accountName);
 
       // Pula se nao tem receita e nao tem preco
       if (revenue <= 0 && unitPrice <= 0) { skipped++; continue; }
@@ -178,11 +196,13 @@ export async function POST(request: NextRequest) {
         });
         updated++;
       } else {
+        const statusLower = status.toLowerCase();
+        const orderStatus = statusLower.includes("cancel") || statusLower.includes("devol") ? "cancelled" : "paid";
         const savedOrder = await prisma.order.create({
           data: {
             accountId: account.id,
             platformOrderId: orderId,
-            status: status.toLowerCase().includes("cancel") ? "cancelled" : "paid",
+            status: orderStatus,
             totalAmount,
             currency: "BRL",
             platformFee: fee,
