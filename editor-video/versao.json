@@ -1,10 +1,10 @@
 {
- "versao": "1.6.2",
+ "versao": "1.6.3",
  "ramo": "claude/video-editing-subtitles-che65w",
  "novidades": [
-  "Celular: a linha do tempo fica logo abaixo do vídeo",
-  "Celular: toque ou arraste na linha do tempo e a agulha vai direto para o seu dedo",
-  "Vídeo do celular enquadrado no tamanho certo; atualizações chegam sem precisar limpar o navegador"
+  "Celular: vídeo em pé aparece inteiro (até 60% da tela); deitado fica centralizado com faixas pretas",
+  "Celular: ao rolar, o vídeo diminui e fica preso no alto junto com a linha do tempo",
+  "Celular: toque ou arraste na linha do tempo e a agulha vai direto para o seu dedo"
  ],
  "arquivos": {
   ".dockerignore": "ef1cd98ba282ca3cc3de25cab546a542d2f0c1c1d5674eac7b55b2efab422f3b",
@@ -26,15 +26,15 @@
   "app/movimento.py": "6b44e5537533b63c2928dd7d98250a46a55db9a136c8a0034406853bf388cf29",
   "app/projetos.py": "eef4ad4fa8f6e547557e2a93ff16516b7d43064023888dccb0c8169272969477",
   "app/transcricao.py": "7c18799a6eb77c82cf837ba275bbcca4c22286ae5d6b2c5b5ca9626b7e129bc1",
-  "app/versao.py": "c2ae2d87b3a4ff5cd6f81dd3a34147bbaeb4d60cfc8173b79a41e13c87c18e57",
+  "app/versao.py": "1be70487531f32548a8335b57824382d6eec0f8b4bb25b963784e7f1da74efb4",
   "iniciar.bat": "105c72b2454f34dd2325e47372aa19431d017fa541cb0a15d443bc1e1b12187d",
   "iniciar.py": "a8e626363e4d70edd1d87a43e139206199939c033073ee5e2652f3cb91ec3e69",
   "instalar.ps1": "9cca92c7f2e6ce36b1b763e7e3aef791f85443002da3d88af797c93df3dd6bf2",
   "requirements.txt": "fd4f7f52e36bd12006a81e5353b4de5ee643c22c9c7bfecbb21c9ed72a9c4e45",
   "servidor/instalar-servidor.sh": "317c2e9654a2550dd38bfe81734415e940056a21149c29428d39e9bc918642c3",
-  "static/app.js": "87f101c9260a993c9f96161a198e9789958ca9b4195db0f5b531d38870edb2d5",
+  "static/app.js": "51b6746877627c6d865d8c964e2df6c795b6f3b840b0fa9398c5bb0f1c061f13",
   "static/entrar.html": "e09d4ab785f7fd36d13ddd11f652200e120e676ac9a5b6e8e2d01f4b86151227",
-  "static/estilo.css": "a47531793f261d4862cd717e94eddeaa5cdd2cf5a6ac3d1c95c5e4c831fdb25e",
+  "static/estilo.css": "b24b52634cc1b7fa421550c032391f5b0043e38be29f519e14f009263cce4e20",
   "static/icone.ico": "25adae0d43faed26a76a8e177c6456c04bec9763b64a7ed86fae6b948e77c2ef",
   "static/icone.png": "54eaf6e32a8527f4b8e908fc9d593677ba818a0f75fda2d78499966b6d6ee678",
   "static/index.html": "2cad036fb1be2034d313e5b52b679eb476535680cd9e5cfacfc34b69da12e150"

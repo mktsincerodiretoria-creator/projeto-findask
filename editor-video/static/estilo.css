@@ -325,15 +325,17 @@ body { touch-action: manipulation; }
   .editor { overflow-y: auto; display: flex; flex-direction: column; padding-bottom: calc(66px + env(safe-area-inset-bottom)); }
   /* Ordem no celular: vídeo, linha do tempo, controles, números, ferramentas. */
   .editor-grade, .palco { display: contents; }
-  .video-caixa { order: 1; margin: 8px 8px 0; }
+  /* Vídeo e linha do tempo presos no alto ao rolar; o resto passa por baixo. */
+  .video-caixa { order: 1; margin: 8px 8px 0; position: sticky; top: 8px; z-index: 22; background: #000; box-shadow: 0 0 0 8px var(--fundo); transition: height .18s ease; }
   .controles { order: 3; margin: 8px 10px 0; }
   .resumo { order: 4; margin: 8px 8px 10px; }
 
   /* A linha do tempo fica presa no alto quando você desce para usar uma ferramenta. */
-  .linha-tempo { order: 2; border-top: 0; position: sticky; top: 0; z-index: 20; box-shadow: 0 6px 14px rgba(0, 0, 0, .35); }
+  .linha-tempo { order: 2; border-top: 0; position: sticky; top: var(--alt-video, 0px); z-index: 21; box-shadow: 0 6px 14px rgba(0, 0, 0, .35); }
   .lt-play { display: block; -webkit-appearance: none; appearance: none; width: 38px; height: 32px; padding: 0; font-size: 14px; border-radius: 9px; background: var(--acento); color: #04201e; border: 0; font-family: system-ui, sans-serif; }
   .painel { order: 5; flex: none; }
   .video-caixa { height: 46vh; flex: none; border-radius: 12px; }
+  .editor.compacto .lt-dica { display: none; }
   .controles { gap: 10px; flex-wrap: nowrap; }
   .controles .btn-redondo { order: 2; }
   .tempos { order: 1; }

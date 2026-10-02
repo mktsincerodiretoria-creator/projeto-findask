@@ -919,9 +919,11 @@ $$(".aba").forEach((aba) => aba.addEventListener("click", () => {
   // No celular as abas ficam embaixo (como no CapCut): mostra o conteúdo da aba escolhida.
   if (celular.matches) {
     const c = $(`#aba-${aba.dataset.aba}`), editor = $("#tela-editor");
+    editor.classList.add("compacto");   // vídeo pequeno + linha do tempo presos no alto
+    ajustarCaixaCelular();
     const topo = c.getBoundingClientRect().top - editor.getBoundingClientRect().top + editor.scrollTop;
-    // a linha do tempo fica presa no alto da tela: o conteúdo aparece logo abaixo dela
-    editor.scrollTo({ top: Math.max(0, topo - $(".linha-tempo").offsetHeight - 8), behavior: "smooth" });
+    const presos = $("#video-caixa").offsetHeight + 8 + $(".linha-tempo").offsetHeight;
+    editor.scrollTo({ top: Math.max(60, topo - presos - 6), behavior: "smooth" });
   }
 }));
 
@@ -1141,17 +1143,39 @@ function ajustarQuadro() {
 new ResizeObserver(ajustarQuadro).observe($("#video-caixa"));
 video.addEventListener("loadedmetadata", ajustarQuadro);
 
-// No celular a caixa do vídeo tem a altura do próprio vídeo (até metade da tela):
-// vídeo deitado não fica com faixas pretas enormes e vídeo em pé não some.
+// No celular a caixa do vídeo se adapta ao vídeo: em pé aparece inteiro (até 60% da tela),
+// deitado fica centralizado com faixas pretas e sobra espaço embaixo. Ao rolar a página,
+// vídeo e linha do tempo ficam presos no alto e o vídeo encolhe para caber o resto.
+const ALTURA_CHEIA = 0.6, ALTURA_COMPACTA = 0.3;
 function ajustarCaixaCelular() {
-  const caixa = $("#video-caixa");
-  if (!celular.matches || !video.videoWidth || caixa.classList.contains("cheia")) { caixa.style.height = ""; return; }
-  const alt = Math.min(caixa.clientWidth * video.videoHeight / video.videoWidth, window.innerHeight * 0.5);
-  caixa.style.height = `${Math.round(Math.max(180, alt))}px`;
+  const caixa = $("#video-caixa"), editor = $("#tela-editor");
+  if (!celular.matches || caixa.classList.contains("cheia")) {
+    caixa.style.height = "";
+    editor.style.removeProperty("--alt-video");
+    return;
+  }
+  const largura = caixa.clientWidth || window.innerWidth - 16;
+  const proporcao = video.videoWidth ? video.videoHeight / video.videoWidth : 16 / 9;
+  // vídeo deitado: no mínimo uma caixa 16:9 (faixas pretas em cima e embaixo)
+  const natural = Math.max(largura * proporcao, largura * 9 / 16);
+  const limite = window.innerHeight * (editor.classList.contains("compacto") ? ALTURA_COMPACTA : ALTURA_CHEIA);
+  const alt = Math.round(Math.max(150, Math.min(natural, limite)));
+  caixa.style.height = `${alt}px`;
+  editor.style.setProperty("--alt-video", `${alt + 8}px`);
 }
 video.addEventListener("loadedmetadata", ajustarCaixaCelular);
 window.addEventListener("resize", ajustarCaixaCelular);
 celular.addEventListener("change", ajustarCaixaCelular);
+$("#tela-editor").addEventListener("scroll", () => {
+  if (!celular.matches) return;
+  const editor = $("#tela-editor"), y = editor.scrollTop;
+  // folga para não ficar abrindo e fechando no meio do caminho
+  const compacto = editor.classList.contains("compacto") ? y > 4 : y > 50;
+  if (compacto !== editor.classList.contains("compacto")) {
+    editor.classList.toggle("compacto", compacto);
+    ajustarCaixaCelular();
+  }
+}, { passive: true });
 
 let transformAtual = "";
 function aplicarMovimento(t) {
