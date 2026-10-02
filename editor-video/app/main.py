@@ -214,6 +214,7 @@ def status(request: Request):
         "servidor": acesso.modo_servidor(),
         "local": acesso.local(request.client.host if request.client else ""),
         "usuario": _usuario(request) if acesso.modo_servidor() else None,
+        "pendentes": acesso.pendentes() if acesso.modo_servidor() and _usuario(request)["admin"] else 0,
         "ffmpeg": midia.ffmpeg_disponivel(),
         "ia_disponivel": _ia_disponivel(),
         "modelos": transcricao.MODELOS,
@@ -230,7 +231,10 @@ class Entrada(BaseModel):
 
 @app.post("/api/entrar")
 def entrar(dados: Entrada):
-    token = acesso.conferir_senha(dados.senha, dados.usuario)
+    try:
+        token = acesso.conferir_senha(dados.senha, dados.usuario)
+    except acesso.ContaPendente:
+        raise HTTPException(403, "Seu cadastro está esperando a aprovação do administrador. Tente mais tarde.")
     if not token:
         if acesso.modo_servidor():
             raise HTTPException(401, "Usuário ou senha errados. Depois de várias tentativas, espere 1 minuto.")
@@ -262,10 +266,47 @@ def listar_usuarios(request: Request):
     for item in projetos.listar():
         contagem[item["dono"]] = contagem.get(item["dono"], 0) + 1
     lista = [{"login": acesso.ADMIN, "admin": True, "projetos": contagem.get(acesso.ADMIN, 0)}]
-    for login, u in sorted(acesso.usuarios().items()):
+    for login, u in sorted(acesso.usuarios().items(), key=lambda kv: (not kv[1].get("pendente"), kv[0])):
         lista.append({"login": login, "admin": False, "projetos": contagem.get(login, 0),
+                      "nome": u.get("nome", ""), "pendente": bool(u.get("pendente")),
                       "criado_em": u.get("criado_em")})
     return lista
+
+
+class Cadastro(BaseModel):
+    nome: str = ""
+    login: str
+    senha: str
+
+
+@app.get("/api/modo")
+def modo():
+    """Para a tela de entrada saber se mostra "Criar conta" (só no servidor)."""
+    return {"servidor": acesso.modo_servidor()}
+
+
+@app.post("/api/cadastro")
+def pedir_cadastro(pedido: Cadastro):
+    """A pessoa cria a própria conta; ela só entra depois que o admin aceitar."""
+    _so_no_servidor()
+    if len(pedido.nome.strip()) < 2:
+        raise HTTPException(400, "Digite o seu nome.")
+    try:
+        acesso.criar_usuario(pedido.login, pedido.senha, nome=pedido.nome, pendente=True)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {"ok": True}
+
+
+@app.post("/api/usuarios/{login}/aprovar")
+def aprovar_usuario(login: str, request: Request):
+    _so_no_servidor()
+    _so_admin(request)
+    try:
+        acesso.aprovar_usuario(login)
+    except KeyError:
+        raise HTTPException(404, "Usuário não encontrado.")
+    return {"ok": True}
 
 
 class NovoUsuario(BaseModel):

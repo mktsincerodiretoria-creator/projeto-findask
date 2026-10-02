@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="estilo.css">
 </head>
 <body class="pagina-entrar">
+  <!-- Entrar -->
   <form class="caixa-entrar" id="form">
     <img src="icone.png" alt="" width="64" height="64">
     <h1>CorteFácil</h1>
@@ -16,23 +17,70 @@
       spellcheck="false" maxlength="30" placeholder="usuário" autofocus>
     <input id="senha" type="password" autocomplete="current-password" maxlength="60"
       placeholder="senha">
-    <p class="dica pequena">Se você é o dono, deixe o usuário em branco (ou digite <b>admin</b>).</p>
+    <p class="dica pequena" id="dica-dono">Se você é o dono, deixe o usuário em branco (ou digite <b>admin</b>).</p>
     <button class="btn-primario" type="submit">Entrar</button>
     <p class="erro-texto" id="erro"></p>
+    <p class="dica" id="link-criar" hidden>Ainda não tem conta? <a href="#" id="ir-criar">Criar conta</a></p>
   </form>
+
+  <!-- Criar conta (no servidor): o admin precisa aceitar -->
+  <form class="caixa-entrar" id="form-criar" hidden>
+    <img src="icone.png" alt="" width="64" height="64">
+    <h1>Criar conta</h1>
+    <p class="dica">Preencha e envie. O administrador recebe o seu pedido e libera o acesso.</p>
+    <input id="c-nome" class="campo-usuario" autocomplete="name" maxlength="60" placeholder="seu nome">
+    <input id="c-usuario" class="campo-usuario" autocomplete="username" autocapitalize="none"
+      spellcheck="false" maxlength="30" placeholder="escolha um usuário (ex: maria)">
+    <input id="c-senha" class="campo-usuario" type="password" autocomplete="new-password" maxlength="60"
+      placeholder="crie uma senha (mín. 6)">
+    <p class="dica pequena">Usuário: letras minúsculas e números, sem espaço nem acento.</p>
+    <button class="btn-primario" type="submit">Pedir acesso</button>
+    <p class="erro-texto" id="c-erro"></p>
+    <p class="dica"><a href="#" id="ir-entrar">Já tenho conta</a></p>
+  </form>
+
+  <div class="caixa-entrar" id="enviado" hidden>
+    <img src="icone.png" alt="" width="64" height="64">
+    <h1>Pedido enviado ✓</h1>
+    <p class="dica">Assim que o administrador aceitar, entre com o usuário <b id="enviado-usuario"></b>
+      e a senha que você criou.</p>
+    <button class="btn-primario" type="button" id="voltar">Voltar para entrar</button>
+  </div>
+
   <script>
-    document.getElementById("form").addEventListener("submit", async (e) => {
+    const $ = (s) => document.querySelector(s);
+    const mostrar = (id) => ["#form", "#form-criar", "#enviado"].forEach((x) => { $(x).hidden = x !== id; });
+    const erroDe = async (r) => (await r.json().catch(() => ({}))).detail || "Não foi possível continuar.";
+    const postar = (url, dados) => fetch(url, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(dados),
+    });
+
+    fetch("/api/modo").then((r) => r.json()).then((m) => {
+      $("#link-criar").hidden = !m.servidor;
+      if (!m.servidor) { $("#usuario").hidden = $("#dica-dono").hidden = true; $("#senha").focus(); }
+    }).catch(() => {});
+
+    $("#form").addEventListener("submit", async (e) => {
       e.preventDefault();
-      const r = await fetch("/api/entrar", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          usuario: document.getElementById("usuario").value,
-          senha: document.getElementById("senha").value,
-        }),
-      });
+      const r = await postar("/api/entrar", { usuario: $("#usuario").value, senha: $("#senha").value });
       if (r.ok) location.href = "/";
-      else document.getElementById("erro").textContent =
-        (await r.json().catch(() => ({}))).detail || "Não foi possível entrar.";
+      else $("#erro").textContent = await erroDe(r);
+    });
+    $("#ir-criar").addEventListener("click", (e) => { e.preventDefault(); mostrar("#form-criar"); $("#c-nome").focus(); });
+    $("#ir-entrar").addEventListener("click", (e) => { e.preventDefault(); mostrar("#form"); });
+    $("#voltar").addEventListener("click", () => { mostrar("#form"); $("#senha").focus(); });
+    $("#c-usuario").addEventListener("input", (e) => { e.target.value = e.target.value.toLowerCase().replace(/\s/g, ""); });
+
+    $("#form-criar").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const login = $("#c-usuario").value.trim();
+      const r = await postar("/api/cadastro", { nome: $("#c-nome").value, login, senha: $("#c-senha").value });
+      if (!r.ok) { $("#c-erro").textContent = await erroDe(r); return; }
+      $("#enviado-usuario").textContent = login;
+      $("#usuario").value = login;
+      $("#senha").value = "";
+      $("#c-erro").textContent = $("#erro").textContent = "";
+      mostrar("#enviado");
     });
   </script>
 </body>

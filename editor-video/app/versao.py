@@ -1,11 +1,11 @@
 """Versão do CorteFácil e de onde vêm as atualizações."""
 
-VERSAO = "1.4.0"
+VERSAO = "1.5.0"
 
 NOVIDADES = [
-    "No servidor: contas de usuário (botão 👥 Usuários) — cada pessoa vê só os vídeos dela",
-    "Botão 👤 para trocar a própria senha e sair",
-    "Zoom dinâmico com rastreamento de rosto (aba Zoom)",
+    "No servidor: a pessoa cria a própria conta em \"Criar conta\" e você só clica em Aceitar",
+    "Aviso no botão 👥 Usuários quando chega pedido de acesso",
+    "Cada pessoa vê só os vídeos dela; zoom dinâmico com rastreamento de rosto",
 ]
 
 # Repositório público de onde o programa baixa as atualizações.

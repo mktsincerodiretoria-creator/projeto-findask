@@ -21,7 +21,7 @@ COOKIE = "cf_sessao"
 # "testclient" é o endereço usado pelo cliente de testes do FastAPI.
 LOCAIS = {"127.0.0.1", "::1", "localhost", "testclient"}
 # Sem senha: a página de entrada e o que ela precisa para aparecer.
-LIVRES = {"/entrar.html", "/estilo.css", "/icone.png", "/api/entrar", "/api/sair"}
+LIVRES = {"/entrar.html", "/estilo.css", "/icone.png", "/api/entrar", "/api/sair", "/api/cadastro", "/api/modo"}
 
 # No servidor: "admin" é o dono (entra com CF_SENHA); os outros são criados por ele.
 ADMIN = "admin"
@@ -102,8 +102,17 @@ def normalizar_login(login: str) -> str:
     return (login or "").strip().lower()
 
 
-def criar_usuario(login: str, senha: str) -> None:
+class ContaPendente(Exception):
+    """Senha certa, mas o admin ainda não aprovou o cadastro."""
+
+
+_cadastros: list[float] = []
+MAX_PENDENTES = 30
+
+
+def criar_usuario(login: str, senha: str, nome: str = "", pendente: bool = False) -> None:
     login = normalizar_login(login)
+    senha = senha.strip()
     if not LOGIN_VALIDO.match(login):
         raise ValueError("Use de 2 a 30 letras minúsculas, números, ponto, traço ou _ (sem espaço nem acento).")
     if login == ADMIN:
@@ -113,10 +122,31 @@ def criar_usuario(login: str, senha: str) -> None:
     with _trava:
         dados = usuarios()
         if login in dados:
-            raise ValueError("Já existe um usuário com esse nome.")
+            raise ValueError("Já existe um usuário com esse nome. Escolha outro.")
+        if pendente:
+            # Proteção contra robôs: poucos cadastros por minuto e um limite de pedidos na fila.
+            agora = time.time()
+            _cadastros[:] = [t for t in _cadastros if agora - t < 60]
+            if len(_cadastros) >= 5 or sum(1 for u in dados.values() if u.get("pendente")) >= MAX_PENDENTES:
+                raise ValueError("Muitos pedidos agora. Tente de novo daqui a pouco.")
+            _cadastros.append(agora)
         sal = secrets.token_hex(16)
-        dados[login] = {"sal": sal, "hash": _hash(senha, sal), "versao": 1, "criado_em": time.time()}
+        dados[login] = {"sal": sal, "hash": _hash(senha, sal), "versao": 1, "criado_em": time.time(),
+                        "nome": nome.strip()[:60], "pendente": pendente}
         _salvar_usuarios(dados)
+
+
+def aprovar_usuario(login: str) -> None:
+    with _trava:
+        dados = usuarios()
+        if login not in dados:
+            raise KeyError(login)
+        dados[login]["pendente"] = False
+        _salvar_usuarios(dados)
+
+
+def pendentes() -> int:
+    return sum(1 for u in usuarios().values() if u.get("pendente"))
 
 
 def trocar_senha_usuario(login: str, senha: str) -> None:
@@ -146,7 +176,7 @@ def token_usuario(login: str) -> str | None:
         prova = "admin:" + os.environ.get("CF_SENHA", "")
     else:
         u = usuarios().get(login)
-        if not u:
+        if not u or u.get("pendente"):
             return None
         prova = f"{login}:{u.get('versao', 1)}:{u['hash']}"
     assinatura = hmac.new(cfg["segredo"].encode(), prova.encode(), hashlib.sha256).hexdigest()
@@ -174,7 +204,10 @@ def conferir_senha(senha: str, login: str = "") -> str | None:
         if modo_servidor():
             login = normalizar_login(login) or ADMIN
             if _senha_confere(login, senha):
-                return token_usuario(login)
+                token = token_usuario(login)
+                if token is None:
+                    raise ContaPendente(login)
+                return token
         elif not normalizar_login(login):
             cfg = config()
             certa = cfg.get("senha_celular", "")

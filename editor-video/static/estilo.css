@@ -272,6 +272,10 @@ button:disabled { cursor: not-allowed; opacity: .5; }
 .caixa-entrar h1 { margin: 0; font-size: 22px; }
 .caixa-entrar input { width: 100%; font-size: 30px; letter-spacing: 8px; text-align: center; padding: 10px; border-radius: 10px; border: 1px solid var(--borda); background: var(--fundo-3); color: var(--texto); }
 .caixa-entrar .campo-usuario { font-size: 18px; letter-spacing: 0; }
+.caixa-entrar[hidden] { display: none; }
+.caixa-entrar a { color: var(--destaque, #19d3c5); }
+.usuario-linha.pendente { border-color: #e0a526; background: rgba(224, 165, 38, .08); }
+.badge { display: inline-block; min-width: 18px; padding: 0 5px; margin-left: 4px; border-radius: 9px; background: #e5484d; color: #fff; font-size: 11px; font-weight: 700; line-height: 18px; text-align: center; }
 .caixa-entrar #senha { font-size: 18px; letter-spacing: 2px; }
 .caixa-entrar .pequena { font-size: 12px; margin: 0; }
 .lista-usuarios { display: grid; gap: 6px; max-height: 40vh; overflow: auto; }

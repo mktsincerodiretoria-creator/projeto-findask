@@ -1736,14 +1736,25 @@ function senhaAleatoria() {
 
 async function carregarUsuarios() {
   const lista = await api("/api/usuarios");
-  $("#lista-usuarios").innerHTML = lista.map((u) => `
+  mostrarPendentes(lista.filter((u) => u.pendente).length);
+  $("#lista-usuarios").innerHTML = lista.map((u) => u.pendente ? `
+    <div class="usuario-linha pendente">
+      <span class="nome">🕓 <b>${escapar(u.nome || u.login)}</b> <span class="dica">pediu acesso · usuário ${escapar(u.login)}</span></span>
+      <button type="button" class="btn-mini" data-aprovar="${escapar(u.login)}">✓ Aceitar</button>
+      <button type="button" class="btn-mini perigo" data-recusar="${escapar(u.login)}">Recusar</button>
+    </div>` : `
     <div class="usuario-linha">
-      <span class="nome"><b>${escapar(u.login)}</b>${u.admin ? " (você)" : ""}</span>
+      <span class="nome"><b>${escapar(u.login)}</b>${u.admin ? " (você)" : u.nome ? ` <span class="dica">${escapar(u.nome)}</span>` : ""}</span>
       <span class="dica">${u.projetos} vídeo${u.projetos === 1 ? "" : "s"}</span>
       ${u.admin ? "" : `
         <button type="button" class="btn-mini" data-senha="${escapar(u.login)}">Nova senha</button>
         <button type="button" class="btn-mini perigo" data-remover="${escapar(u.login)}">Remover</button>`}
     </div>`).join("");
+}
+
+function mostrarPendentes(n) {
+  $("#badge-pendentes").hidden = !n;
+  $("#badge-pendentes").textContent = n;
 }
 
 function mostrarConvite(login, senha) {
@@ -1774,9 +1785,16 @@ $("#criar-usuario").addEventListener("click", async () => {
 
 $("#lista-usuarios").addEventListener("click", async (e) => {
   const trocar = e.target.closest("[data-senha]"), remover = e.target.closest("[data-remover]");
+  const aprovar = e.target.closest("[data-aprovar]"), recusar = e.target.closest("[data-recusar]");
   $("#usuarios-erro").textContent = "";
   try {
-    if (trocar) {
+    if (aprovar) {
+      await api(`/api/usuarios/${encodeURIComponent(aprovar.dataset.aprovar)}/aprovar`, { method: "POST" });
+      aviso(`Acesso liberado para ${aprovar.dataset.aprovar}. A pessoa já pode entrar.`);
+    } else if (recusar) {
+      if (!confirm(`Recusar o pedido de "${recusar.dataset.recusar}"?`)) return;
+      await api(`/api/usuarios/${encodeURIComponent(recusar.dataset.recusar)}`, { method: "DELETE" });
+    } else if (trocar) {
       const login = trocar.dataset.senha, senha = senhaAleatoria();
       if (!confirm(`Criar uma senha nova para "${login}"? A senha antiga para de funcionar.`)) return;
       await enviar(`/api/usuarios/${encodeURIComponent(login)}/senha`, "POST", { senha });
@@ -1861,4 +1879,13 @@ window.addEventListener("hashchange", rotear);
   $("#btn-usuarios").hidden = !u?.admin;
   $("#btn-conta").hidden = !u;
   if (u) $("#conta-nome").textContent = u.login;
+  if (u?.admin) {
+    mostrarPendentes(estado.status.pendentes);
+    if (estado.status.pendentes) aviso(`👥 ${estado.status.pendentes} pedido(s) de acesso esperando você aceitar.`);
+    // Confere de tempos em tempos se chegou pedido novo.
+    setInterval(async () => {
+      const st = await api("/api/status").catch(() => null);
+      if (st) mostrarPendentes(st.pendentes);
+    }, 60000);
+  }
 })();

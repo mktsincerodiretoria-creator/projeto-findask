@@ -16,7 +16,7 @@
     <div class="topo-acoes">
       <button class="btn-atualizar" id="btn-atualizar" hidden>⬆ Nova versão</button>
       <button class="btn-fantasma" id="btn-celular" title="Usar no celular" hidden>📱 <span class="rotulo">Celular</span></button>
-      <button class="btn-fantasma" id="btn-usuarios" title="Contas de usuário" hidden>👥 <span class="rotulo">Usuários</span></button>
+      <button class="btn-fantasma" id="btn-usuarios" title="Contas de usuário" hidden>👥 <span class="rotulo">Usuários</span><span class="badge" id="badge-pendentes" hidden></span></button>
       <button class="btn-fantasma" id="btn-conta" title="Minha conta" hidden>👤 <span class="rotulo" id="conta-nome"></span></button>
       <button class="btn-fantasma" id="btn-config" title="Configurações">⚙ <span class="rotulo">Configurações</span></button>
       <button class="btn-primario" id="btn-exportar" hidden>⬇ <span class="rotulo">Exportar</span></button>
@@ -335,7 +335,8 @@
         Você (admin) vê os vídeos de todos.</p>
       <div class="lista-usuarios" id="lista-usuarios"></div>
       <hr class="separador">
-      <b>Criar usuário</b>
+      <details>
+      <summary><b>Criar usuário você mesmo</b> (opcional)</summary>
       <div class="form-usuario">
         <label class="campo">Usuário
           <input type="text" id="novo-login" autocapitalize="none" spellcheck="false" maxlength="30" placeholder="ex: maria">
@@ -345,6 +346,7 @@
         </label>
         <button type="button" class="btn-primario" id="criar-usuario">Criar</button>
       </div>
+      </details>
       <p class="erro-texto" id="usuarios-erro"></p>
       <div id="convite-caixa" hidden>
         <p class="dica">Pronto! Envie para a pessoa (toque para selecionar e copiar):</p>

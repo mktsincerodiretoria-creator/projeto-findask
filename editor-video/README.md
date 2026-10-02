@@ -67,8 +67,9 @@ ramo `claude/video-editing-subtitles-che65w`, pasta de build `/editor-video`, bu
 variável `CF_SENHA` (senha de acesso); volume montado em `/dados`; domínio apontando para a porta **8765**.
 Para atualizar, clique em **Deploy** no painel.
 
-**Mais pessoas:** entre com usuário em branco (ou `admin`) e a senha `CF_SENHA`, clique em
-**👥 Usuários** e crie uma conta para cada pessoa. Cada uma entra com o próprio usuário e senha e
+**Mais pessoas:** mande o link. A pessoa toca em **Criar conta**, escolhe usuário e senha e envia
+o pedido. Você entra (usuário em branco ou `admin`, senha `CF_SENHA`), vê o número vermelho em
+**👥 Usuários** e clica em **✓ Aceitar** (ou crie a conta você mesmo por lá). Cada uma entra com o próprio usuário e senha e
 só vê os vídeos dela; o admin vê todos. Remover um usuário passa os vídeos dele para o admin.
 
 ### Num servidor (VPS) com o seu domínio

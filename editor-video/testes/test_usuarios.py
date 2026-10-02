@@ -17,6 +17,7 @@ def servidor(tmp_path, monkeypatch):
     importlib.reload(acesso)
     importlib.reload(main)
     acesso._tentativas.clear()
+    acesso._cadastros.clear()
     return main, acesso, projetos
 
 
@@ -119,3 +120,52 @@ def test_sem_servidor_nao_existem_contas(tmp_path, monkeypatch):
     pc = TestClient(main.app)
     assert pc.get("/api/usuarios").status_code == 404
     assert pc.get("/api/status").json()["usuario"] is None
+
+
+def test_pessoa_pede_cadastro_e_so_entra_depois_de_aceita(servidor):
+    main, acesso, _ = servidor
+    anonimo = TestClient(main.app, client=VIA_CADDY)
+    assert anonimo.get("/api/modo").json() == {"servidor": True}
+    assert anonimo.post("/api/cadastro", json={"nome": "", "login": "ana", "senha": "abc12345"}).status_code == 400
+    assert anonimo.post("/api/cadastro", json={"nome": "Ana Souza", "login": "Ana", "senha": "abc12345"}).status_code == 200
+    assert anonimo.post("/api/cadastro", json={"nome": "Outra", "login": "ana", "senha": "xyz12345"}).status_code == 400
+    assert anonimo.post("/api/cadastro", json={"nome": "Robô", "login": "admin", "senha": "xyz12345"}).status_code == 400
+
+    # Antes de aceitar: senha certa, mas não entra (e a mensagem diz por quê).
+    r = anonimo.post("/api/entrar", json={"usuario": "ana", "senha": "abc12345"})
+    assert r.status_code == 403 and "aprovação" in r.json()["detail"]
+
+    admin, _ = entrar(main, "", "senha-do-dono")
+    assert admin.get("/api/status").json()["pendentes"] == 1
+    ana = [u for u in admin.get("/api/usuarios").json() if u["login"] == "ana"][0]
+    assert ana["pendente"] and ana["nome"] == "Ana Souza"
+    assert anonimo.post("/api/usuarios/ana/aprovar").status_code == 401   # só o admin aceita
+    assert admin.post("/api/usuarios/ana/aprovar").status_code == 200
+    assert admin.get("/api/status").json()["pendentes"] == 0
+
+    c, st = entrar(main, "ana", "abc12345")
+    assert st == 200 and c.get("/api/projetos").json() == []
+
+
+def test_recusar_pedido_e_limite_de_cadastros(servidor):
+    main, acesso, _ = servidor
+    anonimo = TestClient(main.app, client=VIA_CADDY)
+    for i in range(5):
+        assert anonimo.post("/api/cadastro", json={"nome": "Robô", "login": f"robo{i}", "senha": "abc12345"}).status_code == 200
+    assert anonimo.post("/api/cadastro", json={"nome": "Robô", "login": "robo9", "senha": "abc12345"}).status_code == 400
+    admin, _ = entrar(main, "", "senha-do-dono")
+    assert admin.delete("/api/usuarios/robo0").status_code == 200
+    assert "robo0" not in acesso.usuarios()
+
+
+def test_sem_servidor_nao_tem_cadastro(tmp_path, monkeypatch):
+    monkeypatch.setenv("EDITOR_DADOS", str(tmp_path / "dados"))
+    monkeypatch.delenv("CF_SENHA", raising=False)
+    from app import projetos
+    importlib.reload(projetos)
+    from app import acesso, main
+    importlib.reload(acesso)
+    importlib.reload(main)
+    cel = TestClient(main.app, client=("192.168.0.50", 1))
+    assert cel.get("/api/modo").json() == {"servidor": False}
+    assert cel.post("/api/cadastro", json={"nome": "Ana", "login": "ana", "senha": "abc12345"}).status_code == 404
