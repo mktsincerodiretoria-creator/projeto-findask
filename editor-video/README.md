@@ -23,3 +23,11 @@ npx remotion render Teste out/teste.mp4 \
 ```
 
 No seu computador isso não é necessário, porque o Remotion baixa o navegador sozinho.
+
+## Instalar na VPS (AlmaLinux 9)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/mktsincerodiretoria-creator/projeto-findask/main/editor-video/setup-vps.sh | bash
+```
+
+Instala em `/opt/editor-video`, separado do FindAsk. Mantém o Node.js que já existe e não abre nenhuma porta. Para usar o editor visual, abra um túnel SSH do seu computador até a porta 3100.
