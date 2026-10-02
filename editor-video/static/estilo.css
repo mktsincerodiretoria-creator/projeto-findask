@@ -221,6 +221,10 @@ body.com-tela-cheia { overflow: hidden; }
 .zoom input { width: 120px; accent-color: var(--acento); }
 .lt-rolagem { position: relative; height: 156px; overflow-x: auto; overflow-y: hidden; border-radius: 8px; background: var(--fundo); }
 .lt-espaco { height: 1px; }
+.lt-rolagem, #lt-canvas { touch-action: pan-x; }   /* dois dedos = zoom da linha do tempo, não da página */
+.lt-play { display: none; }
+.passos-chave { margin: 0; padding-left: 20px; display: grid; gap: 4px; }
+.passos-chave a { color: var(--acento); }
 #lt-canvas { position: sticky; left: 0; top: 0; display: block; cursor: crosshair; }
 .lt-dica { color: var(--texto-2); font-size: 11.5px; margin-top: 4px; min-height: 17px; }
 
@@ -321,7 +325,9 @@ body { touch-action: manipulation; }
   .editor { overflow-y: auto; display: flex; flex-direction: column; padding-bottom: calc(66px + env(safe-area-inset-bottom)); }
   .editor-grade { display: contents; }
   .palco { order: 1; padding: 8px 8px 0; gap: 8px; flex: none; }
-  .linha-tempo { order: 2; border-top: 0; }
+  /* A linha do tempo fica presa no alto quando você desce para usar uma ferramenta. */
+  .linha-tempo { order: 2; border-top: 0; position: sticky; top: 0; z-index: 20; box-shadow: 0 6px 14px rgba(0, 0, 0, .35); }
+  .lt-play { display: block; width: 34px; height: 30px; font-size: 13px; border-radius: 8px; background: var(--acento); color: #04201e; border: 0; }
   .painel { order: 3; flex: none; }
   .video-caixa { height: 48vh; flex: none; }
   .controles { gap: 10px; flex-wrap: nowrap; }
@@ -343,7 +349,9 @@ body { touch-action: manipulation; }
   .painel { border-left: 0; border-top: 1px solid var(--borda); }
   .aba-conteudo { overflow: visible; }
   .linha-tempo { padding: 6px 8px; }
-  .legenda-cores, .zoom, .lt-titulo, .lt-direita .rotulo { display: none; }
+  .legenda-cores, .lt-titulo, .lt-direita .rotulo { display: none; }
+  .zoom input { width: 90px; }
+  .linha-tempo-barra { margin-bottom: 4px; }
   .lt-rolagem { height: 136px; }
   .transcricao { font-size: 17px; line-height: 2.2; }
   .icone { width: 36px; height: 34px; }

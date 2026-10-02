@@ -464,6 +464,9 @@ function refazer() {
   voltarPara(proxima);
 }
 $("#desfazer").addEventListener("click", desfazer);
+$("#lt-play").addEventListener("click", () => alternarPlay());
+video.addEventListener("play", () => { $("#lt-play").textContent = "❚❚"; });
+video.addEventListener("pause", () => { $("#lt-play").textContent = "▶"; });
 $("#refazer").addEventListener("click", refazer);
 
 function alterou() {
@@ -658,6 +661,7 @@ function editarPalavra(i) {
 function irPara(t) {
   video.currentTime = Math.max(0, Math.min(duracao(), t));
   estado.ouvindo = null;
+  if (celular.matches && video.paused) rolagem.scrollLeft = video.currentTime * pps;
 }
 
 function ouvir(a, b) {
@@ -910,7 +914,8 @@ $$(".aba").forEach((aba) => aba.addEventListener("click", () => {
   if (celular.matches) {
     const c = $(`#aba-${aba.dataset.aba}`), editor = $("#tela-editor");
     const topo = c.getBoundingClientRect().top - editor.getBoundingClientRect().top + editor.scrollTop;
-    editor.scrollTo({ top: Math.max(0, topo - 8), behavior: "smooth" });
+    // a linha do tempo fica presa no alto da tela: o conteúdo aparece logo abaixo dela
+    editor.scrollTo({ top: Math.max(0, topo - $(".linha-tempo").offsetHeight - 8), behavior: "smooth" });
   }
 }));
 
@@ -1317,6 +1322,11 @@ const canvas = $("#lt-canvas");
 const ctx = canvas.getContext("2d");
 let ALTURA_LT = 120;
 let pps = 60;   // pixels por segundo
+const celular = matchMedia("(max-width: 820px)");
+// No celular (como no CapCut) a agulha fica parada no meio e o vídeo corre por baixo:
+// sobra meia tela antes do começo e depois do fim para o início e o fim chegarem até ela.
+const margemLT = () => (celular.matches ? rolagem.clientWidth / 2 : 0);
+const larguraLT = () => duracao() * pps + 2 * margemLT();
 
 function montarLegendaCores() {
   const usados = new Set(cortes().map((c) => c.tipo));
@@ -1337,22 +1347,58 @@ function redimensionarLinhaTempo() {
   // Ao abrir, ajusta o zoom para o vídeo inteiro caber na tela.
   if (!rolagem.dataset.ajustado && duracao()) {
     pps = Math.max(10, Math.min(400, (largura - 20) / duracao()));
+    if (celular.matches) pps = Math.min(400, Math.max(pps, largura / 12));   // ~12 s por tela
     $("#zoom").value = pps;
     rolagem.dataset.ajustado = "1";
   }
-  $("#lt-espaco").style.width = `${duracao() * pps}px`;
+  $("#lt-espaco").style.width = `${larguraLT()}px`;
+  if (celular.matches && video.paused) rolagem.scrollLeft = video.currentTime * pps;
   desenharLinhaTempo();
 }
 new ResizeObserver(redimensionarLinhaTempo).observe(rolagem);
 rolagem.addEventListener("scroll", desenharLinhaTempo);
 
-$("#zoom").addEventListener("input", (e) => {
-  const t = video.currentTime;
-  const x = t * pps - rolagem.scrollLeft;
-  pps = +e.target.value;
-  $("#lt-espaco").style.width = `${duracao() * pps}px`;
-  rolagem.scrollLeft = t * pps - x;
+function mudarZoomLT(novo, t = video.currentTime) {
+  const x = t * pps + margemLT() - rolagem.scrollLeft;   // o ponto t fica no mesmo lugar da tela
+  pps = Math.max(10, Math.min(400, novo));
+  $("#zoom").value = pps;
+  $("#lt-espaco").style.width = `${larguraLT()}px`;
+  rolagem.scrollLeft = t * pps + margemLT() - x;
   desenharLinhaTempo();
+}
+$("#zoom").addEventListener("input", (e) => mudarZoomLT(+e.target.value));
+
+// Toque: arrastar rola a linha do tempo (com embalo) e o vídeo acompanha a agulha do meio;
+// dois dedos aproximam/afastam. Um toque simples vai até o ponto.
+let tocandoLT = false, ultimoScrollToque = 0, pinca = null;
+const distDedos = (ts) => Math.hypot(ts[0].clientX - ts[1].clientX, ts[0].clientY - ts[1].clientY);
+rolagem.addEventListener("touchstart", (e) => {
+  tocandoLT = true;
+  ultimoScrollToque = Date.now();
+  if (!video.paused) video.pause();
+  if (e.touches.length === 2) {
+    const t = celular.matches ? rolagem.scrollLeft / pps : video.currentTime;
+    pinca = { d: distDedos(e.touches), pps, t };
+  }
+}, { passive: true });
+rolagem.addEventListener("touchmove", (e) => {
+  ultimoScrollToque = Date.now();
+  if (pinca && e.touches.length === 2) {
+    e.preventDefault();
+    mudarZoomLT(pinca.pps * distDedos(e.touches) / pinca.d, pinca.t);
+  }
+}, { passive: false });
+rolagem.addEventListener("touchend", (e) => {
+  if (e.touches.length < 2) pinca = null;
+  if (!e.touches.length) { tocandoLT = false; ultimoScrollToque = Date.now(); }
+});
+rolagem.addEventListener("scroll", () => {
+  // Só quando quem rola é o dedo (inclusive o embalo depois de soltar), não o programa.
+  if (!celular.matches || !video.paused || pinca) return;
+  if (!tocandoLT && Date.now() - ultimoScrollToque > 250) return;
+  ultimoScrollToque = Date.now();
+  const t = Math.max(0, Math.min(duracao(), rolagem.scrollLeft / pps));
+  if (Math.abs(t - video.currentTime) > 0.02) video.currentTime = t;
 });
 
 async function carregarQuadros(pid) {
@@ -1398,7 +1444,7 @@ function passoRegua() {
 function desenharLinhaTempo() {
   if (!estado.projeto || $("#tela-editor").hidden) return;
   const largura = canvas.width / (window.devicePixelRatio || 1);
-  const t0 = rolagem.scrollLeft / pps;
+  const t0 = (rolagem.scrollLeft - margemLT()) / pps;
   const t1 = t0 + largura / pps;
   const X = (t) => (t - t0) * pps;
   // régua | imagens do vídeo | forma de onda | zooms
@@ -1416,7 +1462,7 @@ function desenharLinhaTempo() {
   ctx.font = "10px system-ui";
   ctx.strokeStyle = "#2a2f3a";
   ctx.beginPath();
-  for (let t = Math.floor(t0 / passo) * passo; t <= t1; t += passo) {
+  for (let t = Math.max(0, Math.floor(t0 / passo) * passo); t <= Math.min(t1, duracao()); t += passo) {
     const x = Math.round(X(t)) + 0.5;
     ctx.moveTo(x, 0); ctx.lineTo(x, 14);
     ctx.fillText(fmt(t), x + 3, 10);
@@ -1494,13 +1540,11 @@ function desenharLinhaTempo() {
   ctx.fill();
 }
 
-const celular = matchMedia("(max-width: 820px)");
-
 function seguirCursor(t) {
   if (video.paused || arrastandoLT) return;
   const x = t * pps;
-  if (celular.matches) {   // no celular o cursor fica no meio e o vídeo corre por baixo
-    rolagem.scrollLeft = x - rolagem.clientWidth / 2;
+  if (celular.matches) {   // no celular a agulha fica no meio e o vídeo corre por baixo
+    rolagem.scrollLeft = x;
     return;
   }
   if (x < rolagem.scrollLeft || x > rolagem.scrollLeft + rolagem.clientWidth - 40) {
@@ -1508,7 +1552,7 @@ function seguirCursor(t) {
   }
 }
 
-const tempoNoCanvas = (e) => (rolagem.scrollLeft + e.clientX - canvas.getBoundingClientRect().left) / pps;
+const tempoNoCanvas = (e) => (rolagem.scrollLeft - margemLT() + e.clientX - canvas.getBoundingClientRect().left) / pps;
 const corteEm = (t) => [...cortes()].reverse().find((c) => t >= c.inicio && t <= c.fim && (c.tipo !== "silencio" || c.ativo))
   || cortes().find((c) => t >= c.inicio && t <= c.fim);
 
@@ -1599,6 +1643,7 @@ window.addEventListener("mouseup", (e) => {
     estado.selecao = null;
     $("#cortar-trecho").hidden = true;
     irPara(t);
+    if (celular.matches) rolagem.scrollTo({ left: Math.max(0, Math.min(duracao(), t)) * pps, behavior: "smooth" });
     const c = corteEm(t);
     if (c) {
       $$(".aba").find((a) => a.dataset.aba === "cortes").click();
@@ -1809,6 +1854,9 @@ function abrirConfig() {
   $("#cfg-chave").value = "";
   $("#cfg-chave").placeholder = estado.status.ia_disponivel ? "Chave já configurada (digite para trocar)" : "sk-ant-...";
   $("#cfg-versao").textContent = estado.status.versao;
+  $("#cfg-onde").textContent = estado.status.servidor
+    ? "A chave fica guardada no servidor e vale para todos os usuários (só você vê e troca)."
+    : "A chave fica salva só neste computador.";
   $("#dlg-config").showModal();
 }
 $("#btn-config").addEventListener("click", abrirConfig);
@@ -1966,6 +2014,7 @@ window.addEventListener("hashchange", rotear);
     document.body.innerHTML = "<p style='padding:40px'>Não consegui falar com o programa. Ele está aberto?</p>";
     return;
   }
+  if (celular.matches) $("#lt-dica").textContent = "Arraste para rolar · dois dedos para aproximar · toque para ir ao ponto";
   if (!estado.status.ffmpeg) aviso("ffmpeg não encontrado: instale-o para processar vídeos (veja o README).", true);
   rotear();
   requestAnimationFrame(quadro);

@@ -186,6 +186,7 @@
 
     <section class="linha-tempo">
       <div class="linha-tempo-barra">
+        <button class="btn-icone lt-play" id="lt-play" title="Reproduzir">▶</button>
         <span class="lt-titulo">Linha do tempo</span>
         <div class="legenda-cores" id="legenda-cores"></div>
         <div class="lt-direita">
@@ -323,8 +324,16 @@
       <label class="campo">Chave da API da Anthropic (para a revisão inteligente com IA)
         <input type="password" id="cfg-chave" placeholder="sk-ant-..." autocomplete="off">
       </label>
+      <ol class="dica passos-chave">
+        <li>Abra <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a>
+          e crie a sua conta.</li>
+        <li>Em <b>Billing</b>, coloque créditos (a partir de US$ 5; um vídeo curto custa centavos).</li>
+        <li>Em <b>API Keys</b>, clique em <b>Create Key</b> e copie a chave (começa com <b>sk-ant-</b>).</li>
+        <li>Cole aqui e clique em <b>Salvar</b>.</li>
+      </ol>
       <p class="dica">Opcional. Sem a chave, o editor continua cortando silêncios, hesitações,
-        repetições e regravações automaticamente. A chave fica salva só neste computador.</p>
+        repetições e regravações. <span id="cfg-onde">A chave fica salva só neste computador.</span>
+        Não mande a chave por mensagem para ninguém.</p>
       <hr class="separador">
       <div class="linha-versao">
         <span>Versão <b id="cfg-versao"></b> <span class="dica" id="cfg-versao-status"></span></span>
