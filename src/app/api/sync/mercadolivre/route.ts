@@ -16,7 +16,7 @@ export const maxDuration = 60;
 //  5. Recalcula metricas diarias com custo+imposto reais
 // ============================================================
 
-// Extrai dados financeiros do pedido completo (1 API call por pedido)
+// Extrai dados financeiros do pedido completo
 async function extractOrderFinancials(orderId: string, accessToken: string) {
   let platformFee = 0;
   let shippingCostSeller = 0;
@@ -27,20 +27,13 @@ async function extractOrderFinancials(orderId: string, accessToken: string) {
 
     // 1. Extrai marketplace_fee dos payments
     if (Array.isArray(fullOrder.payments)) {
-      let buyerShippingFromPayment = 0;
-
       for (const payment of fullOrder.payments) {
         if (payment.marketplace_fee != null) {
           platformFee += Math.abs(Number(payment.marketplace_fee));
         }
-        const totalPaid = Number(payment.total_paid_amount || 0);
-        const transactionAmt = Number(payment.transaction_amount || 0);
-        if (totalPaid > transactionAmt) {
-          buyerShippingFromPayment += totalPaid - transactionAmt;
-        }
       }
 
-      // 2. Fallback: sale_fee dos items
+      // Fallback: sale_fee dos items
       if (platformFee === 0 && Array.isArray(fullOrder.order_items)) {
         for (const item of fullOrder.order_items) {
           if (item.sale_fee != null) {
@@ -48,16 +41,53 @@ async function extractOrderFinancials(orderId: string, accessToken: string) {
           }
         }
       }
+    }
 
-      // 3. Frete via shipping.cost (sem chamar /shipments — economia de 1 API call)
-      const totalShipping = Number(fullOrder.shipping?.cost || 0);
-      if (totalShipping > 0) {
-        shippingCostBuyer = buyerShippingFromPayment;
-        shippingCostSeller = Math.max(0, totalShipping - buyerShippingFromPayment);
+    // 2. Frete via /shipments/{id} — dados precisos de custo vendedor
+    const shipmentId = fullOrder.shipping?.id;
+    if (shipmentId) {
+      try {
+        const shipment = await mlApiCall(`/shipments/${shipmentId}`, accessToken);
+        const costComponents = shipment.cost_components || {};
+        const shippingOption = shipment.shipping_option || {};
+
+        // sender_cost = custo do vendedor (campo mais confiavel)
+        if (costComponents.seller_cost != null) {
+          shippingCostSeller = Math.abs(Number(costComponents.seller_cost));
+        } else if (costComponents.sender_cost != null) {
+          shippingCostSeller = Math.abs(Number(costComponents.sender_cost));
+        } else {
+          // Fallback: list_cost (total) - cost (comprador paga)
+          const listCost = Number(shippingOption.list_cost || shippingOption.cost || 0);
+          const buyerCost = Number(shippingOption.cost || 0);
+          if (listCost > buyerCost) {
+            shippingCostSeller = listCost - buyerCost;
+          } else {
+            // Ultimo fallback: receiver_cost do cost_components
+            shippingCostSeller = Math.abs(Number(costComponents.receiver_cost || 0));
+          }
+        }
+
+        shippingCostBuyer = Math.abs(Number(shippingOption.cost || costComponents.buyer_cost || 0));
+      } catch {
+        // Se /shipments falhar, tenta via payment
+        if (Array.isArray(fullOrder.payments)) {
+          let buyerFromPayment = 0;
+          for (const p of fullOrder.payments) {
+            const totalPaid = Number(p.total_paid_amount || 0);
+            const transAmt = Number(p.transaction_amount || 0);
+            if (totalPaid > transAmt) buyerFromPayment += totalPaid - transAmt;
+          }
+          const totalShip = Number(fullOrder.shipping?.cost || 0);
+          if (totalShip > 0) {
+            shippingCostBuyer = buyerFromPayment;
+            shippingCostSeller = Math.max(0, totalShip - buyerFromPayment);
+          }
+        }
       }
     }
   } catch {
-    // Se falhar, continua com zeros — melhor do que travar o sync
+    // Se falhar, continua com zeros
   }
 
   return { platformFee, shippingCostSeller, shippingCostBuyer };
