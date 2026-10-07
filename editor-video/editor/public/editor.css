@@ -1,0 +1,166 @@
+:root {
+  --fundo: #121316;
+  --painel: #1b1d22;
+  --painel-2: #24272e;
+  --borda: #33373f;
+  --texto: #e8eaed;
+  --texto-2: #9aa0a8;
+  --destaque: #4c8dff;
+  --perigo: #ff5b5b;
+  --agulha: #ff3b3b;
+  --clipe: #2d3e5c;
+  --clipe-sel: #f5b400;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+
+body {
+  margin: 0;
+  background: var(--fundo);
+  color: var(--texto);
+  font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+button, select, .botao {
+  font: inherit;
+  color: var(--texto);
+  background: var(--painel-2);
+  border: 1px solid var(--borda);
+  border-radius: 6px;
+  padding: 6px 10px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+button:hover:not(:disabled), .botao:hover { border-color: #555b66; background: #2c3038; }
+button:disabled { opacity: 0.4; cursor: default; }
+.primario { background: var(--destaque); border-color: var(--destaque); color: #fff; font-weight: 600; }
+.primario:hover:not(:disabled) { background: #3b7bef; border-color: #3b7bef; }
+kbd {
+  font: 11px ui-monospace, monospace;
+  padding: 1px 4px;
+  border: 1px solid var(--borda);
+  border-radius: 4px;
+  color: var(--texto-2);
+}
+
+.topo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  background: var(--painel);
+  border-bottom: 1px solid var(--borda);
+  flex-wrap: wrap;
+}
+.marca { font-size: 15px; }
+.campo { display: flex; align-items: center; gap: 6px; color: var(--texto-2); }
+.campo select { max-width: 280px; }
+.status { color: var(--texto-2); font-size: 12px; }
+.espaco { flex: 1; }
+
+.faixa {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  background: #1d2a40;
+  border-bottom: 1px solid var(--borda);
+}
+.faixa.erro { background: #3d1f22; }
+.barra { flex: 1; max-width: 360px; height: 6px; background: #0e1420; border-radius: 3px; overflow: hidden; }
+.barra > div { height: 100%; width: 0; background: var(--destaque); transition: width 0.3s; }
+
+.palco {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 12px 16px 8px;
+  gap: 8px;
+}
+
+.tela {
+  flex: 1;
+  min-height: 160px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #000;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.tela video { max-width: 100%; max-height: 100%; display: block; }
+.vazio { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--texto-2); text-align: center; padding: 16px; }
+.vazio p { margin: 4px 0; }
+
+.controles, .ferramentas {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.grupo { display: flex; align-items: center; gap: 6px; }
+.play { min-width: 44px; justify-content: center; }
+.tempo { font: 15px ui-monospace, SFMono-Regular, Menlo, monospace; }
+.resumo { color: var(--texto-2); font-size: 13px; }
+.ferramenta { font-weight: 600; }
+.perigo:not(:disabled) { border-color: #6b3036; }
+.perigo:hover:not(:disabled) { background: #3d1f22; border-color: var(--perigo); }
+.zoom input { width: 180px; accent-color: var(--destaque); }
+
+.timeline {
+  position: relative;
+  height: 150px;
+  flex: none;
+  overflow-x: auto;
+  overflow-y: hidden;
+  background: var(--painel);
+  border: 1px solid var(--borda);
+  border-radius: 8px;
+  outline: none;
+  user-select: none;
+}
+.timeline:focus-visible { border-color: var(--destaque); }
+.largura { height: 1px; }
+.timeline canvas {
+  position: sticky;
+  left: 0;
+  top: 0;
+  display: block;
+  margin-top: -1px;
+  cursor: text;
+}
+
+.ajuda { margin: 0; color: var(--texto-2); font-size: 12.5px; }
+.ajuda b { color: var(--texto); }
+
+.mensagem {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%) translateY(20px);
+  background: #2c3038;
+  border: 1px solid var(--borda);
+  padding: 8px 14px;
+  border-radius: 8px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s, transform 0.2s;
+  max-width: calc(100% - 32px);
+}
+.mensagem.visivel { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+@media (max-width: 720px) {
+  .zoom input { width: 110px; }
+  .ajuda { display: none; }
+}

@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Editor de corte</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ctext y=%22.9em%22 font-size=%2290%22%3E✂%3C/text%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="/editor.css" />
+  </head>
+  <body>
+    <header class="topo">
+      <strong class="marca">✂ Editor de corte</strong>
+      <label class="campo">
+        <span>Vídeo</span>
+        <select id="seletor"><option value="">Carregando…</option></select>
+      </label>
+      <label class="botao" title="Enviar um vídeo do seu computador">
+        ⤒ Enviar vídeo
+        <input id="arquivo" type="file" accept="video/*,.mkv" hidden />
+      </label>
+      <span id="salvo" class="status"></span>
+      <span class="espaco"></span>
+      <button id="exportar" class="botao primario" disabled>⤓ Exportar vídeo</button>
+    </header>
+
+    <div id="aviso-exportacao" class="faixa" hidden>
+      <span id="texto-exportacao"></span>
+      <div class="barra"><div id="barra-exportacao"></div></div>
+      <a id="baixar" class="botao primario" hidden>Baixar vídeo</a>
+    </div>
+
+    <main class="palco">
+      <div class="tela">
+        <video id="video" preload="auto" playsinline></video>
+        <div id="vazio" class="vazio">
+          <p><strong>Nenhum vídeo aberto.</strong></p>
+          <p>Escolha um vídeo na lista acima ou clique em <em>Enviar vídeo</em>.</p>
+        </div>
+      </div>
+
+      <div class="controles">
+        <div class="grupo">
+          <button data-acao="inicio" title="Ir para o início (Home)">⏮</button>
+          <button data-acao="voltar-quadro" title="Voltar 1 quadro (←) · Shift+← volta 1 segundo">◀︎❙</button>
+          <button id="play" data-acao="play" class="play" title="Tocar / pausar (Espaço)">▶︎</button>
+          <button data-acao="avancar-quadro" title="Avançar 1 quadro (→) · Shift+→ avança 1 segundo">❙▶︎</button>
+          <button data-acao="fim" title="Ir para o fim (End)">⏭</button>
+        </div>
+        <div class="tempo"><span id="tempo-atual">00:00.00</span> / <span id="tempo-total">00:00.00</span></div>
+        <div id="resumo" class="resumo"></div>
+      </div>
+
+      <div class="ferramentas">
+        <div class="grupo">
+          <button id="cortar" class="ferramenta" data-acao="cortar" title="Cortar no ponto da agulha vermelha (S)">✂ Cortar <kbd>S</kbd></button>
+          <button id="excluir" class="ferramenta perigo" data-acao="excluir" title="Excluir o trecho selecionado (Delete)">🗑 Excluir trecho <kbd>Del</kbd></button>
+        </div>
+        <div class="grupo">
+          <button id="desfazer" data-acao="desfazer" title="Desfazer (Ctrl+Z)">↶ Desfazer</button>
+          <button id="refazer" data-acao="refazer" title="Refazer (Ctrl+Shift+Z)">↷ Refazer</button>
+        </div>
+        <span class="espaco"></span>
+        <div class="grupo zoom">
+          <button data-acao="zoom-menos" title="Diminuir zoom (−)">−</button>
+          <input id="zoom" type="range" min="0" max="1000" value="0" aria-label="Zoom da timeline" />
+          <button data-acao="zoom-mais" title="Aumentar zoom (+)">+</button>
+          <button data-acao="zoom-ajustar" title="Mostrar o vídeo inteiro (0)">Ajustar</button>
+        </div>
+      </div>
+
+      <div id="timeline" class="timeline" tabindex="0" aria-label="Timeline">
+        <div id="largura" class="largura"></div>
+        <canvas id="canvas"></canvas>
+      </div>
+
+      <p class="ajuda">
+        <strong>Como cortar:</strong> coloque a agulha vermelha no início do trecho e clique em <b>Cortar</b> (S).
+        Coloque no fim do trecho e clique em <b>Cortar</b> de novo. Clique no pedaço do meio e aperte
+        <b>Excluir trecho</b> (Delete). Para ajustar com precisão: <b>Ctrl + roda do mouse</b> dá zoom,
+        <b>← →</b> andam um quadro por vez.
+      </p>
+    </main>
+
+    <div id="mensagem" class="mensagem" role="status" aria-live="polite"></div>
+    <script src="/editor.js"></script>
+  </body>
+</html>

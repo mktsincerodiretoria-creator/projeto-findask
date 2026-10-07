@@ -3,3 +3,7 @@ out
 # Vídeos e imagens de origem ficam só na máquina, não vão para o Git
 public/*
 !public/.gitkeep
+# Editor de corte: vídeos enviados, cortes salvos e cache ficam só na máquina
+videos
+projetos
+.cache
