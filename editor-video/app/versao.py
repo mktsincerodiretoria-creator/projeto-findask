@@ -1,11 +1,11 @@
 """Versão do CorteFácil e de onde vêm as atualizações."""
 
-VERSAO = "1.7.0"
+VERSAO = "1.8.0"
 
 NOVIDADES = [
-    "Nova aba Formato: 9:16, 1:1, 4:5, 16:9 — arraste, aumente com dois dedos e gire o vídeo no quadro",
-    "Tracking do rosto com liga/desliga e barra de intensidade (aba Formato)",
-    "Exportação com a cor certa em vídeos HDR do iPhone e sem zoom automático ligado por padrão",
+    "Cortes de silêncio mais precisos: não comem o final das palavras, pausas iguais e respiração removida",
+    "Toque num corte na linha do tempo e escolha \"Não cortar\"; arraste as bordas brancas para ajustar",
+    "Editor bem mais leve no celular (linha do tempo e listas só redesenham quando precisa)",
 ]
 
 # Repositório público de onde o programa baixa as atualizações.

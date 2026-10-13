@@ -319,14 +319,59 @@ function tempoFinal(t) {
 
 function duracao() { return estado.projeto?.meta?.duracao || video.duration || 0; }
 
+const pendentes = new Set();   // listas que mudaram com a aba fechada
+function renderSeVisivel(aba, fn) {
+  if (abaAtiva() === aba) { fn(); pendentes.delete(aba); } else pendentes.add(aba);
+}
+
 function atualizarTudo() {
   mesclarAtivos();
   renderResumo();
-  renderFiltros();
-  renderCortes();
-  renderTranscricao();
+  renderSeVisivel("cortes", () => { renderFiltros(); renderCortes(); });
+  renderSeVisivel("texto", renderTranscricao);
   desenharLinhaTempo();
+  chipAtual = "";
 }
+
+// Mostra o corte que está embaixo da agulha, com "Não cortar" / "Cortar" num toque.
+let chipAtual = "";
+function atualizarChipCorte(t) {
+  const chip = $("#chip-corte");
+  const c = estado.tempoAlvo == null && !video.paused ? null : corteEm(t);
+  const chave = c ? `${c.id}|${c.ativo}|${c.inicio}|${c.fim}` : "-";
+  if (chave === chipAtual) return;
+  chipAtual = chave;
+  // o espaço fica sempre reservado: a linha do tempo não "pula" quando aparece um corte
+  chip.classList.toggle("vazio", !c);
+  if (!c) {
+    chip.style.removeProperty("--cor");
+    chip.classList.remove("mantido");
+    chip.dataset.id = "";
+    chip.innerHTML = `<span class="chip-texto">${celular.matches
+      ? "Toque num trecho cortado para mantê-lo · arraste as bordas brancas para ajustar"
+      : "Clique num trecho cortado para mantê-lo · arraste as bordas brancas para ajustar"}</span>`;
+    return;
+  }
+  const info = tipoInfo(c.tipo);
+  chip.style.setProperty("--cor", info.cor);
+  chip.classList.toggle("mantido", !c.ativo);
+  chip.dataset.id = c.id;
+  chip.innerHTML = `<span class="chip-texto">${c.ativo ? "✂" : "↩"} <b>${escapar(c.titulo || info.nome)}</b>
+      <small>${(c.fim - c.inicio).toFixed(1)}s${c.ativo ? "" : " · mantido"}</small></span>
+    <button type="button" data-chip="ouvir">▶</button>
+    ${c.ativo ? `<button type="button" class="manter" data-chip="manter">Não cortar</button>`
+      : `<button type="button" data-chip="cortar">✂ Cortar</button>`}`;
+}
+$("#chip-corte").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-chip]");
+  const c = cortes().find((x) => x.id === $("#chip-corte").dataset.id);
+  if (!b || !c) return;
+  if (b.dataset.chip === "ouvir") { ouvir(Math.max(0, c.inicio - 0.6), Math.min(duracao(), c.fim + 0.6)); return; }
+  guardarHistorico();
+  c.ativo = b.dataset.chip === "cortar";
+  alterou();
+  aviso(c.ativo ? "Trecho cortado de novo." : "Pronto: esse trecho fica no vídeo. (↶ desfaz)");
+});
 
 function renderResumo() {
   const dur = duracao();
@@ -693,6 +738,7 @@ video.addEventListener("pause", () => ($("#btn-play").textContent = "▶"));
 video.addEventListener("loadedmetadata", () => { legendaAtual = ""; posicionarBarraTamanho(); });
 
 let palavraAtual = -1;
+let textoTempos = "";
 function quadro() {
   requestAnimationFrame(quadro);
   if ($("#tela-editor").hidden || !estado.projeto) return;
@@ -708,14 +754,20 @@ function quadro() {
       }
     }
   }
-  $("#tempo-atual").textContent = fmt(t, true);
-  $("#tempo-final").textContent = fmt(tempoFinal(t), true);
+  const tt = estado.tempoAlvo ?? t;
+  const txt = fmt(tt, true) + "|" + fmt(tempoFinal(tt), true);
+  if (txt !== textoTempos) {
+    textoTempos = txt;
+    $("#tempo-atual").textContent = fmt(tt, true);
+    $("#tempo-final").textContent = fmt(tempoFinal(tt), true);
+  }
   aplicarMovimento(t);
   desenharFiltro();
   atualizarLegendaPrevia(t);
-  destacarPalavra(t);
+  if (abaAtiva() === "texto") destacarPalavra(t);
+  atualizarChipCorte(tt);
   seguirCursor(t);
-  desenharLinhaTempo();
+  desenharLinhaTempo(true);
 }
 
 function destacarPalavra(t) {
@@ -922,6 +974,8 @@ $$(".aba").forEach((aba) => aba.addEventListener("click", () => {
   legendaAtual = "";
   posicionarBarraTamanho();
   if (aba.dataset.aba === "filtros") montarFiltros();
+  if (pendentes.has("cortes") && aba.dataset.aba === "cortes") { renderFiltros(); renderCortes(); pendentes.delete("cortes"); }
+  if (pendentes.has("texto") && aba.dataset.aba === "texto") { renderTranscricao(); pendentes.delete("texto"); palavraAtual = -1; }
   // No celular as abas ficam embaixo (como no CapCut): mostra o conteúdo da aba escolhida.
   if (celular.matches) {
     const c = $(`#aba-${aba.dataset.aba}`), editor = $("#tela-editor");
@@ -1037,6 +1091,7 @@ async function carregarLut(fid) {
   lutCarregada = fid;
 }
 
+let marcaFiltro = "";
 function desenharFiltro() {
   const f = estado.projeto?.filtro;
   const ativo = f && f.id !== "natural" && f.intensidade > 0 && lutCarregada === f.id
@@ -1046,6 +1101,9 @@ function desenharFiltro() {
   const caixa = $("#video-caixa").getBoundingClientRect();
   const dpr = Math.min(2, window.devicePixelRatio || 1);
   const w = Math.round(video.offsetWidth * dpr), h = Math.round(video.offsetHeight * dpr);
+  const marca = `${video.currentTime}|${w}|${h}|${f.id}|${f.intensidade}`;
+  if (video.paused && marca === marcaFiltro) return;
+  marcaFiltro = marca;
   if (telaFiltro.width !== w || telaFiltro.height !== h) { telaFiltro.width = w; telaFiltro.height = h; }
   gl.viewport(0, 0, w, h);
   gl.activeTexture(gl.TEXTURE0);
@@ -1589,10 +1647,51 @@ const distDedos = (ts) => Math.hypot(ts[0].clientX - ts[1].clientX, ts[0].client
 const meioDedos = (ts) => (ts[0].clientX + ts[1].clientX) / 2;
 const xNaLT = (clientX) => clientX - rolagem.getBoundingClientRect().left;
 
-function agulhaNoDedo(clientX) {
-  const t = Math.max(0, Math.min(duracao(), (rolagem.scrollLeft + xNaLT(clientX)) / pps));
+let buscaPendente = null;
+function buscarSuave(t) {
+  estado.tempoAlvo = t;   // a agulha anda junto com o dedo, mesmo antes do vídeo chegar lá
+  if (video.seeking) { buscaPendente = t; return; }
   if (Math.abs(t - video.currentTime) > 0.01) video.currentTime = t;
+}
+video.addEventListener("seeked", () => {
+  if (buscaPendente == null) return;
+  const t = buscaPendente;
+  buscaPendente = null;
+  if (Math.abs(t - video.currentTime) > 0.01) video.currentTime = t;
+});
+
+function agulhaNoDedo(clientX) {
+  buscarSuave(Math.max(0, Math.min(duracao(), (rolagem.scrollLeft + xNaLT(clientX)) / pps)));
   estado.ouvindo = null;
+  desenharLinhaTempo(true);
+}
+
+// Borda de um corte perto do dedo/mouse (para arrastar e ajustar o corte)
+function bordaPerto(clientX, clientY) {
+  const r = canvas.getBoundingClientRect();
+  if (clientY - r.top < 16 || clientY - r.top > ALTURA_LT - FAIXA_ZOOM - 2) return null;
+  const x = rolagem.scrollLeft + clientX - r.left, raio = 14;
+  let melhor = null;
+  for (const c of cortes()) {
+    if (!c.ativo || (c.fim - c.inicio) * pps < 18) continue;
+    for (const lado of ["inicio", "fim"]) {
+      const d = Math.abs(c[lado] * pps - x);
+      if (d <= raio && (!melhor || d < melhor.d)) melhor = { c, lado, d };
+    }
+  }
+  return melhor;
+}
+
+function arrastarBorda(b, clientX) {
+  if (!b.mexeu) { guardarHistorico(); b.mexeu = true; }
+  const r = canvas.getBoundingClientRect();
+  let t = Math.max(0, Math.min(duracao(), (rolagem.scrollLeft + clientX - r.left) / pps));
+  if (b.lado === "inicio") t = Math.min(t, b.c.fim - 0.05); else t = Math.max(t, b.c.inicio + 0.05);
+  b.c[b.lado] = +t.toFixed(3);
+  b.c.origem = "manual";   // você ajustou: "Aplicar ajustes" não desfaz
+  buscarSuave(t);
+  $("#lt-dica").textContent = `${b.c.titulo || "Corte"}: ${fmt(b.c.inicio, true)} – ${fmt(b.c.fim, true)} (${(b.c.fim - b.c.inicio).toFixed(2)}s)`;
+  mesclarAtivos();
   desenharLinhaTempo();
 }
 
@@ -1616,6 +1715,8 @@ rolagem.addEventListener("touchstart", (e) => {
     toqueLT = { pinca: true, d: distDedos(e.touches), pps, t: (rolagem.scrollLeft + xNaLT(mx)) / pps };
     return;
   }
+  const borda = bordaPerto(e.touches[0].clientX, e.touches[0].clientY);
+  if (borda) { toqueLT = { borda }; return; }
   toqueLT = { x: e.touches[0].clientX };
   agulhaNoDedo(toqueLT.x);
   andarNaBorda();
@@ -1630,6 +1731,8 @@ rolagem.addEventListener("touchmove", (e) => {
     $("#lt-espaco").style.width = `${larguraLT()}px`;
     rolagem.scrollLeft = toqueLT.t * pps - xNaLT(meioDedos(e.touches));
     desenharLinhaTempo();
+  } else if (toqueLT.borda) {
+    arrastarBorda(toqueLT.borda, e.touches[0].clientX);
   } else if (!toqueLT.pinca) {
     toqueLT.x = e.touches[0].clientX;
     agulhaNoDedo(toqueLT.x);
@@ -1637,7 +1740,9 @@ rolagem.addEventListener("touchmove", (e) => {
 }, { passive: false });
 const fimToque = (e) => {
   if (e.touches.length) return;
+  if (toqueLT?.borda?.mexeu) alterou();
   toqueLT = null;
+  estado.tempoAlvo = null;
   clearInterval(bordaLT);
 };
 rolagem.addEventListener("touchend", fimToque);
@@ -1657,25 +1762,25 @@ async function carregarQuadros(pid) {
 }
 
 // Faixa de imagens do vídeo (como no CapCut): uma miniatura atrás da outra.
-function desenharFilme(X, t0, largura, y, alt) {
+function desenharFilme(X, t0, largura, y, alt, c = cctx) {
   const q = estado.quadros, fimX = Math.min(largura, X(duracao()));
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(Math.max(0, X(0)), y, fimX - Math.max(0, X(0)), alt);
-  ctx.clip();
+  c.save();
+  c.beginPath();
+  c.rect(Math.max(0, X(0)), y, fimX - Math.max(0, X(0)), alt);
+  c.clip();
   if (!q) {
-    ctx.fillStyle = "#1c2130";
-    ctx.fillRect(0, y, largura, alt);
+    c.fillStyle = "#1c2130";
+    c.fillRect(0, y, largura, alt);
   } else {
     const dw = q.largura * alt / q.altura;
     const inicio = X(0) + Math.floor((0 - X(0)) / dw) * dw;
     for (let x = inicio; x < fimX; x += dw) {
       const t = t0 + (x + dw / 2) / pps;
       const i = Math.max(0, Math.min(q.n - 1, Math.floor(t / q.passo)));
-      ctx.drawImage(q.img, i * q.largura, 0, q.largura, q.altura, Math.round(x), y, Math.ceil(dw), alt);
+      c.drawImage(q.img, i * q.largura, 0, q.largura, q.altura, Math.round(x), y, Math.ceil(dw), alt);
     }
   }
-  ctx.restore();
+  c.restore();
 }
 
 function passoRegua() {
@@ -1683,8 +1788,15 @@ function passoRegua() {
   return 1200;
 }
 
-function desenharLinhaTempo() {
-  if (!estado.projeto || $("#tela-editor").hidden) return;
+// A parte que não muda a cada quadro (régua, imagens, onda, cortes, zooms) fica guardada numa
+// camada: enquanto o vídeo toca só a agulha é redesenhada — bem mais leve no celular.
+const camadaLT = document.createElement("canvas");
+const cctx = camadaLT.getContext("2d");
+let chaveLT = "";
+
+function desenharLinhaTempo(doLaco = false) {
+  if (!estado.projeto || $("#tela-editor").hidden || !canvas.width || !canvas.height) return;
+  const dpr = window.devicePixelRatio || 1;
   const largura = canvas.width / (window.devicePixelRatio || 1);
   const t0 = rolagem.scrollLeft / pps;
   const t1 = t0 + largura / pps;
@@ -1694,74 +1806,92 @@ function desenharLinhaTempo() {
   const topo = 18, base = ALTURA_LT - 15;
   const ondaTopo = topo + FILME + 3, meio = (ondaTopo + base) / 2, amp = (base - ondaTopo) / 2;
 
-  ctx.clearRect(0, 0, largura, ALTURA_LT);
-  ctx.fillStyle = "#0f1115";
-  ctx.fillRect(0, 0, largura, ALTURA_LT);
-
-  // régua
-  const passo = passoRegua();
-  ctx.fillStyle = "#6c7384";
-  ctx.font = "10px system-ui";
-  ctx.strokeStyle = "#2a2f3a";
-  ctx.beginPath();
-  for (let t = Math.max(0, Math.floor(t0 / passo) * passo); t <= Math.min(t1, duracao()); t += passo) {
-    const x = Math.round(X(t)) + 0.5;
-    ctx.moveTo(x, 0); ctx.lineTo(x, 14);
-    ctx.fillText(fmt(t), x + 3, 10);
-  }
-  ctx.stroke();
-
-  desenharFilme(X, t0, largura, topo, FILME);
-
-  // forma de onda (50 pontos por segundo)
-  const onda = estado.onda;
-  ctx.fillStyle = "#4a5570";
-  for (let x = 0; x < largura; x++) {
-    const ia = Math.floor((t0 + x / pps) * 50), ib = Math.max(ia + 1, Math.floor((t0 + (x + 1) / pps) * 50));
-    let v = 0;
-    for (let i = ia; i < ib && i < onda.length; i++) if (onda[i] > v) v = onda[i];
-    const h = Math.max(1, v * amp);
-    ctx.fillRect(x, meio - h, 1, h * 2);
-  }
-
-  // cortes
-  for (const c of cortes()) {
-    if (c.fim < t0 || c.inicio > t1) continue;
-    const cor = tipoInfo(c.tipo).cor;
-    const xa = X(c.inicio), xb = X(c.fim);
-    if (c.ativo) {
-      ctx.fillStyle = "rgba(8,10,14,.55)";   // trecho cortado fica escuro nas imagens
-      ctx.fillRect(xa, topo, xb - xa, FILME);
-      ctx.fillStyle = hexParaRgba(cor, 0.33);
-      ctx.fillRect(xa, topo, xb - xa, base - topo);
-      ctx.fillStyle = cor;
-      ctx.fillRect(xa, topo - 3, xb - xa, 3);
-    } else {
-      ctx.setLineDash([3, 3]);
-      ctx.strokeStyle = hexParaRgba(cor, 0.9);
-      ctx.strokeRect(xa + 0.5, topo + 0.5, xb - xa - 1, base - topo - 1);
-      ctx.setLineDash([]);
+  const chave = [rolagem.scrollLeft, pps, canvas.width, canvas.height, estado.quadros ? 1 : 0].join("|");
+  if (!doLaco || chave !== chaveLT) {
+    chaveLT = chave;
+    if (camadaLT.width !== canvas.width || camadaLT.height !== canvas.height) {
+      camadaLT.width = canvas.width;
+      camadaLT.height = canvas.height;
     }
-  }
+    cctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    cctx.clearRect(0, 0, largura, ALTURA_LT);
+    cctx.fillStyle = "#0f1115";
+    cctx.fillRect(0, 0, largura, ALTURA_LT);
 
-  // zooms: faixa roxa embaixo (arraste para mover, puxe as pontas para mudar a duração)
-  for (const z of estado.mov?.zooms || []) {
-    if (z.fim < t0 || z.inicio > t1) continue;
-    const xa = X(z.inicio), xb = X(z.fim);
-    const y = ALTURA_LT - FAIXA_ZOOM;
-    ctx.fillStyle = z.ativo ? "rgba(165,124,255,.9)" : "rgba(165,124,255,.25)";
-    ctx.fillRect(xa, y, xb - xa, FAIXA_ZOOM - 2);
-    if (z.ativo) {
-      ctx.fillStyle = "rgba(255,255,255,.85)";
-      ctx.fillRect(xa, y, 2, FAIXA_ZOOM - 2);
-      ctx.fillRect(xb - 2, y, 2, FAIXA_ZOOM - 2);
-      if (xb - xa > 46) {
-        ctx.fillStyle = "#1b1530";
-        ctx.font = "bold 9px system-ui";
-        ctx.fillText(`ZOOM ${Math.round(z.intensidade * 100)}%`, xa + 5, y + 9);
+    // régua
+    const passo = passoRegua();
+    cctx.fillStyle = "#6c7384";
+    cctx.font = "10px system-ui";
+    cctx.strokeStyle = "#2a2f3a";
+    cctx.beginPath();
+    for (let t = Math.max(0, Math.floor(t0 / passo) * passo); t <= Math.min(t1, duracao()); t += passo) {
+      const x = Math.round(X(t)) + 0.5;
+      cctx.moveTo(x, 0); cctx.lineTo(x, 14);
+      cctx.fillText(passo < 1 ? fmt(t, true) : fmt(t), x + 3, 10);
+    }
+    cctx.stroke();
+
+    desenharFilme(X, t0, largura, topo, FILME);
+
+    // forma de onda (50 pontos por segundo)
+    const onda = estado.onda;
+    cctx.fillStyle = "#4a5570";
+    for (let x = 0; x < largura; x++) {
+      const ia = Math.floor((t0 + x / pps) * 50), ib = Math.max(ia + 1, Math.floor((t0 + (x + 1) / pps) * 50));
+      let v = 0;
+      for (let i = ia; i < ib && i < onda.length; i++) if (onda[i] > v) v = onda[i];
+      const h = Math.max(1, v * amp);
+      cctx.fillRect(x, meio - h, 1, h * 2);
+    }
+
+    // cortes
+    for (const c of cortes()) {
+      if (c.fim < t0 || c.inicio > t1) continue;
+      const cor = tipoInfo(c.tipo).cor;
+      const xa = X(c.inicio), xb = X(c.fim);
+      if (c.ativo) {
+        cctx.fillStyle = "rgba(8,10,14,.55)";   // trecho cortado fica escuro nas imagens
+        cctx.fillRect(xa, topo, xb - xa, FILME);
+        cctx.fillStyle = hexParaRgba(cor, 0.33);
+        cctx.fillRect(xa, topo, xb - xa, base - topo);
+        cctx.fillStyle = cor;
+        cctx.fillRect(xa, topo - 3, xb - xa, 3);
+        if (xb - xa > 18) {   // alças: arraste a borda para ajustar o corte
+          cctx.fillStyle = "rgba(255,255,255,.9)";
+          cctx.fillRect(xa, topo + FILME / 2 - 9, 3, 18);
+          cctx.fillRect(xb - 3, topo + FILME / 2 - 9, 3, 18);
+        }
+      } else {
+        cctx.setLineDash([3, 3]);
+        cctx.strokeStyle = hexParaRgba(cor, 0.9);
+        cctx.strokeRect(xa + 0.5, topo + 0.5, xb - xa - 1, base - topo - 1);
+        cctx.setLineDash([]);
+      }
+    }
+
+    // zooms: faixa roxa embaixo (arraste para mover, puxe as pontas para mudar a duração)
+    for (const z of estado.mov?.zooms || []) {
+      if (z.fim < t0 || z.inicio > t1) continue;
+      const xa = X(z.inicio), xb = X(z.fim);
+      const y = ALTURA_LT - FAIXA_ZOOM;
+      cctx.fillStyle = z.ativo ? "rgba(165,124,255,.9)" : "rgba(165,124,255,.25)";
+      cctx.fillRect(xa, y, xb - xa, FAIXA_ZOOM - 2);
+      if (z.ativo) {
+        cctx.fillStyle = "rgba(255,255,255,.85)";
+        cctx.fillRect(xa, y, 2, FAIXA_ZOOM - 2);
+        cctx.fillRect(xb - 2, y, 2, FAIXA_ZOOM - 2);
+        if (xb - xa > 46) {
+          cctx.fillStyle = "#1b1530";
+          cctx.font = "bold 9px system-ui";
+          cctx.fillText(`ZOOM ${Math.round(z.intensidade * 100)}%`, xa + 5, y + 9);
+        }
       }
     }
   }
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(camadaLT, 0, 0);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
   // seleção
   if (estado.selecao) {
@@ -1774,7 +1904,7 @@ function desenharLinhaTempo() {
   }
 
   // cursor de reprodução
-  const xp = X(video.currentTime);
+  const xp = X(estado.tempoAlvo ?? video.currentTime);
   ctx.fillStyle = "#19d3c5";
   ctx.fillRect(xp - 1, 0, 2, ALTURA_LT);
   ctx.beginPath();
@@ -1807,7 +1937,10 @@ function zoomNoPonto(e) {
 
 let arrastandoLT = null;
 let arrastandoZoom = null;
+let bordaMouse = null;
 canvas.addEventListener("mousedown", (e) => {
+  const borda = bordaPerto(e.clientX, e.clientY);
+  if (borda) { bordaMouse = borda; return; }
   const alvo = zoomNoPonto(e);
   if (alvo) {
     arrastandoZoom = { ...alvo, x: e.clientX, t: tempoNoCanvas(e), ini: alvo.z.inicio, fim: alvo.z.fim, mexeu: false };
@@ -1816,6 +1949,12 @@ canvas.addEventListener("mousedown", (e) => {
   arrastandoLT = { x: e.clientX, t: tempoNoCanvas(e) };
 });
 window.addEventListener("mousemove", (e) => {
+  if (bordaMouse) { arrastarBorda(bordaMouse, e.clientX); return; }
+  if (e.target === canvas && !arrastandoZoom && !arrastandoLT && bordaPerto(e.clientX, e.clientY)) {
+    canvas.style.cursor = "ew-resize";
+    $("#lt-dica").textContent = "Arraste a borda para ajustar onde o corte começa ou termina";
+    return;
+  }
   if (arrastandoZoom) {
     const a = arrastandoZoom;
     if (!a.mexeu && Math.abs(e.clientX - a.x) <= 3) return;
@@ -1857,6 +1996,12 @@ window.addEventListener("mousemove", (e) => {
     : "Clique para ir até o ponto · arraste para selecionar um trecho e cortar";
 });
 window.addEventListener("mouseup", (e) => {
+  if (bordaMouse) {
+    const b = bordaMouse;
+    bordaMouse = null;
+    if (b.mexeu) alterou();
+    return;
+  }
   if (arrastandoZoom) {
     const a = arrastandoZoom;
     arrastandoZoom = null;

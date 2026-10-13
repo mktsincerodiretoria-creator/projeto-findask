@@ -28,13 +28,39 @@ def test_silencio_detectado_com_margem():
     a, b = sil[0]
     assert abs(a - 2.0) < 0.02 and abs(b - 3.5) < 0.02
     cortes = analise.cortes_de_silencio(sil, [], 6.0, cfg)
-    assert abs(cortes[0]["inicio"] - 2.12) < 0.02 and abs(cortes[0]["fim"] - 3.38) < 0.02
+    # respiro: 0.12 s depois da fala e 0.07 s antes da próxima (no ponto mais silencioso ali)
+    assert abs(cortes[0]["inicio"] - 2.12) < 0.03 and abs(cortes[0]["fim"] - 3.43) < 0.03
 
 
 def test_silencio_curto_nao_corta():
     db = np.full(600, -20.0, dtype=np.float32)
     db[200:230] = -70  # 0.3s: pausa natural
     assert analise.detectar_silencios(db, 0.01, 6.0, analise.CONFIG_PADRAO) == []
+
+
+def test_audio_sem_pausas_nao_vira_um_corte_gigante():
+    db = np.full(600, -20.0, dtype=np.float32)
+    db[300:310] = -24
+    assert analise.detectar_silencios(db, 0.01, 6.0, analise.CONFIG_PADRAO) == []
+
+
+def test_respiracao_no_meio_da_pausa_nao_impede_o_corte():
+    db = np.full(600, -70.0, dtype=np.float32)
+    db[50:200] = -20                               # fala
+    db[290:320] = -48                              # respiração no meio da pausa (sem palavra)
+    db[420:580] = -20                              # fala
+    pal = [{"i": 0, "texto": "oi", "inicio": 0.5, "fim": 2.0, "prob": 1},
+           {"i": 1, "texto": "tchau", "inicio": 4.2, "fim": 5.8, "prob": 1}]
+    sil = analise.detectar_silencios(db, 0.01, 6.0, analise.CONFIG_PADRAO, pal)
+    assert any(a <= 2.1 and b >= 4.1 for a, b in sil)   # uma pausa só, de ponta a ponta
+
+
+def test_final_de_palavra_que_some_devagar_nao_e_comido():
+    db = np.full(600, -70.0, dtype=np.float32)
+    db[100:200] = -20
+    db[200:240] = np.linspace(-25, -45, 40)       # a voz vai morrendo (ainda audível)
+    sil = analise.detectar_silencios(db, 0.01, 6.0, analise.CONFIG_PADRAO)
+    assert sil and sil[-1][0] >= 2.3               # a pausa só começa depois do fim do som
 
 
 def test_estalo_no_meio_do_silencio_nao_divide():
