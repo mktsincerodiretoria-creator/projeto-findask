@@ -121,3 +121,17 @@ def test_video_hdr_e_detectado_e_convertido(tmp_path):
     info = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "stream=pix_fmt", "-of", "csv=p=0",
                            str(tmp_path / r["video"])], capture_output=True, text=True).stdout
     assert "yuv420p" in info
+
+
+def test_legenda_desligada_sai_sem_legenda(tmp_path):
+    video = tmp_path / "v.mp4"
+    _gerar(video, extra=["-c:v", "libx264", "-pix_fmt", "yuv420p"])
+    meta = midia.sondar(video)
+    pal = [{"i": 0, "texto": "Olá", "inicio": 0.2, "fim": 0.8, "prob": 1},
+           {"i": 1, "texto": "mundo", "inicio": 0.9, "fim": 1.5, "prob": 1}]
+    opcoes = {"resolucao": "original", "legenda": "gravada", "velocidade": "rapida"}
+    ligada = exportar.exportar(tmp_path, video, meta, pal, [], {"ativa": True}, opcoes, "com")
+    desligada = exportar.exportar(tmp_path, video, meta, pal, [], {"ativa": False}, opcoes, "sem")
+    assert "legenda" in ligada and "legenda" not in desligada
+    filtro = (tmp_path / "filtro.txt").read_text()
+    assert "subtitles" not in filtro          # nada gravado no vídeo

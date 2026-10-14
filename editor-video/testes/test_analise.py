@@ -22,7 +22,7 @@ def test_silencio_detectado_com_margem():
     passo = 0.01
     db = np.full(600, -20.0, dtype=np.float32)   # 6s de fala...
     db[200:350] = -70                             # ...com 1.5s de silêncio no meio
-    cfg = {**analise.CONFIG_PADRAO}
+    cfg = {**analise.CONFIG_PADRAO, "margem": 0.12}
     sil = analise.detectar_silencios(db, passo, 6.0, cfg)
     assert len(sil) == 1
     a, b = sil[0]
@@ -32,10 +32,18 @@ def test_silencio_detectado_com_margem():
     assert abs(cortes[0]["inicio"] - 2.12) < 0.03 and abs(cortes[0]["fim"] - 3.43) < 0.03
 
 
-def test_silencio_curto_nao_corta():
+def test_silencio_curto_nao_corta_no_ritmo_natural():
     db = np.full(600, -20.0, dtype=np.float32)
     db[200:230] = -70  # 0.3s: pausa natural
-    assert analise.detectar_silencios(db, 0.01, 6.0, analise.CONFIG_PADRAO) == []
+    natural = {**analise.CONFIG_PADRAO, "silencio_minimo": 0.5}
+    assert analise.detectar_silencios(db, 0.01, 6.0, natural) == []
+
+
+def test_ritmo_maximo_e_o_padrao_e_corta_ate_pausa_curta():
+    db = np.full(600, -20.0, dtype=np.float32)
+    db[200:230] = -70  # 0.3s
+    assert analise.CONFIG_PADRAO["ritmo"] == "maximo"
+    assert len(analise.detectar_silencios(db, 0.01, 6.0, analise.CONFIG_PADRAO)) == 1
 
 
 def test_audio_sem_pausas_nao_vira_um_corte_gigante():

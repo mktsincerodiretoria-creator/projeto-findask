@@ -113,7 +113,8 @@ def exportar(projeto_dir: Path, original: Path, meta: dict, palavras: list, cort
     blocos = montar_blocos(palavras, cortes, duracao, estilo, largura / altura)
     arquivos = {"video": f"{nome_saida}.mp4"}
 
-    legenda_ativa = opcoes["legenda"] != "nenhuma" and bool(blocos)
+    # "Mostrar legenda" desligado na aba Legenda = vídeo sem legenda (e sem .srt)
+    legenda_ativa = opcoes["legenda"] != "nenhuma" and estilo.get("ativa", True) is not False and bool(blocos)
     if legenda_ativa:
         (projeto_dir / f"{nome_saida}.srt").write_text(gerar_srt(blocos), encoding="utf-8")
         arquivos["legenda"] = f"{nome_saida}.srt"

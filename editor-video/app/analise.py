@@ -17,8 +17,11 @@ import numpy as np
 
 CONFIG_PADRAO = {
     "cortar_silencios": True,
-    "silencio_minimo": 0.4,   # segundos de pausa para virar corte
-    "margem": 0.12,           # respiro mantido antes/depois de cada fala
+    # Ritmo "máximo" já na primeira análise: corta toda pausa e respiração, deixando só um
+    # respiro curtinho (medido para não comer o final das palavras).
+    "ritmo": "maximo",
+    "silencio_minimo": 0.15,  # segundos de pausa para virar corte
+    "margem": 0.05,           # respiro mantido depois de cada fala (antes: 60% disso)
     "sensibilidade": 0.5,     # 0..1: quanto maior, mais coisa conta como silêncio
     "detectar_vicios": True,
     "detectar_repeticoes": True,

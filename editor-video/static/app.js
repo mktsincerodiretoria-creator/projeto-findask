@@ -106,9 +106,14 @@ function montarOpcoes(el, cfg, { inicial }) {
   const ia = estado.status?.ia_disponivel;
   const modelos = (estado.status?.modelos || ["small"]).map(
     (m) => `<option ${m === (cfg.modelo || "small") ? "selected" : ""}>${m}</option>`).join("");
+  const ritmo = cfg.ritmo || ritmoDe(cfg);
   el.innerHTML = [
-    campoAlternar("cortar_silencios", "Cortar silêncios", "Remove as pausas entre as falas", cfg.cortar_silencios),
-    campoFaixa("silencio_minimo", "Pausa mínima para cortar", "Pausas menores que isso ficam (respiração natural)", cfg.silencio_minimo, 0.2, 2, 0.05, "s"),
+    `<div class="campo">Ritmo dos cortes <div class="segmentado" data-ritmo>
+      ${Object.entries(RITMOS).map(([k, r]) => `<button type="button" data-v="${k}" class="${ritmo === k ? "ativo" : ""}">${r.nome}</button>`).join("")}
+      </div><small>${RITMOS[ritmo]?.dica || "Ajuste personalizado"}</small>
+      <input type="hidden" data-chave="ritmo" value="${ritmo}"></div>`,
+    campoAlternar("cortar_silencios", "Cortar silêncios e respirações", "Remove as pausas e o som de respiração entre as falas", cfg.cortar_silencios),
+    campoFaixa("silencio_minimo", "Pausa mínima para cortar", "Pausas menores que isso ficam", cfg.silencio_minimo, 0.1, 2, 0.05, "s"),
     campoFaixa("margem", "Respiro nas bordas", "Quanto de pausa manter antes e depois de cada fala", cfg.margem, 0, 0.4, 0.01, "s"),
     campoFaixa("sensibilidade", "Sensibilidade do silêncio", "Aumente se houver ruído de fundo e as pausas não forem cortadas", cfg.sensibilidade, 0, 1, 0.05),
     campoAlternar("detectar_vicios", "Hesitações e vícios", "“é…”, “hã”, “hum”, “né”, “tipo”", cfg.detectar_vicios),
@@ -125,6 +130,41 @@ function montarOpcoes(el, cfg, { inicial }) {
     r.addEventListener("input", () => (r.previousElementSibling.textContent = r.value + r.dataset.unidade));
   }
 }
+
+// Ritmo dos cortes: "Máximo" (padrão) tira toda pausa e respiração, deixando um respiro curtinho.
+const RITMOS = {
+  maximo: { nome: "⚡ Máximo", dica: "Corta todas as pausas e respirações (ritmo de Reels/TikTok)", silencio_minimo: 0.15, margem: 0.05, sensibilidade: 0.5 },
+  equilibrado: { nome: "Equilibrado", dica: "Tira as pausas, deixa um respiro curto", silencio_minimo: 0.3, margem: 0.1, sensibilidade: 0.5 },
+  natural: { nome: "Natural", dica: "Só as pausas longas; fala mais calma", silencio_minimo: 0.5, margem: 0.15, sensibilidade: 0.45 },
+};
+function ritmoDe(cfg) {
+  return Object.keys(RITMOS).find((k) => ["silencio_minimo", "margem", "sensibilidade"]
+    .every((c) => Math.abs((cfg[c] ?? 0) - RITMOS[k][c]) < 0.001)) || "personalizado";
+}
+document.addEventListener("click", (e) => {
+  const b = e.target.closest("[data-ritmo] button");
+  if (!b) return;
+  const el = b.closest(".grade-opcoes, form, div[id^=opcoes]") || document;
+  const r = RITMOS[b.dataset.v];
+  for (const c of ["silencio_minimo", "margem", "sensibilidade"]) {
+    const i = $(`input[data-chave="${c}"]`, el);
+    if (i) { i.value = r[c]; i.previousElementSibling.textContent = r[c] + i.dataset.unidade; }
+  }
+  $$("button", b.parentElement).forEach((x) => x.classList.toggle("ativo", x === b));
+  $(`input[data-chave="ritmo"]`, el).value = b.dataset.v;
+  b.parentElement.nextElementSibling.textContent = r.dica;
+});
+document.addEventListener("input", (e) => {
+  // mexeu numa barra à mão: vira "personalizado"
+  const i = e.target.closest('input[data-chave="silencio_minimo"], input[data-chave="margem"], input[data-chave="sensibilidade"]');
+  if (!i) return;
+  const el = i.closest(".grade-opcoes, form, div[id^=opcoes]") || document;
+  const cfg = lerOpcoes(el);
+  const r = ritmoDe(cfg);
+  $$("[data-ritmo] button", el).forEach((x) => x.classList.toggle("ativo", x.dataset.v === r));
+  const h = $(`input[data-chave="ritmo"]`, el);
+  if (h) { h.value = r; h.previousElementSibling.textContent = RITMOS[r]?.dica || "Ajuste personalizado"; }
+});
 
 function lerOpcoes(el) {
   const cfg = {};
@@ -289,6 +329,7 @@ async function abrirEditor(p) {
   ajustarQuadro();
   renderZooms();
   montarFormLegenda();
+  botaoCC();
   montarLegendaCores();
   posicionarBarraTamanho();
   atualizarTudo();
@@ -902,7 +943,7 @@ function montarFormLegenda() {
   const seg = (chave, opcoes) => `<div class="segmentado" data-seg="${chave}">${opcoes.map(([v, r]) =>
     `<button type="button" data-v="${v}" class="${es[chave] === v ? "ativo" : ""}">${r}</button>`).join("")}</div>`;
   $("#form-legenda").innerHTML = `
-    ${campoAlternar("ativa", "Mostrar legenda", "Liga ou desliga a legenda na prévia", es.ativa)}
+    ${campoAlternar("ativa", "Legenda ligada", "Desligada: o vídeo sai sem legenda (também no botão CC ao lado do vídeo)", es.ativa)}
     <div class="campo">Linhas na tela ${seg("linhas", [[1, "1 linha"], [2, "2 linhas"]])}</div>
     <div class="campo">Palavras por vez ${seg("modo", [["frase", "Frase inteira"], ["curta", "Até 3 (estilo Reels)"]])}</div>
     <div class="campo">Posição ${seg("posicao", [["superior", "Em cima"], ["meio", "Meio"], ["inferior", "Embaixo"]])}</div>
@@ -930,10 +971,26 @@ function montarFormLegenda() {
 function mudarEstilo(chave, valor) {
   const p = estado.projeto;
   p.estilo_legenda = { ...estilo(), [chave]: valor };
+  if (chave === "ativa") botaoCC();
   legendaAtual = "";
   posicionarBarraTamanho();
   agendarSalvar();  // salvar recarrega os blocos (tamanho, linhas e largura mudam o agrupamento)
 }
+
+function botaoCC() {
+  const ligada = estilo().ativa !== false;
+  for (const b of $$(".btn-cc")) {
+    b.classList.toggle("ligado", ligada);
+    b.title = ligada ? "Legenda ligada (toque para desligar)" : "Legenda desligada (toque para ligar)";
+  }
+}
+$$(".btn-cc").forEach((b) => b.addEventListener("click", () => {
+  const ligar = estilo().ativa === false;
+  mudarEstilo("ativa", ligar);
+  const chk = $('#form-legenda input[data-chave="ativa"]');
+  if (chk) chk.checked = ligar;
+  aviso(ligar ? "Legenda ligada." : "Legenda desligada: o vídeo vai sair sem legenda.");
+}));
 
 $("#form-legenda").addEventListener("input", (e) => {
   const i = e.target.closest("[data-chave]");
@@ -2078,12 +2135,24 @@ $("#btn-exportar").addEventListener("click", () => {
   const m = p.meta;
   const formato = enq().formato === "original" ? "formato original" : `formato ${enq().formato}`;
   $("#exp-info").textContent = `Vídeo final com ${fmt(tempoFinal(m.duracao))} · ${formato} · original ${m.largura}×${m.altura} a ${Math.round(m.fps)} fps.`;
+  // a escolha de legenda da exportação segue o liga/desliga da legenda
+  const selLeg = $('#exp-opcoes select[name="legenda"]');
+  if (estilo().ativa === false) selLeg.value = "nenhuma";
+  else if (selLeg.value === "nenhuma") selLeg.value = "gravada";
   $("#exp-progresso").hidden = true;
   $("#exp-erro").hidden = true;
   $("#exp-opcoes").hidden = false;
   $("#exp-iniciar").disabled = false;
   renderExportacoes();
   dlgExp.showModal();
+});
+
+$('#exp-opcoes select[name="legenda"]').addEventListener("change", (e) => {
+  const ligar = e.target.value !== "nenhuma";
+  if ((estilo().ativa !== false) !== ligar) {
+    mudarEstilo("ativa", ligar);
+    montarFormLegenda();
+  }
 });
 
 $("#exp-iniciar").addEventListener("click", async () => {

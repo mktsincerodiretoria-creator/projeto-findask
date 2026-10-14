@@ -1,11 +1,11 @@
 """Versão do CorteFácil e de onde vêm as atualizações."""
 
-VERSAO = "1.8.0"
+VERSAO = "1.9.0"
 
 NOVIDADES = [
-    "Cortes de silêncio mais precisos: não comem o final das palavras, pausas iguais e respiração removida",
-    "Toque num corte na linha do tempo e escolha \"Não cortar\"; arraste as bordas brancas para ajustar",
-    "Editor bem mais leve no celular (linha do tempo e listas só redesenham quando precisa)",
+    "Corte no máximo já na primeira análise: tira todas as pausas e respirações (ritmo Máximo/Equilibrado/Natural)",
+    "Botão CC liga/desliga a legenda — desligada, o vídeo exportado sai sem legenda",
+    "Toque num corte e escolha \"Não cortar\"; arraste as bordas brancas para ajustar",
 ]
 
 # Repositório público de onde o programa baixa as atualizações.

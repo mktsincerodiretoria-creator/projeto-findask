@@ -133,6 +133,9 @@ body.com-tela-cheia { overflow: hidden; }
 .video-caixa.cheia .sair-tela-cheia { display: block; }
 .btn-icone { width: 38px; height: 38px; border-radius: 10px; border: 1px solid var(--borda); background: var(--fundo-3); color: var(--texto); font-size: 18px; line-height: 1; flex: none; }
 .btn-icone:hover { border-color: var(--texto-2); }
+.btn-cc { font-size: 13px; font-weight: 800; letter-spacing: .5px; color: var(--texto-2); text-decoration: line-through; }
+.btn-cc.ligado { color: #04201e; background: var(--acento); border-color: var(--acento); text-decoration: none; }
+.campo small { display: block; color: var(--texto-2); font-size: 12px; margin-top: 4px; font-weight: 400; }
 /* O quadro tem o tamanho exato da imagem; o zoom acontece dentro dele (overflow escondido). */
 .quadro { position: relative; overflow: hidden; flex: none; background: #000; }
 .quadro video { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: block; transform-origin: 0 0; }
@@ -232,7 +235,7 @@ body.com-tela-cheia { overflow: hidden; }
 .lt-rolagem { position: relative; height: 156px; overflow-x: auto; overflow-y: hidden; border-radius: 8px; background: var(--fundo); }
 .lt-espaco { height: 1px; }
 .lt-rolagem, #lt-canvas { touch-action: none; }   /* o dedo move a agulha; dois dedos = zoom da linha do tempo */
-.lt-play { display: none; }
+.lt-play, .lt-cc { display: none; }
 /* Corte embaixo da agulha: "Não cortar" com um toque */
 .chip-corte { display: flex; align-items: center; gap: 8px; margin: 0 0 6px; padding: 0 8px 0 12px; height: 40px; box-sizing: border-box; border-radius: 10px; background: var(--fundo-3); border: 1px solid var(--borda); border-left: 4px solid var(--cor, var(--acento)); font-size: 13px; }
 .chip-corte.vazio { color: var(--texto-2); font-size: 12px; border-left-color: var(--borda); }
@@ -350,6 +353,7 @@ body { touch-action: manipulation; }
 
   /* A linha do tempo fica presa no alto quando você desce para usar uma ferramenta. */
   .linha-tempo { order: 2; border-top: 0; position: sticky; top: var(--alt-video, 0px); z-index: 21; box-shadow: 0 6px 14px rgba(0, 0, 0, .35); }
+  .lt-cc { display: block; width: 42px; height: 32px; padding: 0; border-radius: 9px; }
   .lt-play { display: block; -webkit-appearance: none; appearance: none; width: 38px; height: 32px; padding: 0; font-size: 14px; border-radius: 9px; background: var(--acento); color: #04201e; border: 0; font-family: system-ui, sans-serif; }
   .painel { order: 5; flex: none; }
   .video-caixa { height: 46vh; flex: none; border-radius: 12px; }
@@ -367,7 +371,7 @@ body { touch-action: manipulation; }
   .aba-icone { display: block; font-size: 20px; line-height: 1.1; }
   .aviso { top: 70px; bottom: auto; max-width: 92vw; }   /* em cima: não cobre a linha do tempo */
   .alternar { font-size: 12px; white-space: nowrap; gap: 6px; }
-  .tempo-sub { font-size: 11px; white-space: nowrap; }
+  .tempo-sub { display: none; }
   .resumo .cartao { padding: 4px 8px; }
   .resumo .cartao b { font-size: 13px; }
   .painel { border-left: 0; border-top: 1px solid var(--borda); }
