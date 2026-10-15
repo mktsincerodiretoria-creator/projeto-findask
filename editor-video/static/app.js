@@ -1750,13 +1750,28 @@ rolagem.addEventListener("scroll", desenharLinhaTempo);
 
 function mudarZoomLT(novo, t = video.currentTime) {
   const x = t * pps - rolagem.scrollLeft;   // o ponto t fica no mesmo lugar da tela
-  pps = Math.max(10, Math.min(400, novo));
+  const cabeTudo = duracao() ? (rolagem.clientWidth - 20) / duracao() : 10;   // vídeo inteiro na tela
+  pps = Math.max(Math.min(10, cabeTudo), Math.min(400, novo));
   $("#zoom").value = pps;
   $("#lt-espaco").style.width = `${larguraLT()}px`;
   rolagem.scrollLeft = t * pps - x;
   desenharLinhaTempo();
 }
 $("#zoom").addEventListener("input", (e) => mudarZoomLT(+e.target.value));
+
+// Rodinha do mouse na linha do tempo: aproxima/afasta no ponto do mouse (como no CapCut).
+// Shift + rodinha (ou deslizar de lado no touchpad) rola para os lados.
+rolagem.addEventListener("wheel", (e) => {
+  e.preventDefault();
+  const horizontal = e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY);
+  if (horizontal) {
+    rolagem.scrollLeft += e.deltaX || e.deltaY;
+    return;
+  }
+  const passo = e.deltaMode === 1 ? e.deltaY * 33 : e.deltaY;   // linhas -> pixels (Firefox)
+  const t = (rolagem.scrollLeft + e.clientX - rolagem.getBoundingClientRect().left) / pps;
+  mudarZoomLT(pps * Math.exp(-passo * 0.0018), t);
+}, { passive: false });
 
 // Toque (celular): o dedo leva a agulha — tocar pula para o ponto e arrastar vai junto
 // (perto das bordas a linha do tempo anda sozinha). Dois dedos aproximam e rolam.
@@ -2205,9 +2220,30 @@ function cortarSelecaoLT() {
 
 /* ------------------------------------------------------------ atalhos */
 
+// Só não vale atalho quando a pessoa está digitando (caixas de texto, listas, diálogos).
+function digitando(el) {
+  if (!el || !el.closest) return false;
+  if (el.closest("textarea, select, dialog[open], [contenteditable=true]")) return true;
+  const i = el.closest("input");
+  return !!i && !["checkbox", "radio", "range", "button", "submit", "color", "file"].includes(i.type);
+}
+
+// Espaço = tocar/pausar em qualquer lugar do editor (mesmo depois de clicar num botão ou chave:
+// o espaço não "aperta" de novo o último botão clicado).
+document.addEventListener("keydown", (e) => {
+  if (e.code !== "Space" || e.repeat || $("#tela-editor").hidden || digitando(e.target)) return;
+  e.preventDefault();
+  e.stopPropagation();
+  if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
+  alternarPlay();
+}, true);
+document.addEventListener("keyup", (e) => {
+  if (e.code === "Space" && !$("#tela-editor").hidden && !digitando(e.target)) e.preventDefault();
+}, true);
+
 document.addEventListener("keydown", (e) => {
   if ($("#tela-editor").hidden || e.target.closest("input, select, textarea, dialog[open]")) return;
-  if (e.code === "Space") { e.preventDefault(); alternarPlay(); }
+  if (e.code === "Space") return;   // tratado acima
   else if (e.key === "Escape" && $("#video-caixa").classList.contains("cheia")) telaCheia(false);
   else if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === "y" || (e.shiftKey && e.key.toLowerCase() === "z"))) {
     e.preventDefault(); refazer();

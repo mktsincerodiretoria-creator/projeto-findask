@@ -116,7 +116,9 @@ Para abrir de qualquer lugar (celular, outro computador) em `https://editor.seud
    - "**Prévia com cortes**" ligado = o player pula os cortes, como vai ficar o vídeo final.
 3. Clique em **Exportar**, escolha resolução, qualidade e legenda, e baixe o vídeo.
 
-Atalhos: **Espaço** tocar/pausar · **← →** voltar/avançar 1 s (Shift = 5 s) · **Delete** cortar
+Na linha do tempo: **rodinha do mouse** aproxima/afasta, **Shift + rodinha** rola para os lados.
+
+Atalhos: **Espaço** tocar/pausar (em qualquer lugar, fora das caixas de texto) · **← →** voltar/avançar 1 s (Shift = 5 s) · **Delete** cortar
 seleção · **Ctrl+Z** desfazer.
 
 ## Revisão inteligente com IA (opcional)
