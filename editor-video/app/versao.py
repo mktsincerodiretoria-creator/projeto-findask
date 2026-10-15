@@ -1,11 +1,11 @@
 """Versão do CorteFácil e de onde vêm as atualizações."""
 
-VERSAO = "1.9.0"
+VERSAO = "2.0.0"
 
 NOVIDADES = [
-    "Corte no máximo já na primeira análise: tira todas as pausas e respirações (ritmo Máximo/Equilibrado/Natural)",
-    "Botão CC liga/desliga a legenda — desligada, o vídeo exportado sai sem legenda",
-    "Toque num corte e escolha \"Não cortar\"; arraste as bordas brancas para ajustar",
+    "Reprodução sem travar nos cortes: dois players se revezam e o próximo trecho já fica pronto",
+    "Linha do tempo no celular: arraste para rolar (com embalo), toque para levar a agulha",
+    "Corte máximo por padrão: pausa mínima 0,2 s, respiro 0 s, sensibilidade 1",
 ]
 
 # Repositório público de onde o programa baixa as atualizações.

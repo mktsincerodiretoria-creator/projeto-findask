@@ -98,7 +98,8 @@ def gerar_previa(origem: Path, destino: Path, meta: dict | None = None) -> None:
     _rodar([
         "ffmpeg", "-y", "-v", "error", "-i", str(origem),
         "-vf", ",".join(filtro_hdr(meta) + ["scale='if(gt(iw,ih),-2,540)':'if(gt(iw,ih),540,-2)'"]),
-        "-c:v", "libx264", "-preset", "veryfast", "-crf", "28", "-g", "15",
+        # quadro-chave a cada 1/3 s e sem quadros B: pular de um trecho para outro é instantâneo
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "28", "-g", "10", "-bf", "0",
         "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k",
         "-movflags", "+faststart", str(destino),
     ])

@@ -38,7 +38,12 @@ const estado = {
   poll: null,
 };
 
-const video = $("#video");
+// Dois <video> com o mesmo arquivo: "video" é o que aparece e toca; "reserva" fica escondido,
+// já parado no começo do próximo trecho. No corte, os dois trocam de papel na hora — sem a
+// engasgada de buscar o ponto no meio da reprodução (o que travava no celular).
+const videoA = $("#video"), videoB = $("#video-b");
+let video = videoA, reserva = videoB;
+const videos = [videoA, videoB];
 const celular = matchMedia("(max-width: 820px)");   // tela de celular
 
 /* ------------------------------------------------------------ utilidades */
@@ -133,7 +138,7 @@ function montarOpcoes(el, cfg, { inicial }) {
 
 // Ritmo dos cortes: "Máximo" (padrão) tira toda pausa e respiração, deixando um respiro curtinho.
 const RITMOS = {
-  maximo: { nome: "⚡ Máximo", dica: "Corta todas as pausas e respirações (ritmo de Reels/TikTok)", silencio_minimo: 0.15, margem: 0.05, sensibilidade: 0.5 },
+  maximo: { nome: "⚡ Máximo", dica: "Corta todas as pausas e respirações (ritmo de Reels/TikTok)", silencio_minimo: 0.2, margem: 0, sensibilidade: 1 },
   equilibrado: { nome: "Equilibrado", dica: "Tira as pausas, deixa um respiro curto", silencio_minimo: 0.3, margem: 0.1, sensibilidade: 0.5 },
   natural: { nome: "Natural", dica: "Só as pausas longas; fala mais calma", silencio_minimo: 0.5, margem: 0.15, sensibilidade: 0.45 },
 };
@@ -302,9 +307,10 @@ async function abrirEditor(p) {
   mostrarTela("editor");
   $("#nome-projeto").textContent = p.nome;
   $("#desfazer").disabled = true;
-  if (video.dataset.pid !== p.id) {
-    video.src = `/api/projetos/${p.id}/previa`;
-    video.dataset.pid = p.id;
+  if (videoA.dataset.pid !== p.id) {
+    for (const v of videos) v.src = `/api/projetos/${p.id}/previa`;
+    videoA.dataset.pid = p.id;
+    reserva.dataset.alvo = "";
   }
   estado.onda = await api(`/api/projetos/${p.id}/onda`).catch(() => []);
   carregarQuadros(p.id);
@@ -556,8 +562,7 @@ function refazer() {
 }
 $("#desfazer").addEventListener("click", desfazer);
 $("#lt-play").addEventListener("click", () => alternarPlay());
-video.addEventListener("play", () => { $("#lt-play").textContent = "❚❚"; });
-video.addEventListener("pause", () => { $("#lt-play").textContent = "▶\uFE0E"; });
+
 $("#refazer").addEventListener("click", refazer);
 
 function alterou() {
@@ -768,14 +773,70 @@ function ouvir(a, b) {
 
 function alternarPlay() {
   if (video.paused) {
+    video.dataset.liberado = "1";   // tocou num toque seu: este player também pode tocar com som
+    liberarReserva();
     if (video.currentTime >= duracao() - 0.05) video.currentTime = 0;
     video.play();
   } else video.pause();
 }
 $("#btn-play").addEventListener("click", alternarPlay);
-video.addEventListener("click", alternarPlay);
-video.addEventListener("play", () => ($("#btn-play").textContent = "❚❚"));
-video.addEventListener("pause", () => ($("#btn-play").textContent = "▶"));
+function botoesPlay() {
+  $("#btn-play").textContent = video.paused ? "▶" : "❚❚";
+  $("#lt-play").textContent = video.paused ? "▶\uFE0E" : "❚❚";
+}
+for (const v of videos) {
+  v.addEventListener("click", alternarPlay);
+  v.addEventListener("play", botoesPlay);
+  v.addEventListener("pause", botoesPlay);
+}
+
+// No iPhone, um vídeo só toca com som se começou num toque da pessoa: "libera" o de reserva
+// junto com o primeiro play.
+function liberarReserva() {
+  if (reserva.dataset.liberado) return;
+  reserva.muted = false;
+  reserva.play().then(() => { reserva.pause(); reserva.dataset.liberado = "1"; reserva.dataset.alvo = ""; })
+    .catch(() => { reserva.muted = true; });
+}
+
+// Deixa a reserva parada no próximo trecho que vem depois de um corte.
+function prepararReserva(t) {
+  const prox = estado.mesclados.find(([a]) => a > t);
+  if (!prox || prox[0] - t > 3 || prox[1] >= duracao() - 0.05) return;
+  const alvo = prox[1].toFixed(3);
+  if (reserva.dataset.alvo === alvo) return;
+  reserva.dataset.alvo = alvo;
+  reserva.currentTime = prox[1];
+}
+
+function saltar(b) {
+  const pronta = reserva.dataset.alvo === b.toFixed(3) && reserva.readyState >= 2 && !reserva.seeking
+    && Math.abs(reserva.currentTime - b) < 0.08 && reserva.dataset.liberado;
+  if (!pronta) { video.currentTime = b; return; }
+  const antigo = video;
+  video = reserva;
+  reserva = antigo;
+  reserva.__par = video;
+  video.muted = false;
+  video.classList.remove("video-reserva");
+  const tocando = video.play();
+  antigo.classList.add("video-reserva");
+  antigo.pause();
+  reserva.dataset.alvo = "";
+  transformAtual = "x";
+  marcaFiltro = "";
+  tocando?.catch((err) => {
+    // só se o navegador PROIBIU tocar (e não quando você pausou logo depois): volta para o
+    // jeito antigo, buscando o ponto no mesmo player
+    if (err?.name !== "NotAllowedError" || video !== reserva.__par) return;
+    video.classList.add("video-reserva");
+    antigo.classList.remove("video-reserva");
+    reserva = video;
+    video = antigo;
+    video.currentTime = b;
+    video.play();
+  });
+}
 video.addEventListener("loadedmetadata", () => { legendaAtual = ""; posicionarBarraTamanho(); });
 
 let palavraAtual = -1;
@@ -791,8 +852,8 @@ function quadro() {
       const c = estado.mesclados.find(([a, b]) => t >= a - 0.005 && t < b - 0.02);
       if (c) {
         if (c[1] >= duracao() - 0.05) { video.pause(); video.currentTime = c[0]; }
-        else { video.currentTime = c[1]; t = c[1]; }
-      }
+        else { saltar(c[1]); t = c[1]; }
+      } else prepararReserva(t);
     }
   }
   const tt = estado.tempoAlvo ?? t;
@@ -1338,7 +1399,7 @@ function aplicarMovimento(t) {
   const tr = `matrix(${(a / c0).toFixed(5)}, ${(b / c0).toFixed(5)}, ${(-b / c0).toFixed(5)}, ${(a / c0).toFixed(5)}, ${e.toFixed(2)}, ${f.toFixed(2)})`;
   if (tr + tam === transformAtual) return;
   transformAtual = tr + tam;
-  for (const el of [video, telaFiltro]) {
+  for (const el of [videoA, videoB, telaFiltro]) {
     el.style.width = tam[0];
     el.style.height = tam[1];
     el.style.transform = tr;
@@ -1710,12 +1771,12 @@ function buscarSuave(t) {
   if (video.seeking) { buscaPendente = t; return; }
   if (Math.abs(t - video.currentTime) > 0.01) video.currentTime = t;
 }
-video.addEventListener("seeked", () => {
-  if (buscaPendente == null) return;
+videos.forEach((v) => v.addEventListener("seeked", (e) => {
+  if (e.target !== video || buscaPendente == null) return;
   const t = buscaPendente;
   buscaPendente = null;
   if (Math.abs(t - video.currentTime) > 0.01) video.currentTime = t;
-});
+}));
 
 function agulhaNoDedo(clientX) {
   buscarSuave(Math.max(0, Math.min(duracao(), (rolagem.scrollLeft + xNaLT(clientX)) / pps)));
@@ -1772,11 +1833,20 @@ rolagem.addEventListener("touchstart", (e) => {
     toqueLT = { pinca: true, d: distDedos(e.touches), pps, t: (rolagem.scrollLeft + xNaLT(mx)) / pps };
     return;
   }
-  const borda = bordaPerto(e.touches[0].clientX, e.touches[0].clientY);
+  cancelarEmbalo();
+  const x = e.touches[0].clientX;
+  const borda = bordaPerto(x, e.touches[0].clientY);
   if (borda) { toqueLT = { borda }; return; }
-  toqueLT = { x: e.touches[0].clientX };
-  agulhaNoDedo(toqueLT.x);
-  andarNaBorda();
+  // pegou na agulha: arrasta a agulha (o vídeo acompanha)
+  const xAgulha = rolagem.getBoundingClientRect().left + video.currentTime * pps - rolagem.scrollLeft;
+  if (Math.abs(x - xAgulha) <= 22) {
+    toqueLT = { x, agulha: true };
+    agulhaNoDedo(x);
+    andarNaBorda();
+    return;
+  }
+  // senão: arrastar rola a linha do tempo para os lados; um toque leva a agulha até ali
+  toqueLT = { x, x0: x, sl0: rolagem.scrollLeft, t0: performance.now(), vel: 0, ultX: x, ultT: performance.now() };
 }, { passive: false });
 rolagem.addEventListener("touchmove", (e) => {
   e.preventDefault();
@@ -1790,14 +1860,46 @@ rolagem.addEventListener("touchmove", (e) => {
     desenharLinhaTempo();
   } else if (toqueLT.borda) {
     arrastarBorda(toqueLT.borda, e.touches[0].clientX);
-  } else if (!toqueLT.pinca) {
+  } else if (toqueLT.agulha) {
     toqueLT.x = e.touches[0].clientX;
     agulhaNoDedo(toqueLT.x);
+  } else if (!toqueLT.pinca) {
+    const x = e.touches[0].clientX, agora = performance.now();
+    rolagem.scrollLeft = toqueLT.sl0 - (x - toqueLT.x0);
+    const dt = Math.max(1, agora - toqueLT.ultT);
+    toqueLT.vel = 0.8 * ((toqueLT.ultX - x) / dt) + 0.2 * toqueLT.vel;   // px por ms
+    toqueLT.ultX = x;
+    toqueLT.ultT = agora;
+    toqueLT.x = x;
   }
 }, { passive: false });
+
+// Embalo depois de soltar o dedo (como rolar uma lista no celular).
+let embalo = 0;
+function cancelarEmbalo() { cancelAnimationFrame(embalo); embalo = 0; }
+function rolarComEmbalo(vel) {
+  cancelarEmbalo();
+  let ultimo = performance.now();
+  const passo = (agora) => {
+    const dt = agora - ultimo;
+    ultimo = agora;
+    rolagem.scrollLeft += vel * dt;
+    vel *= Math.pow(0.995, dt);   // vai freando
+    if (Math.abs(vel) > 0.02) embalo = requestAnimationFrame(passo); else embalo = 0;
+  };
+  embalo = requestAnimationFrame(passo);
+}
 const fimToque = (e) => {
   if (e.touches.length) return;
   if (toqueLT?.borda?.mexeu) alterou();
+  if (toqueLT && toqueLT.sl0 !== undefined) {
+    const andou = Math.abs(toqueLT.x - toqueLT.x0);
+    if (andou < 8 && performance.now() - toqueLT.t0 < 400) {
+      agulhaNoDedo(toqueLT.x0);   // toque rápido: a agulha vai até o dedo
+    } else if (Math.abs(toqueLT.vel) > 0.15 && performance.now() - toqueLT.ultT < 80) {
+      rolarComEmbalo(toqueLT.vel);
+    }
+  }
   toqueLT = null;
   estado.tempoAlvo = null;
   clearInterval(bordaLT);
@@ -2466,7 +2568,7 @@ window.addEventListener("hashchange", rotear);
     document.body.innerHTML = "<p style='padding:40px'>Não consegui falar com o programa. Ele está aberto?</p>";
     return;
   }
-  if (celular.matches) $("#lt-dica").textContent = "Toque ou arraste para mover a agulha · dois dedos para aproximar e rolar";
+  if (celular.matches) $("#lt-dica").textContent = "Arraste para rolar · toque para levar a agulha · arraste a agulha para percorrer · dois dedos aproximam";
   if (!estado.status.ffmpeg) aviso("ffmpeg não encontrado: instale-o para processar vídeos (veja o README).", true);
   rotear();
   requestAnimationFrame(quadro);

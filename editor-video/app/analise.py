@@ -20,9 +20,9 @@ CONFIG_PADRAO = {
     # Ritmo "máximo" já na primeira análise: corta toda pausa e respiração, deixando só um
     # respiro curtinho (medido para não comer o final das palavras).
     "ritmo": "maximo",
-    "silencio_minimo": 0.15,  # segundos de pausa para virar corte
-    "margem": 0.05,           # respiro mantido depois de cada fala (antes: 60% disso)
-    "sensibilidade": 0.5,     # 0..1: quanto maior, mais coisa conta como silêncio
+    "silencio_minimo": 0.2,   # segundos de pausa para virar corte
+    "margem": 0.0,            # respiro mantido depois de cada fala (antes: 60% disso)
+    "sensibilidade": 1.0,     # 0..1: quanto maior, mais coisa conta como silêncio
     "detectar_vicios": True,
     "detectar_repeticoes": True,
     "detectar_regravacoes": True,
@@ -105,7 +105,7 @@ def _texto(palavras, a, b):
 #   3. palavras que o reconhecimento ouviu ficam protegidas mesmo se forem bem baixinhas;
 #   4. o corte deixa um respiro curto e igual em todas as pausas e cai no ponto mais silencioso.
 
-ESTICAR_MAX = 0.35       # quanto a borda da fala pode ser esticada até o som acabar (s)
+ESTICAR_MAX = 0.8        # quanto a borda da fala pode ser esticada até o som acabar (s)
 RUIDO_MAX = 0.9          # trecho sem palavra até este tamanho pode ser respiração/barulho (s)
 QUEDA_AUDIVEL = 30.0     # abaixo disto (dB em relação à voz) o final da palavra já não se ouve
 
@@ -116,7 +116,7 @@ def limiares(db: np.ndarray, sensibilidade: float) -> tuple[float, float, float]
     fala = float(np.percentile(db, 95))
     faixa = fala - piso
     sens = float(sensibilidade)
-    alto = piso + faixa * (0.22 + 0.2 * sens)
+    alto = piso + faixa * (0.22 + 0.12 * sens)
     baixo = piso + max(3.0, faixa * (0.07 + 0.08 * sens))
     return baixo, alto, faixa
 
@@ -227,12 +227,15 @@ def _lacunas_da_transcricao(palavras, duracao, minimo) -> list[tuple[float, floa
     return lacunas
 
 
-def _ponto_mais_baixo(t: float, db, passo: float, raio: float = 0.025) -> float:
-    """Leva a borda do corte para o ponto mais silencioso ali perto (emenda sem estalo)."""
+def _ponto_mais_baixo(t: float, db, passo: float, raio: float = 0.025, lado: int = 0) -> float:
+    """Leva a borda do corte para o ponto mais silencioso ali perto (emenda sem estalo).
+    ``lado`` +1 só procura para frente, -1 só para trás (nunca entra na fala)."""
     if db is None or not len(db):
         return t
     i, r = int(round(t / passo)), max(1, int(round(raio / passo)))
-    a, b = max(0, i - r), min(len(db), i + r + 1)
+    a = i if lado > 0 else max(0, i - r)
+    b = i + 1 if lado < 0 else min(len(db), i + r + 1)
+    a, b = max(0, a), min(len(db), b)
     if b <= a:
         return t
     return (a + int(np.argmin(db[a:b]))) * passo + passo / 2
@@ -240,12 +243,14 @@ def _ponto_mais_baixo(t: float, db, passo: float, raio: float = 0.025) -> float:
 
 def cortes_de_silencio(silencios, palavras, duracao, cfg, db=None, passo: float = 0.01) -> list[dict]:
     # respiro: um pouco antes da fala começar e um pouco mais depois que ela termina
-    depois = cfg["margem"]
-    antes = round(cfg["margem"] * 0.6, 3)
+    # mesmo com respiro 0, 20 ms depois / 10 ms antes protegem o fim e o começo da palavra
+    # (imperceptível como pausa, mas evita "engolir" a última letra)
+    depois = max(0.02, cfg["margem"])
+    antes = max(0.01, round(cfg["margem"] * 0.6, 3))
     cortes = []
     for a, b in sorted(silencios):
-        ini = 0.0 if a <= 0.01 else _ponto_mais_baixo(a + depois, db, passo)
-        fim = duracao if b >= duracao - 0.01 else _ponto_mais_baixo(b - antes, db, passo)
+        ini = 0.0 if a <= 0.01 else _ponto_mais_baixo(a + depois, db, passo, lado=+1)
+        fim = duracao if b >= duracao - 0.01 else _ponto_mais_baixo(b - antes, db, passo, lado=-1)
         ini, fim = max(ini, a), min(fim, b)
         if fim - ini < 0.08:
             continue
