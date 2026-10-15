@@ -749,6 +749,23 @@ def pagina_inicial():
     return _pagina("index.html")
 
 
+@app.get("/manifest.webmanifest", include_in_schema=False)
+def manifesto():
+    return FileResponse(ESTATICOS / "manifest.webmanifest", media_type="application/manifest+json",
+                        headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/sw.js", include_in_schema=False)
+def service_worker():
+    return FileResponse(ESTATICOS / "sw.js", media_type="text/javascript",
+                        headers={"Cache-Control": "no-cache", "Service-Worker-Allowed": "/"})
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon():
+    return FileResponse(ESTATICOS / "icone.ico", media_type="image/x-icon")
+
+
 @app.get("/entrar.html", include_in_schema=False)
 def pagina_entrar():
     return _pagina("entrar.html")

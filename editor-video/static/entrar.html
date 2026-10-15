@@ -5,6 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CorteFácil — entrar</title>
   <link rel="icon" href="icone.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <meta name="theme-color" content="#0f1115">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="CorteFácil">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <link rel="stylesheet" href="estilo.css">
 </head>
 <body class="pagina-entrar">
@@ -48,6 +55,7 @@
   </div>
 
   <script>
+    if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
     const $ = (s) => document.querySelector(s);
     const mostrar = (id) => ["#form", "#form-criar", "#enviado"].forEach((x) => { $(x).hidden = x !== id; });
     const erroDe = async (r) => (await r.json().catch(() => ({}))).detail || "Não foi possível continuar.";

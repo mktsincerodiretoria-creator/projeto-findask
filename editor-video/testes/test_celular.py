@@ -97,3 +97,17 @@ def test_modo_servidor_pede_senha_ate_para_127(app_teste, monkeypatch):
     assert st["servidor"] is True and st["local"] is False
     # As telas de "celular pelo Wi-Fi" não existem no servidor.
     assert via_caddy.get("/api/celular").status_code == 403
+
+
+def test_app_instalavel_abre_antes_de_entrar(app_teste, monkeypatch):
+    """O celular baixa o ícone e o manifesto do app antes de a pessoa digitar a senha."""
+    main, _ = app_teste
+    monkeypatch.setenv("CF_SENHA", "x-senha-1")
+    fora = TestClient(main.app, client=("127.0.0.1", 40000))
+    r = fora.get("/manifest.webmanifest")
+    assert r.status_code == 200 and r.headers["content-type"].startswith("application/manifest+json")
+    assert r.json()["display"] == "standalone"
+    for arq in ("/sw.js", "/icone-192.png", "/icone-512.png", "/icone-maskable.png", "/apple-touch-icon.png"):
+        assert fora.get(arq).status_code == 200, arq
+    assert 'rel="manifest"' in fora.get("/entrar.html").text
+    assert fora.get("/api/projetos").status_code == 401   # o resto continua protegido

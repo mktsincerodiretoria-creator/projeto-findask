@@ -238,6 +238,10 @@ body.com-tela-cheia { overflow: hidden; }
 .lt-espaco { height: 1px; }
 .lt-rolagem, #lt-canvas { touch-action: none; }   /* o dedo move a agulha; dois dedos = zoom da linha do tempo */
 .lt-play, .lt-cc { display: none; }
+.passos-instalar { margin: 0 0 6px; padding-left: 22px; display: grid; gap: 6px; }
+.ic-compartilhar { display: inline-block; border: 1.5px solid currentColor; border-radius: 4px; padding: 0 4px; font-size: 12px; }
+/* Aberto como app (ícone na tela inicial): respeita a área do relógio/notch */
+@media (display-mode: standalone) { .topo { padding-top: max(8px, env(safe-area-inset-top)); } }
 /* Corte embaixo da agulha: "Não cortar" com um toque */
 .chip-corte { display: flex; align-items: center; gap: 8px; margin: 0 0 6px; padding: 0 8px 0 12px; height: 40px; box-sizing: border-box; border-radius: 10px; background: var(--fundo-3); border: 1px solid var(--borda); border-left: 4px solid var(--cor, var(--acento)); font-size: 13px; }
 .chip-corte.vazio { color: var(--texto-2); font-size: 12px; border-left-color: var(--borda); }

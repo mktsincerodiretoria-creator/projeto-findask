@@ -2536,6 +2536,36 @@ $("#conta-sair").addEventListener("click", async () => {
   location.href = "/entrar.html";
 });
 
+/* ------------------------------------------------------------ app no celular (instalar) */
+
+const comoApp = () => matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+const ehIphone = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+let pedidoInstalar = null;   // Android/Chrome: o próprio navegador mostra a janela de instalar
+
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
+window.addEventListener("beforeinstallprompt", (e) => {
+  e.preventDefault();
+  pedidoInstalar = e;
+  $("#btn-instalar").hidden = comoApp();
+});
+window.addEventListener("appinstalled", () => {
+  $("#btn-instalar").hidden = true;
+  aviso("App instalado! Procure o ícone ✂ CorteFácil na tela inicial.");
+});
+// no celular, aberto pelo navegador: oferece instalar
+$("#btn-instalar").hidden = comoApp() || !(celular.matches || ehIphone);
+$("#btn-instalar").addEventListener("click", async () => {
+  if (pedidoInstalar) {
+    pedidoInstalar.prompt();
+    await pedidoInstalar.userChoice.catch(() => null);
+    pedidoInstalar = null;
+    return;
+  }
+  $("#instalar-iphone").hidden = !ehIphone;
+  $("#instalar-android").hidden = ehIphone;
+  $("#dlg-instalar").showModal();
+});
+
 /* ------------------------------------------------------------ navegação */
 
 $("#ir-inicio").addEventListener("click", (e) => { e.preventDefault(); location.hash = ""; });

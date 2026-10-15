@@ -21,7 +21,10 @@ COOKIE = "cf_sessao"
 # "testclient" é o endereço usado pelo cliente de testes do FastAPI.
 LOCAIS = {"127.0.0.1", "::1", "localhost", "testclient"}
 # Sem senha: a página de entrada e o que ela precisa para aparecer.
-LIVRES = {"/entrar.html", "/estilo.css", "/icone.png", "/api/entrar", "/api/sair", "/api/cadastro", "/api/modo"}
+LIVRES = {"/entrar.html", "/estilo.css", "/icone.png", "/api/entrar", "/api/sair", "/api/cadastro", "/api/modo",
+          # app instalável (ícone na tela inicial): o celular precisa disso antes de entrar
+          "/manifest.webmanifest", "/sw.js", "/icone-192.png", "/icone-512.png", "/icone-maskable.png",
+          "/apple-touch-icon.png", "/favicon.ico"}
 
 # No servidor: "admin" é o dono (entra com CF_SENHA); os outros são criados por ele.
 ADMIN = "admin"

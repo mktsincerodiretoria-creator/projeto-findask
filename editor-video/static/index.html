@@ -5,6 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CorteFácil — editor inteligente</title>
   <link rel="icon" href="icone.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <meta name="theme-color" content="#0f1115">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="CorteFácil">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <link rel="stylesheet" href="estilo.css">
 </head>
 <body>
@@ -16,6 +23,7 @@
     <div class="topo-acoes">
       <button class="btn-atualizar" id="btn-atualizar" hidden>⬆ Nova versão</button>
       <button class="btn-fantasma" id="btn-celular" title="Usar no celular" hidden>📱 <span class="rotulo">Celular</span></button>
+      <button class="btn-fantasma" id="btn-instalar" title="Instalar o app no celular" hidden>📲 <span class="rotulo">Instalar app</span></button>
       <button class="btn-fantasma" id="btn-usuarios" title="Contas de usuário" hidden>👥 <span class="rotulo">Usuários</span><span class="badge" id="badge-pendentes" hidden></span></button>
       <button class="btn-fantasma" id="btn-conta" title="Minha conta" hidden>👤 <span class="rotulo" id="conta-nome"></span></button>
       <button class="btn-fantasma" id="btn-config" title="Configurações">⚙ <span class="rotulo">Configurações</span></button>
@@ -427,6 +435,31 @@
         <button type="button" class="btn-mini perigo" id="conta-sair">Sair</button>
         <button value="fechar" class="btn-fantasma">Fechar</button>
       </div>
+    </form>
+  </dialog>
+
+  <!-- ============ INSTALAR O APP ============ -->
+  <dialog id="dlg-instalar" class="dialogo">
+    <form method="dialog" class="dialogo-corpo">
+      <h2>📲 Instalar o app CorteFácil</h2>
+      <div id="instalar-iphone">
+        <p class="dica">No <b>iPhone</b> (pelo Safari):</p>
+        <ol class="passos-instalar">
+          <li>Toque em <b>Compartilhar</b> <span class="ic-compartilhar">⬆</span> (embaixo, no meio da tela).</li>
+          <li>Role e toque em <b>Adicionar à Tela de Início</b>.</li>
+          <li>Toque em <b>Adicionar</b>. Pronto: o ícone ✂ aparece junto com os seus apps.</li>
+        </ol>
+        <p class="dica">Se estiver no Chrome do iPhone, abra este link no <b>Safari</b> primeiro.</p>
+      </div>
+      <div id="instalar-android">
+        <p class="dica">No <b>Android</b> (Chrome):</p>
+        <ol class="passos-instalar">
+          <li>Toque nos <b>três pontinhos ⋮</b> (canto de cima).</li>
+          <li>Toque em <b>Instalar app</b> (ou <b>Adicionar à tela inicial</b>).</li>
+        </ol>
+      </div>
+      <p class="dica">Na primeira vez que abrir pelo ícone, entre com o seu usuário e senha de novo.</p>
+      <div class="dialogo-acoes"><button value="ok" class="btn-primario">Entendi</button></div>
     </form>
   </dialog>
 

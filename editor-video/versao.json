@@ -1,9 +1,9 @@
 {
- "versao": "2.0.0",
+ "versao": "2.1.0",
  "ramo": "claude/video-editing-subtitles-che65w",
  "novidades": [
-  "Reprodução sem travar nos cortes: dois players se revezam e o próximo trecho já fica pronto",
-  "Linha do tempo no celular: arraste para rolar (com embalo), toque para levar a agulha",
+  "App CorteFácil: instale no celular (botão 📲 Instalar app) e abra pelo ícone, em tela cheia",
+  "Reprodução sem travar nos cortes e linha do tempo que rola com o dedo",
   "Corte máximo por padrão: pausa mínima 0,2 s, respiro 0 s, sensibilidade 1"
  ],
  "arquivos": {
@@ -11,7 +11,7 @@
   "Dockerfile": "e6e3f96690018b7646d5a982f1d331a9a807abd63470f3588844413028f642ad",
   "README.md": "4184ccec6f99d2b1e4c7765cb8725eb2d9d0923a15951c7fe906daa2d1b33a20",
   "app/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-  "app/acesso.py": "876e6ee553b812e13b35e2bc14617a8fe8470a41aae941447e0f47d31528da34",
+  "app/acesso.py": "155ac9b556d293c7eb6ad07fd5259a3fc8e70259a9a8e056d181ec50bb9b8252",
   "app/analise.py": "4c07db1f5b97e2fbecfed6be35824a6f4e36a1210c1586d9ab3bdd03315b1250",
   "app/atualizacao.py": "23d0885ca0e53670bc85c9a75a573df47c04305eadc2168944f3df4a8f60a7c9",
   "app/container.py": "f6f523b324f97fbbd76ab762a01dd5f4212baf2fdc99f2050da1b380df164125",
@@ -19,24 +19,30 @@
   "app/filtros.py": "fb48cc98db550daacfe4da05cd7dcd9b395a0b287d3be7dfc8cf7b1717d335d8",
   "app/ia.py": "358cc54541fcaed0361c89a4b2af5b12ab791859e4d59d4a144782d287ed6e56",
   "app/legendas.py": "b4efd005ff2ad102410e8c0e63f9d6333c44b7cd55c5c1e4051d3f75e0f44920",
-  "app/main.py": "42ecf7e3bf02218bfde4cbf6f54187639ea934794ef1d5a3fe5cb37c4bcca8c5",
+  "app/main.py": "b0230d9b336d6ca6c0f58cb6a5f0957197f455b462bf3cd3b6de8e1420cd437b",
   "app/midia.py": "e0a3e618caaa947eff98093da279232245dd89ca3a9169c1c9a386a9a848f94c",
   "app/modelos/LEIA.md": "0ea9ad59b528c7abfc38a9479cd9438e2c04c8c9eb23a550a7978d9fdd7abaab",
   "app/modelos/face_detection_yunet_2023mar.onnx": "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4",
   "app/movimento.py": "efd3f445564bca281f0420aa62efb900c15935ddc4c56a8cc017412ad3c9edb0",
   "app/projetos.py": "eef4ad4fa8f6e547557e2a93ff16516b7d43064023888dccb0c8169272969477",
   "app/transcricao.py": "7c18799a6eb77c82cf837ba275bbcca4c22286ae5d6b2c5b5ca9626b7e129bc1",
-  "app/versao.py": "a107f9c44a6932f23bd2e26c643cf98040e04f15ecb02e1713dbed40dfbed6ef",
+  "app/versao.py": "f75cb95f05e1e805ab6071a84c46e105206db142f686f1b250aab61e60615dbf",
   "iniciar.bat": "105c72b2454f34dd2325e47372aa19431d017fa541cb0a15d443bc1e1b12187d",
   "iniciar.py": "a8e626363e4d70edd1d87a43e139206199939c033073ee5e2652f3cb91ec3e69",
   "instalar.ps1": "9cca92c7f2e6ce36b1b763e7e3aef791f85443002da3d88af797c93df3dd6bf2",
   "requirements.txt": "fd4f7f52e36bd12006a81e5353b4de5ee643c22c9c7bfecbb21c9ed72a9c4e45",
   "servidor/instalar-servidor.sh": "317c2e9654a2550dd38bfe81734415e940056a21149c29428d39e9bc918642c3",
-  "static/app.js": "d9e36f31205bc0ac824a28bc2c91eb79bcf45730097037e0e9de419c5c29d6fb",
-  "static/entrar.html": "e09d4ab785f7fd36d13ddd11f652200e120e676ac9a5b6e8e2d01f4b86151227",
-  "static/estilo.css": "04af1f0b8a9fc3e26a73cc2c066af982b4b9e0b28272814e77e76bba59c43897",
+  "static/app.js": "763c031cff5c2d8edca643dd835a1261733a1e7ceb5c86a8fe39a48acc845995",
+  "static/apple-touch-icon.png": "a6438446b6ebc9fdf85f9b49191870371bd19dbb562cfc37547cbbf4ecaeb025",
+  "static/entrar.html": "8290867823265c942880afde45ea716cc75ca7ee6a9a5169d158c5ce034b2f56",
+  "static/estilo.css": "f29f69ccfb375139fee38dd5545dbe5ec81a5eec547997abfc9f6ed92f407d26",
+  "static/icone-192.png": "90977d5928ba4d246993eb7aa7872c883c5773621fc266b9fbdd34c13937124a",
+  "static/icone-512.png": "f9b9d404a78b41242e119798bd0b994bf81ac56c65c55300b8b34124882de2a4",
+  "static/icone-maskable.png": "05c5f4d7b484595e2ced276f326fcca2dfe80052888e0b553fa0b6a62b53bc08",
   "static/icone.ico": "25adae0d43faed26a76a8e177c6456c04bec9763b64a7ed86fae6b948e77c2ef",
   "static/icone.png": "54eaf6e32a8527f4b8e908fc9d593677ba818a0f75fda2d78499966b6d6ee678",
-  "static/index.html": "8f13e85c2ffb5f6614ec3f2256d9c6d47b000a48a088ffa7600d0c02548d2335"
+  "static/index.html": "52a344627b2963e7d4897edf88f859eb2a6c5b1ec5d5a1c619bb15fe82b9f536",
+  "static/manifest.webmanifest": "92b1e8ecd6c46029dd0375fed3fa013541b053e2f87501787d161b49c37aac32",
+  "static/sw.js": "dc4e6620d35a735f4c4fa14eb343638fa721d4ae64e935fa0104dad2bc076191"
  }
 }

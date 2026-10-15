@@ -1,10 +1,10 @@
 """Versão do CorteFácil e de onde vêm as atualizações."""
 
-VERSAO = "2.0.0"
+VERSAO = "2.1.0"
 
 NOVIDADES = [
-    "Reprodução sem travar nos cortes: dois players se revezam e o próximo trecho já fica pronto",
-    "Linha do tempo no celular: arraste para rolar (com embalo), toque para levar a agulha",
+    "App CorteFácil: instale no celular (botão 📲 Instalar app) e abra pelo ícone, em tela cheia",
+    "Reprodução sem travar nos cortes e linha do tempo que rola com o dedo",
     "Corte máximo por padrão: pausa mínima 0,2 s, respiro 0 s, sensibilidade 1",
 ]
 
