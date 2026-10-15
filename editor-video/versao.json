@@ -1,9 +1,9 @@
 {
- "versao": "2.1.1",
+ "versao": "2.1.2",
  "ramo": "claude/video-editing-subtitles-che65w",
  "novidades": [
-  "Computador: Espaço toca/pausa em qualquer lugar do editor",
-  "Rodinha do mouse na linha do tempo aproxima/afasta; Shift + rodinha rola para os lados",
+  "Legenda padrão nova: 1 linha, até 3 palavras, MAIÚSCULAS, Arial Black 4,5%, contorno 1px, embaixo",
+  "Computador: Espaço toca/pausa e a rodinha do mouse aproxima/afasta a linha do tempo",
   "App CorteFácil para instalar no celular (📲 Instalar app)"
  ],
  "arquivos": {
@@ -18,7 +18,7 @@
   "app/exportar.py": "8e864f37c8cfdb627d77596f11f6ab3dabc7781452cc39b0e9fcdafb5c177585",
   "app/filtros.py": "fb48cc98db550daacfe4da05cd7dcd9b395a0b287d3be7dfc8cf7b1717d335d8",
   "app/ia.py": "358cc54541fcaed0361c89a4b2af5b12ab791859e4d59d4a144782d287ed6e56",
-  "app/legendas.py": "b4efd005ff2ad102410e8c0e63f9d6333c44b7cd55c5c1e4051d3f75e0f44920",
+  "app/legendas.py": "dd659ae8239643b371df8057bf9df3c5129cd8552ee3beacc5615517370c7f1d",
   "app/main.py": "b0230d9b336d6ca6c0f58cb6a5f0957197f455b462bf3cd3b6de8e1420cd437b",
   "app/midia.py": "e0a3e618caaa947eff98093da279232245dd89ca3a9169c1c9a386a9a848f94c",
   "app/modelos/LEIA.md": "0ea9ad59b528c7abfc38a9479cd9438e2c04c8c9eb23a550a7978d9fdd7abaab",
@@ -26,7 +26,7 @@
   "app/movimento.py": "efd3f445564bca281f0420aa62efb900c15935ddc4c56a8cc017412ad3c9edb0",
   "app/projetos.py": "eef4ad4fa8f6e547557e2a93ff16516b7d43064023888dccb0c8169272969477",
   "app/transcricao.py": "7c18799a6eb77c82cf837ba275bbcca4c22286ae5d6b2c5b5ca9626b7e129bc1",
-  "app/versao.py": "3f78af5d754595560cc5a0e92be1437bb0774070b99f9a122fa2aa96737ebb4b",
+  "app/versao.py": "5e145af5352efcded17e2362288df581ff47a09be9c4f5565aab16347de0dca4",
   "iniciar.bat": "105c72b2454f34dd2325e47372aa19431d017fa541cb0a15d443bc1e1b12187d",
   "iniciar.py": "a8e626363e4d70edd1d87a43e139206199939c033073ee5e2652f3cb91ec3e69",
   "instalar.ps1": "9cca92c7f2e6ce36b1b763e7e3aef791f85443002da3d88af797c93df3dd6bf2",

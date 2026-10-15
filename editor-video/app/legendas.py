@@ -7,16 +7,16 @@ from .analise import intervalos_mantidos
 
 ESTILO_PADRAO = {
     "ativa": True,
-    "modo": "frase",          # "frase" ou "curta" (no máximo 3 palavras por vez, estilo Reels)
-    "maiusculas": False,
-    "fonte": "Arial",
-    "tamanho": 6.0,           # % do lado menor do vídeo
-    "linhas": 2,              # máximo de linhas na tela (1 ou 2)
+    "modo": "curta",          # "frase" ou "curta" (no máximo 3 palavras por vez, estilo Reels)
+    "maiusculas": True,
+    "fonte": "Arial Black",
+    "tamanho": 4.5,           # % do lado menor do vídeo
+    "linhas": 1,              # máximo de linhas na tela (1 ou 2)
     "largura": 86.0,          # % da largura do vídeo que a legenda pode ocupar
-    "negrito": True,
+    "negrito": False,
     "cor": "#FFFFFF",
     "cor_contorno": "#000000",
-    "contorno": 4.0,          # px num vídeo 1080p
+    "contorno": 1.0,          # px num vídeo 1080p
     "fundo": False,
     "cor_fundo": "#000000",
     "posicao": "inferior",    # inferior | meio | superior

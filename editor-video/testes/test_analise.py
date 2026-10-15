@@ -155,7 +155,7 @@ def test_legendas_usam_tempo_do_video_cortado():
     cortes = [
         {"inicio": p[2]["inicio"], "fim": p[3]["inicio"] - 0.1, "ativo": True, "tipo": "vicio"},
     ]
-    blocos = legendas.montar_blocos(p, cortes, 5.0)
+    blocos = legendas.montar_blocos(p, cortes, 5.0, {"modo": "frase", "maiusculas": False})
     assert [b["texto"] for b in blocos] == ["Olá pessoal.", "Tudo bem?"]
     removido = cortes[0]["fim"] - cortes[0]["inicio"]
     assert abs(blocos[1]["inicio"] - (p[3]["inicio"] - removido)) < 0.01
@@ -163,6 +163,13 @@ def test_legendas_usam_tempo_do_video_cortado():
     assert "00:00:00,500 --> " in srt and "Tudo bem?" in srt
     ass = legendas.gerar_ass(blocos, 1080, 1920, {"destaque": True})
     assert "PlayResY: 1920" in ass and "{\\c&H0000D4FF}" in ass
+
+
+def test_estilo_padrao_da_legenda():
+    e = legendas.ESTILO_PADRAO
+    assert (e["linhas"], e["modo"], e["posicao"], e["fonte"], e["tamanho"], e["largura"], e["contorno"]) == \
+        (1, "curta", "inferior", "Arial Black", 4.5, 86.0, 1.0)
+    assert e["maiusculas"] and not e["negrito"] and not e["destaque"] and e["ativa"]
 
 
 def test_modo_curto_quebra_em_poucas_palavras():

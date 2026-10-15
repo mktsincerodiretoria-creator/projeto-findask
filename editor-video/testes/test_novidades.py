@@ -29,7 +29,7 @@ def test_uma_linha_nunca_quebra_e_respeita_o_limite():
 
 def test_duas_linhas_quebra_equilibrada():
     p = falas(*[(w, 0) for w in FRASE.split()])
-    blocos = legendas.montar_blocos(p, [], 30, {"linhas": 2, "tamanho": 7, "largura": 86}, 9 / 16)
+    blocos = legendas.montar_blocos(p, [], 30, {"modo": "frase", "linhas": 2, "tamanho": 7, "largura": 86}, 9 / 16)
     longos = [b for b in blocos if b["quebra"] is not None]
     assert longos, "com 2 linhas algum bloco deve quebrar"
     for b in longos:

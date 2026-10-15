@@ -65,7 +65,7 @@ def test_fluxo_completo(cliente):
     reg = next(x for x in p["cortes"] if x["tipo"] == "regravacao")
     assert "chuc" in reg["trecho"]
     legendas = c.get(f"/api/projetos/{pid}/legendas").json()
-    texto_final = " ".join(b["texto"] for b in legendas)
+    texto_final = " ".join(b["texto"] for b in legendas).lower()   # legenda padrão é em MAIÚSCULAS
     assert "chuc" not in texto_final and "cenoura" in texto_final
     assert "cinquenta" not in texto_final and "quarenta" in texto_final
     assert "hã" not in texto_final
