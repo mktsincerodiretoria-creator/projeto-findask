@@ -1,10 +1,10 @@
 {
- "versao": "2.2.0",
+ "versao": "2.3.0",
  "ramo": "claude/video-editing-subtitles-che65w",
  "novidades": [
-  "Dicionário de palavras: \"Shopee\" já vem certo (não sai mais \"Chopi\"); acrescente outras em ⚙ Configurações",
-  "Legenda padrão nova: 1 linha, até 3 palavras, MAIÚSCULAS, Arial Black 4,5%",
-  "Computador: Espaço toca/pausa e a rodinha do mouse aproxima/afasta a linha do tempo"
+  "Corrigido: a agulha não trava nem some mais depois de ajustar a borda de um corte",
+  "Corte ainda mais seco: tira respirações e buracos entre palavras (pausa mínima 0,1 s), sem cortar o começo das palavras",
+  "Dicionário de palavras: \"Shopee\" já vem certo; acrescente outras em ⚙ Configurações"
  ],
  "arquivos": {
   ".dockerignore": "ef1cd98ba282ca3cc3de25cab546a542d2f0c1c1d5674eac7b55b2efab422f3b",
@@ -12,7 +12,7 @@
   "README.md": "f7be3daa21769ca785c8f77b47ea41eb61721f5f07c08b3a197708f31d78d293",
   "app/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
   "app/acesso.py": "155ac9b556d293c7eb6ad07fd5259a3fc8e70259a9a8e056d181ec50bb9b8252",
-  "app/analise.py": "4c07db1f5b97e2fbecfed6be35824a6f4e36a1210c1586d9ab3bdd03315b1250",
+  "app/analise.py": "f330525ca6703df885bccfd98e0dea27960e28ff45e53e078d38b2b96989a55e",
   "app/atualizacao.py": "23d0885ca0e53670bc85c9a75a573df47c04305eadc2168944f3df4a8f60a7c9",
   "app/container.py": "f6f523b324f97fbbd76ab762a01dd5f4212baf2fdc99f2050da1b380df164125",
   "app/exportar.py": "8e864f37c8cfdb627d77596f11f6ab3dabc7781452cc39b0e9fcdafb5c177585",
@@ -26,14 +26,14 @@
   "app/movimento.py": "efd3f445564bca281f0420aa62efb900c15935ddc4c56a8cc017412ad3c9edb0",
   "app/projetos.py": "eef4ad4fa8f6e547557e2a93ff16516b7d43064023888dccb0c8169272969477",
   "app/transcricao.py": "654b65733da780efa60235c1f88ec235477fab62dc7b584d61ec220c4fd1bf6c",
-  "app/versao.py": "82b41667357a6b7752334de9267b1852827ab9af9259095ebf1a6d8433a2f435",
+  "app/versao.py": "ef3c283fe679d4021d5123f72af9271bbba23942f4a64907c56611ddafd5c2f1",
   "app/vocabulario.py": "061557d7604635cdaf35e3a70065315ddd1936315028e646a8f31fd7e29c0133",
   "iniciar.bat": "105c72b2454f34dd2325e47372aa19431d017fa541cb0a15d443bc1e1b12187d",
   "iniciar.py": "a8e626363e4d70edd1d87a43e139206199939c033073ee5e2652f3cb91ec3e69",
   "instalar.ps1": "9cca92c7f2e6ce36b1b763e7e3aef791f85443002da3d88af797c93df3dd6bf2",
   "requirements.txt": "fd4f7f52e36bd12006a81e5353b4de5ee643c22c9c7bfecbb21c9ed72a9c4e45",
   "servidor/instalar-servidor.sh": "317c2e9654a2550dd38bfe81734415e940056a21149c29428d39e9bc918642c3",
-  "static/app.js": "620ec16040728e23051abe56911d6b1ab88bc64bfc830d472c5375cb15af7d4d",
+  "static/app.js": "a8406219bc3a4b1ced8dc339d9bfc9c27c1ec59661c8995511b5ab7945259499",
   "static/apple-touch-icon.png": "a6438446b6ebc9fdf85f9b49191870371bd19dbb562cfc37547cbbf4ecaeb025",
   "static/entrar.html": "8290867823265c942880afde45ea716cc75ca7ee6a9a5169d158c5ce034b2f56",
   "static/estilo.css": "125895c0550ed49394cea22cad7c0a791410a8855d6c923c409e1884f882f646",

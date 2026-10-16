@@ -20,7 +20,7 @@ CONFIG_PADRAO = {
     # Ritmo "máximo" já na primeira análise: corta toda pausa e respiração, deixando só um
     # respiro curtinho (medido para não comer o final das palavras).
     "ritmo": "maximo",
-    "silencio_minimo": 0.2,   # segundos de pausa para virar corte
+    "silencio_minimo": 0.1,   # segundos de pausa para virar corte
     "margem": 0.0,            # respiro mantido depois de cada fala (antes: 60% disso)
     "sensibilidade": 1.0,     # 0..1: quanto maior, mais coisa conta como silêncio
     "detectar_vicios": True,
@@ -172,12 +172,20 @@ def regioes_de_fala(db: np.ndarray, passo: float, duracao: float, cfg: dict,
             ini, fim = a + dentro[0], a + dentro[-1] + 1
             # estica até o som acabar, mas para quando ele fica 30 dB abaixo da voz: daí para
             # baixo é eco de sala que ninguém ouve depois do corte
-            corte_eco = max(baixo, float(np.percentile(suave[ini:fim], 90)) - QUEDA_AUDIVEL)
+            # sensibilidade alta = mais "seco": para mais cedo no fim da palavra e não segue o
+            # ruído de fundo (rua, vento, ventilador) achando que ainda é voz
+            # O COMEÇO da palavra (consoantes como s, f, p) é sempre protegido por inteiro; o FIM
+            # que vai sumindo é cortado mais seco quanto maior a sensibilidade.
+            sens = float(cfg["sensibilidade"])
+            nivel = float(np.percentile(suave[ini:fim], 90))
+            eco_inicio = max(baixo, nivel - QUEDA_AUDIVEL)
+            eco_fim = max(baixo + 2 * sens, nivel - (QUEDA_AUDIVEL - 10 * sens))
+            esticar_fim = int(round((ESTICAR_MAX - 0.4 * sens) / passo))
             novo_a = ini
-            while novo_a > max(a, ini - esticar) and suave[novo_a - 1] >= corte_eco:
+            while novo_a > max(a, ini - esticar) and suave[novo_a - 1] >= eco_inicio:
                 novo_a -= 1
             novo_b = fim
-            while novo_b < min(b, fim + esticar) and suave[novo_b] >= corte_eco:
+            while novo_b < min(b, fim + esticar_fim) and suave[novo_b] >= eco_fim:
                 novo_b += 1
             a, b = novo_a, novo_b
         dur = (b - a) * passo
@@ -189,7 +197,12 @@ def regioes_de_fala(db: np.ndarray, passo: float, duracao: float, cfg: dict,
     if palavras:
         limpas = []
         for a, b in regioes:
-            tem_palavra = any(p["fim"] > a + 0.03 and p["inicio"] < b - 0.03 for p in palavras)
+            # O Whisper costuma "esticar" o fim da palavra por cima da respiração seguinte: só conta
+            # como fala se o meio de uma palavra estiver aqui, ou se boa parte dela cair aqui.
+            def dentro(p):
+                sob = min(b, p["fim"]) - max(a, p["inicio"])
+                return a <= (p["inicio"] + p["fim"]) / 2 <= b or (sob > 0.12 and sob >= 0.5 * (p["fim"] - p["inicio"]))
+            tem_palavra = any(dentro(p) for p in palavras)
             if not tem_palavra and b - a <= RUIDO_MAX:
                 continue
             limpas.append((a, b))
@@ -252,7 +265,7 @@ def cortes_de_silencio(silencios, palavras, duracao, cfg, db=None, passo: float 
         ini = 0.0 if a <= 0.01 else _ponto_mais_baixo(a + depois, db, passo, lado=+1)
         fim = duracao if b >= duracao - 0.01 else _ponto_mais_baixo(b - antes, db, passo, lado=-1)
         ini, fim = max(ini, a), min(fim, b)
-        if fim - ini < 0.08:
+        if fim - ini < 0.04:
             continue
         cortes.append(_novo_corte(
             ini, fim, "silencio",

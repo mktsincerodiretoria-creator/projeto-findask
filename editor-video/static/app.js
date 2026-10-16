@@ -118,7 +118,7 @@ function montarOpcoes(el, cfg, { inicial }) {
       </div><small>${RITMOS[ritmo]?.dica || "Ajuste personalizado"}</small>
       <input type="hidden" data-chave="ritmo" value="${ritmo}"></div>`,
     campoAlternar("cortar_silencios", "Cortar silêncios e respirações", "Remove as pausas e o som de respiração entre as falas", cfg.cortar_silencios),
-    campoFaixa("silencio_minimo", "Pausa mínima para cortar", "Pausas menores que isso ficam", cfg.silencio_minimo, 0.1, 2, 0.05, "s"),
+    campoFaixa("silencio_minimo", "Pausa mínima para cortar", "Pausas menores que isso ficam", cfg.silencio_minimo, 0.05, 2, 0.01, "s"),
     campoFaixa("margem", "Respiro nas bordas", "Quanto de pausa manter antes e depois de cada fala", cfg.margem, 0, 0.4, 0.01, "s"),
     campoFaixa("sensibilidade", "Sensibilidade do silêncio", "Aumente se houver ruído de fundo e as pausas não forem cortadas", cfg.sensibilidade, 0, 1, 0.05),
     campoAlternar("detectar_vicios", "Hesitações e vícios", "“é…”, “hã”, “hum”, “né”, “tipo”", cfg.detectar_vicios),
@@ -138,7 +138,7 @@ function montarOpcoes(el, cfg, { inicial }) {
 
 // Ritmo dos cortes: "Máximo" (padrão) tira toda pausa e respiração, deixando um respiro curtinho.
 const RITMOS = {
-  maximo: { nome: "⚡ Máximo", dica: "Corta todas as pausas e respirações (ritmo de Reels/TikTok)", silencio_minimo: 0.2, margem: 0, sensibilidade: 1 },
+  maximo: { nome: "⚡ Máximo", dica: "Corta todas as pausas e respirações (ritmo de Reels/TikTok)", silencio_minimo: 0.1, margem: 0, sensibilidade: 1 },
   equilibrado: { nome: "Equilibrado", dica: "Tira as pausas, deixa um respiro curto", silencio_minimo: 0.3, margem: 0.1, sensibilidade: 0.5 },
   natural: { nome: "Natural", dica: "Só as pausas longas; fala mais calma", silencio_minimo: 0.5, margem: 0.15, sensibilidade: 0.45 },
 };
@@ -855,6 +855,11 @@ function quadro() {
         else { saltar(c[1]); t = c[1]; }
       } else prepararReserva(t);
     }
+  }
+  // A agulha só segue o dedo/mouse enquanto você está arrastando; soltou e o vídeo chegou lá,
+  // ela volta a seguir o vídeo (antes ficava "presa" depois de ajustar a borda de um corte).
+  if (estado.tempoAlvo != null && !toqueLT && !bordaMouse && !video.seeking && buscaPendente == null) {
+    estado.tempoAlvo = null;
   }
   const tt = estado.tempoAlvo ?? t;
   const txt = fmt(tt, true) + "|" + fmt(tempoFinal(tt), true);
@@ -2173,6 +2178,7 @@ window.addEventListener("mouseup", (e) => {
   if (bordaMouse) {
     const b = bordaMouse;
     bordaMouse = null;
+    estado.tempoAlvo = null;
     if (b.mexeu) alterou();
     return;
   }
