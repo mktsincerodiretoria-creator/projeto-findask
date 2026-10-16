@@ -30,15 +30,20 @@ def _carregar(nome: str):
 def transcrever(wav: Path, modelo: str = "small", idioma: str = "pt", progresso=None) -> list[dict]:
     """Devolve [{i, texto, inicio, fim, prob}] para cada palavra falada."""
     from .midia import ler_wav
+    from . import vocabulario
 
     whisper = _carregar(modelo)
+    # As palavras do seu dicionário (ex.: Shopee) vão como dica para o reconhecimento.
+    certas = vocabulario.palavras_certas()
+    prompt = PROMPT_INICIAL + (" " + ", ".join(certas) + "." if certas else "")
     # Passa o áudio já decodificado (16 kHz mono): não depende do decodificador
     # interno do faster-whisper, que quebrou com o PyAV 19.
     segmentos, info = whisper.transcribe(
         ler_wav(wav),
         language=idioma or None,
         word_timestamps=True,
-        initial_prompt=PROMPT_INICIAL,
+        initial_prompt=prompt,
+        hotwords=" ".join(certas) or None,
         condition_on_previous_text=False,
         beam_size=5,
         vad_filter=False,
@@ -58,4 +63,4 @@ def transcrever(wav: Path, modelo: str = "small", idioma: str = "pt", progresso=
             })
         if progresso and info.duration:
             progresso(min(1.0, seg.end / info.duration))
-    return palavras
+    return vocabulario.corrigir_palavras(palavras)

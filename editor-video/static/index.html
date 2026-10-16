@@ -361,6 +361,14 @@
   <dialog id="dlg-config" class="dialogo">
     <form method="dialog" class="dialogo-corpo">
       <h2>Configurações</h2>
+      <label class="campo">Dicionário de palavras (corrige sozinho na transcrição e na legenda)
+        <textarea id="cfg-vocabulario" rows="3" spellcheck="false"
+          placeholder="Shopee = chopi, xopi, shopi"></textarea>
+      </label>
+      <p class="dica">Uma palavra por linha: <b>como deve ficar = como o programa escreve errado</b>.
+        Ex.: <code>Shopee = chopi, xopi</code> · <code>Mercado Livre = mercadolivre</code>.
+        Vale também para os vídeos que você já enviou.</p>
+      <hr class="separador">
       <label class="campo">Chave da API da Anthropic (para a revisão inteligente com IA)
         <input type="password" id="cfg-chave" placeholder="sk-ant-..." autocomplete="off">
       </label>

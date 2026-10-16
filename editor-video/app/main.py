@@ -15,7 +15,8 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import acesso, analise, atualizacao, exportar, filtros, legendas, midia, movimento, projetos, transcricao
+from . import (acesso, analise, atualizacao, exportar, filtros, legendas, midia, movimento, projetos, transcricao,
+               vocabulario)
 from .versao import VERSAO
 
 ESTATICOS = Path(__file__).resolve().parent.parent / "static"
@@ -223,6 +224,7 @@ def status(request: Request):
         "pendentes": acesso.pendentes() if acesso.modo_servidor() and _usuario(request)["admin"] else 0,
         "ffmpeg": midia.ffmpeg_disponivel(),
         "ia_disponivel": _ia_disponivel(),
+        "vocabulario": vocabulario.texto_configurado(),
         "modelos": transcricao.MODELOS,
         "config_padrao": analise.CONFIG_PADRAO,
         "estilo_padrao": legendas.ESTILO_PADRAO,
@@ -432,14 +434,18 @@ def trocar_senha_celular(request: Request):
 
 
 class ConfigApp(BaseModel):
-    anthropic_api_key: str = ""
+    anthropic_api_key: Optional[str] = None
+    vocabulario: Optional[str] = None
 
 
 @app.post("/api/config")
 def salvar_config(cfg: ConfigApp, request: Request):
     _so_admin(request)
     atual = projetos.config_app()
-    atual["anthropic_api_key"] = cfg.anthropic_api_key.strip()
+    if cfg.anthropic_api_key is not None:
+        atual["anthropic_api_key"] = cfg.anthropic_api_key.strip()
+    if cfg.vocabulario is not None:
+        atual["vocabulario"] = cfg.vocabulario.strip()[:5000]
     projetos.salvar_config_app(atual)
     return {"ia_disponivel": _ia_disponivel()}
 

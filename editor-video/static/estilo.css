@@ -250,6 +250,7 @@ body.com-tela-cheia { overflow: hidden; }
 .chip-corte button { flex: none; padding: 7px 12px; border-radius: 8px; font-weight: 600; font-size: 13px; border: 1px solid var(--borda); background: var(--fundo-2); color: var(--texto); }
 .chip-corte button.manter { background: var(--acento); color: #04201e; border-color: var(--acento); }
 .chip-corte.mantido { border-left-style: dashed; opacity: .9; }
+#cfg-vocabulario { width: 100%; box-sizing: border-box; margin-top: 6px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--borda); background: var(--fundo-3); color: var(--texto); font: 13px/1.5 ui-monospace, monospace; resize: vertical; }
 .passos-chave { margin: 0; padding-left: 20px; display: grid; gap: 4px; }
 .passos-chave a { color: var(--acento); }
 #lt-canvas { position: sticky; left: 0; top: 0; display: block; cursor: crosshair; }

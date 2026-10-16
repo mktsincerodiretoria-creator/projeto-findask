@@ -77,6 +77,9 @@ def montar_blocos(palavras, cortes, duracao, estilo=None, proporcao: float = 16 
     max_palavras = 3 if curta else 99
     max_dur = 1.6 if curta else 4.5
 
+    from . import vocabulario
+    palavras = vocabulario.corrigir_palavras(palavras)   # "chopi" -> "Shopee" também em projetos antigos
+
     blocos, atual = [], []
 
     def fechar():

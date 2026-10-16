@@ -2442,6 +2442,7 @@ $("#cel-nova-senha").addEventListener("click", async () => {
 
 function abrirConfig() {
   $("#cfg-chave").value = "";
+  $("#cfg-vocabulario").value = estado.status.vocabulario || "";
   $("#cfg-chave").placeholder = estado.status.ia_disponivel ? "Chave já configurada (digite para trocar)" : "sk-ant-...";
   $("#cfg-versao").textContent = estado.status.versao;
   $("#cfg-onde").textContent = estado.status.servidor
@@ -2455,10 +2456,14 @@ $("#cfg-procurar").addEventListener("click", async () => {
   await procurarAtualizacao(true);
 });
 $("#cfg-salvar").addEventListener("click", async () => {
-  const r = await enviar("/api/config", "POST", { anthropic_api_key: $("#cfg-chave").value });
+  const dados = { vocabulario: $("#cfg-vocabulario").value };
+  const chave = $("#cfg-chave").value.trim();
+  if (chave) dados.anthropic_api_key = chave;   // vazio = mantém a chave que já estava
+  const r = await enviar("/api/config", "POST", dados);
   estado.status.ia_disponivel = r.ia_disponivel;
+  estado.status.vocabulario = dados.vocabulario;
   $("#dlg-config").close();
-  aviso(r.ia_disponivel ? "Revisão com IA ativada." : "Chave removida.");
+  aviso(chave ? (r.ia_disponivel ? "Revisão com IA ativada." : "Chave salva.") : "Configurações salvas.");
   rotear();
 });
 
