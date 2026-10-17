@@ -1,11 +1,11 @@
 """Versão do CorteFácil e de onde vêm as atualizações."""
 
-VERSAO = "2.3.1"
+VERSAO = "2.4.0"
 
 NOVIDADES = [
-    "Atualização mais segura: componentes novos são instalados antes de reiniciar (a página não cai)",
-    "Corrigido: a agulha não trava nem some mais depois de ajustar a borda de um corte",
-    "Corte ainda mais seco: tira respirações e buracos entre palavras (pausa mínima 0,1 s)",
+    "Corte automático refinado, igual ao corte feito à mão: tira as pausas e respirações entre as frases",
+    "Sílabas fracas (\"de\", \"do\") ficam protegidas: o programa reconhece a vibração da voz",
+    "O eco da sala no fim das frases também sai (corte mais dinâmico)",
 ]
 
 # Repositório público de onde o programa baixa as atualizações.

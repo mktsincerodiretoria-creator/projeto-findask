@@ -1,6 +1,6 @@
 import numpy as np
 
-from app import analise, legendas
+from app import analise, legendas, midia
 from app.exportar import dimensoes_saida, montar_filtro
 
 
@@ -76,6 +76,69 @@ def test_estalo_no_meio_do_silencio_nao_divide():
     db[100:300] = -70
     db[200:203] = -20  # clique de 30ms
     assert len(analise.detectar_silencios(db, 0.01, 6.0, analise.CONFIG_PADRAO)) == 1
+
+
+TAXA = midia.TAXA_AUDIO
+
+
+def voz(dur, db=-20.0, f0=140.0):
+    """Som que vibra como voz (tom com harmônicos) no volume ``db`` (dBFS)."""
+    t = np.arange(int(dur * TAXA)) / TAXA
+    x = sum(np.sin(2 * np.pi * f0 * k * t) / k for k in range(1, 6))
+    return (x / np.sqrt(np.mean(x ** 2)) * 10 ** (db / 20)).astype(np.float32)
+
+
+def chiado(dur, db, semente=1):
+    """Respiração/roupa: ruído que não se repete."""
+    x = np.random.default_rng(semente).normal(0, 1, int(dur * TAXA))
+    return (x / np.sqrt(np.mean(x ** 2)) * 10 ** (db / 20)).astype(np.float32)
+
+
+def silencio(dur):
+    return np.zeros(int(dur * TAXA), dtype=np.float32)
+
+
+def montar(*partes):
+    x = np.concatenate(partes)
+    return x + chiado(len(x) / TAXA, -70, semente=9)   # fundo da sala
+
+
+def pausas_do_audio(audio):
+    db, per = midia.energia_db(audio), midia.periodicidade(audio)
+    return analise.detectar_silencios(db, 0.01, len(audio) / TAXA, analise.CONFIG_PADRAO, None, per)
+
+
+def test_periodicidade_separa_voz_de_respiracao():
+    assert np.median(midia.periodicidade(voz(1.0))) > 0.8
+    assert np.median(midia.periodicidade(chiado(1.0, -20))) < 0.4
+
+
+def test_respiracao_sai_mas_silaba_fraca_que_vibra_fica():
+    audio = montar(silencio(0.3), voz(1.2),
+                   silencio(0.05), chiado(0.2, -38), silencio(0.05),      # respiração entre frases
+                   voz(1.2),
+                   silencio(0.15), voz(0.15, -47), silencio(0.15),        # sílaba bem fraca ("de")
+                   voz(1.0), silencio(0.3))
+    pausas = pausas_do_audio(audio)
+    assert any(a <= 1.56 and b >= 1.74 for a, b in pausas)               # a respiração sai inteira
+    assert not any(a < 3.28 and b > 3.17 for a, b in pausas)             # a sílaba fraca fica
+    assert any(3.0 <= a and b <= 3.16 for a, b in pausas)                # as pausas em volta saem
+    assert any(3.29 <= a and b <= 3.46 for a, b in pausas)
+
+
+def test_eco_da_sala_depois_da_frase_e_cortado():
+    eco = voz(0.3) * (10 ** (np.linspace(-6, -60, int(0.3 * TAXA)) / 20)).astype(np.float32)
+    audio = montar(silencio(0.3), voz(1.2), eco, silencio(0.5), voz(1.0), silencio(0.3))
+    pausas = pausas_do_audio(audio)
+    # o eco cai 24 dB em 0,1 s: dali em diante já é pausa (mesmo vibrando como voz)
+    assert any(a <= 1.62 and b >= 2.25 for a, b in pausas)
+
+
+def test_periodicidade_e_calculada_uma_vez_por_projeto(tmp_path, monkeypatch):
+    audio = voz(0.5)
+    primeira = midia.periodicidade_salva(audio, tmp_path / "periodicidade.npy")
+    monkeypatch.setattr(midia, "periodicidade", lambda *a, **k: (_ for _ in ()).throw(AssertionError("recalculou")))
+    assert np.array_equal(midia.periodicidade_salva(audio, tmp_path / "periodicidade.npy"), primeira)
 
 
 def test_hesitacoes_e_muletas():

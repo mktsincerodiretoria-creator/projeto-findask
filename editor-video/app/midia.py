@@ -121,6 +121,50 @@ def energia_db(amostras: np.ndarray, taxa: int = TAXA_AUDIO, passo: float = PASS
     return (20 * np.log10(rms + 1e-6)).astype(np.float32)
 
 
+def periodicidade(amostras: np.ndarray, taxa: int = TAXA_AUDIO, passo: float = PASSO_ENERGIA) -> np.ndarray:
+    """Quanto cada pedaço de 10 ms "vibra" como voz (0 a 1).
+
+    Quando a gente fala, as cordas vocais vibram num ritmo regular (80 a 400 vezes por segundo):
+    o som se repete. Respiração, vento, roupa e clique não se repetem. É assim que uma sílaba
+    fraca ("de", "dos") é separada de uma respiração com o mesmo volume.
+    Autocorrelação normalizada (30 ms) no intervalo do tom de voz, feita por FFT em blocos."""
+    salto = int(taxa * passo)
+    n = len(amostras) // salto
+    if n == 0:
+        return np.zeros(0, dtype=np.float32)
+    janela = 3 * salto
+    x = np.pad(amostras.astype(np.float32), (salto, janela))
+    quadros = np.lib.stride_tricks.sliding_window_view(x, janela)[::salto][:n]
+    lag_min, lag_max = int(taxa / 400), int(taxa / 80)
+    nfft = 1 << int(np.ceil(np.log2(janela + lag_max)))
+    vies = (janela - np.arange(lag_min, lag_max + 1)) / janela      # corrige a queda natural da autocorrelação
+    saida = np.zeros(n, dtype=np.float32)
+    for i in range(0, n, 4096):
+        q = quadros[i:i + 4096]
+        q = q - q.mean(axis=1, keepdims=True)
+        espectro = np.fft.rfft(q, nfft, axis=1)
+        r = np.fft.irfft(np.abs(espectro) ** 2, nfft, axis=1)
+        r0 = r[:, :1] + 1e-9
+        saida[i:i + 4096] = np.clip((r[:, lag_min:lag_max + 1] / r0 / vies).max(axis=1), 0, 1)
+    return saida
+
+
+def periodicidade_salva(amostras: np.ndarray, arquivo: Path) -> np.ndarray:
+    """``periodicidade`` calculada uma vez por projeto e guardada (refazer a análise fica instantâneo)."""
+    try:
+        salva = np.load(arquivo)
+        if len(salva) == len(amostras) // int(TAXA_AUDIO * PASSO_ENERGIA):
+            return salva
+    except (OSError, ValueError):
+        pass
+    calculada = periodicidade(amostras)
+    try:
+        np.save(arquivo, calculada)
+    except OSError:
+        pass
+    return calculada
+
+
 def forma_de_onda(amostras: np.ndarray, taxa: int = TAXA_AUDIO) -> list[float]:
     tam = max(1, taxa // PONTOS_ONDA_POR_S)
     n = len(amostras) // tam

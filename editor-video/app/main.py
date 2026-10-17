@@ -115,8 +115,10 @@ def _etapa(pid, etapa, progresso):
     projetos.atualizar(pid, status="processando", etapa=etapa, progresso=round(progresso, 3))
 
 
-def _cortes_automaticos(dados, db, cfg):
-    return analise.analisar(dados["palavras"], db, midia.PASSO_ENERGIA, dados["meta"]["duracao"], cfg)
+def _cortes_automaticos(pid, dados, amostras, cfg):
+    db = midia.energia_db(amostras)
+    periodico = midia.periodicidade_salva(amostras, projetos.pasta(pid) / "periodicidade.npy")
+    return analise.analisar(dados["palavras"], db, midia.PASSO_ENERGIA, dados["meta"]["duracao"], cfg, periodico)
 
 
 def processar(pid: str, retranscrever: bool = True):
@@ -141,7 +143,6 @@ def processar(pid: str, retranscrever: bool = True):
 
         amostras = midia.ler_wav(p / "audio.wav")
         (p / "onda.json").write_text(json.dumps(midia.forma_de_onda(amostras)))
-        db = midia.energia_db(amostras)
 
         palavras = dados.get("palavras") or []
         if retranscrever or not palavras:
@@ -154,7 +155,7 @@ def processar(pid: str, retranscrever: bool = True):
 
         _etapa(pid, "Procurando silêncios e erros", 0.86)
         dados = projetos.carregar(pid)
-        cortes = _cortes_automaticos(dados, db, cfg)
+        cortes = _cortes_automaticos(pid, dados, amostras, cfg)
         comentario = ""
         if cfg.get("usar_ia") and _ia_disponivel():
             _etapa(pid, "Revisão inteligente com IA", 0.9)
@@ -528,8 +529,7 @@ def recalcular(pid: str, pedido: PedidoAnalise):
     if dados["status"] != "pronto":
         raise HTTPException(409, "O projeto ainda não terminou de ser analisado.")
     cfg = {**analise.CONFIG_PADRAO, **dados.get("config", {}), **pedido.config}
-    db = midia.energia_db(midia.ler_wav(projetos.pasta(pid) / "audio.wav"))
-    cortes = _cortes_automaticos(dados, db, cfg)
+    cortes = _cortes_automaticos(pid, dados, midia.ler_wav(projetos.pasta(pid) / "audio.wav"), cfg)
     mantidos = [c for c in dados["cortes"] if c.get("origem") in ("manual", "ia")]
     if any(c.get("origem") == "ia" for c in mantidos):
         from . import ia

@@ -98,32 +98,72 @@ def _texto(palavras, a, b):
 
 # ---------------------------------------------------------------- silêncios
 #
-# Como um editor profissional faz o "jump cut":
-#   1. acha onde com certeza há voz (limiar alto) e estica até onde o som realmente acaba
-#      (limiar baixo, perto do ruído de fundo) — assim o fim das palavras que "morrem" não é comido;
-#   2. respiração e barulhos sem palavra no meio de uma pausa não contam como fala;
-#   3. palavras que o reconhecimento ouviu ficam protegidas mesmo se forem bem baixinhas;
-#   4. o corte deixa um respiro curto e igual em todas as pausas e cai no ponto mais silencioso.
+# Como um editor profissional faz o "jump cut" (e como você corta à mão):
+#   1. compara cada trecho com a VOZ AO REDOR dele (nível local) e com o ruído de fundo ali
+#      perto — não com o vídeo inteiro. Assim a pausa curta entre duas frases é achada mesmo
+#      com barulho de fundo, vento ou microfone de lapela;
+#   2. respiração, roupa e cliques entre as frases contam como pausa (são bem mais baixos
+#      que a voz) e saem junto;
+#   3. o começo da palavra é sempre protegido (as consoantes do início sobem devagar);
+#      o fim que vai sumindo é cortado mais seco quanto maior a sensibilidade;
+#   4. pausa "dentro" de uma palavra (o "p" de "pouco") não é cortada;
+#   5. a emenda cai no ponto mais silencioso ali perto.
 
-ESTICAR_MAX = 0.8        # quanto a borda da fala pode ser esticada até o som acabar (s)
-RUIDO_MAX = 0.9          # trecho sem palavra até este tamanho pode ser respiração/barulho (s)
-QUEDA_AUDIVEL = 30.0     # abaixo disto (dB em relação à voz) o final da palavra já não se ouve
+BLOCO = 1.0              # s: tamanho do pedaço usado para medir voz e fundo locais
+ESTALO = 0.06            # s: barulho mais curto que isso no meio da pausa é ignorado
+RESPIRO_MAX = 0.6        # s: respiração/barulho entre frases tem no máximo isso
+ONSET_MAX = 0.15         # s: proteção máxima do começo da palavra
+
+
+def _suavizar(db: np.ndarray, quadros: int = 3) -> np.ndarray:
+    if quadros <= 1 or len(db) < quadros:
+        return db.astype(np.float32)
+    return np.convolve(db, np.ones(quadros) / quadros, mode="same").astype(np.float32)
+
+
+def _local(x: np.ndarray, passo: float, q: float, vizinhos: int, modo: str) -> np.ndarray:
+    """Percentil ``q`` por blocos de 1 s, depois mínimo/máximo entre os blocos vizinhos e
+    interpolado de volta para cada quadro (barato até para vídeos longos)."""
+    n = len(x)
+    b = max(1, int(round(BLOCO / passo)))
+    nb = int(np.ceil(n / b))
+    pad = np.full(nb * b, np.nan, dtype=np.float64)
+    pad[:n] = x
+    blocos = np.nanpercentile(pad.reshape(nb, b), q, axis=1)
+    ext = np.pad(blocos, vizinhos, mode="edge")
+    viz = np.stack([ext[i:i + nb] for i in range(2 * vizinhos + 1)])
+    agg = viz.min(axis=0) if modo == "min" else viz.max(axis=0)
+    if nb == 1:
+        return np.full(n, agg[0], dtype=np.float32)
+    centros = (np.arange(nb) + 0.5) * b
+    return np.interp(np.arange(n), centros, agg).astype(np.float32)
+
+
+def niveis(db: np.ndarray, passo: float, sensibilidade: float):
+    """(suave, fundo, voz, contraste, limite) para cada quadro, em dB."""
+    s = _suavizar(db)
+    p10 = float(np.percentile(s, 10))
+    p95 = float(np.percentile(s, 95))
+    fundo = np.minimum(_local(s, passo, 10, 2, "min"), p10 + 8)
+    voz = np.maximum(_local(s, passo, 90, 2, "max"), p95 - 12)   # bloco só de pausa não vira "voz"
+    fundo = np.minimum(fundo, voz - 6)
+    contraste = voz - fundo
+    sens = float(sensibilidade)
+    limite = fundo + np.maximum(5.0, contraste * (0.22 + 0.16 * sens))
+    # gravação bem silenciosa: o que está 24-30 dB abaixo da voz já é "pausa" (eco da sala);
+    # sílaba fraca de verdade é protegida pela vibração da voz (periodicidade)
+    limite = np.maximum(limite, voz - (30 - 6 * sens))
+    return s, fundo, voz, contraste, limite
 
 
 def limiares(db: np.ndarray, sensibilidade: float) -> tuple[float, float, float]:
-    """(baixo, alto, faixa) em dB. ``alto`` = com certeza é voz; ``baixo`` = o som já acabou."""
-    piso = float(np.percentile(db, 5))
-    fala = float(np.percentile(db, 95))
-    faixa = fala - piso
-    sens = float(sensibilidade)
-    alto = piso + faixa * (0.22 + 0.12 * sens)
-    baixo = piso + max(3.0, faixa * (0.07 + 0.08 * sens))
-    return baixo, alto, faixa
+    """Resumo (baixo, alto, faixa) em dB — mantido para compatibilidade/diagnóstico."""
+    s, fundo, voz, contraste, limite = niveis(db, 0.01, sensibilidade)
+    return float(np.median(fundo)), float(np.median(limite)), float(np.median(contraste))
 
 
 def limiar_silencio(db: np.ndarray, sensibilidade: float) -> float:
-    """Mantido por compatibilidade: o limiar "baixo"."""
-    return limiares(db, sensibilidade)[0]
+    return limiares(db, sensibilidade)[1]
 
 
 def _regioes(mascara: np.ndarray) -> list[tuple[int, int]]:
@@ -135,96 +175,107 @@ def _regioes(mascara: np.ndarray) -> list[tuple[int, int]]:
     return list(zip(d[::2], d[1::2]))
 
 
-def regioes_de_fala(db: np.ndarray, passo: float, duracao: float, cfg: dict,
-                    palavras: list | None = None) -> list[tuple[float, float]]:
-    """Onde há voz de verdade, em segundos (bordas já esticadas até o som acabar)."""
-    n = len(db)
-    if n == 0:
-        return []
-    baixo, alto, faixa = limiares(db, cfg["sensibilidade"])
-    palavras = palavras or []
-    if faixa < 10:
-        # Sem diferença clara entre voz e fundo (quase sem pausas, ou música alta): só o
-        # silêncio absoluto conta como pausa, e as palavras da transcrição ficam protegidas.
-        piso = float(np.percentile(db, 5))
-        reg = [(a * passo, b * passo) for a, b in _regioes(db >= min(piso, -55.0))]
-        reg += [(max(0.0, p["inicio"] - 0.05), min(duracao, p["fim"] + 0.08)) for p in palavras]
-        return mesclar_intervalos(reg)
-
-    # suaviza 30 ms para sílabas não "piscarem"
-    k = max(1, int(round(0.03 / passo)))
-    suave = np.convolve(db, np.ones(k) / k, mode="same") if k > 1 else db
-    certo = suave >= alto
-    algum = suave >= baixo
-    esticar = int(round(ESTICAR_MAX / passo))
-    centros = [((p["inicio"] + p["fim"]) / 2) / passo for p in palavras]
-
-    regioes = []
-    for a, b in _regioes(algum):
-        if not certo[a:b].any():
-            # só barulho baixinho (respiração, roupa, ventilador): não é fala, a não ser
-            # que o reconhecimento tenha ouvido uma palavra aí
-            if not any(a <= c < b for c in centros):
-                continue
-        # som comprido demais sem nunca ficar forte e sem palavra: fundo, não fala
-        dentro = np.flatnonzero(certo[a:b])
-        if len(dentro):
-            ini, fim = a + dentro[0], a + dentro[-1] + 1
-            # estica até o som acabar, mas para quando ele fica 30 dB abaixo da voz: daí para
-            # baixo é eco de sala que ninguém ouve depois do corte
-            # sensibilidade alta = mais "seco": para mais cedo no fim da palavra e não segue o
-            # ruído de fundo (rua, vento, ventilador) achando que ainda é voz
-            # O COMEÇO da palavra (consoantes como s, f, p) é sempre protegido por inteiro; o FIM
-            # que vai sumindo é cortado mais seco quanto maior a sensibilidade.
-            sens = float(cfg["sensibilidade"])
-            nivel = float(np.percentile(suave[ini:fim], 90))
-            eco_inicio = max(baixo, nivel - QUEDA_AUDIVEL)
-            eco_fim = max(baixo + 2 * sens, nivel - (QUEDA_AUDIVEL - 10 * sens))
-            esticar_fim = int(round((ESTICAR_MAX - 0.4 * sens) / passo))
-            novo_a = ini
-            while novo_a > max(a, ini - esticar) and suave[novo_a - 1] >= eco_inicio:
-                novo_a -= 1
-            novo_b = fim
-            while novo_b < min(b, fim + esticar_fim) and suave[novo_b] >= eco_fim:
-                novo_b += 1
-            a, b = novo_a, novo_b
-        dur = (b - a) * passo
-        if dur < 0.08 and not any(a <= c < b for c in centros):
-            continue   # estalo
-        regioes.append((a * passo, min(b * passo, duracao)))
-
-    # barulho sem palavra no meio de uma pausa (respiração forte, tosse curta, clique de mouse)
-    if palavras:
-        limpas = []
-        for a, b in regioes:
-            # O Whisper costuma "esticar" o fim da palavra por cima da respiração seguinte: só conta
-            # como fala se o meio de uma palavra estiver aqui, ou se boa parte dela cair aqui.
-            def dentro(p):
-                sob = min(b, p["fim"]) - max(a, p["inicio"])
-                return a <= (p["inicio"] + p["fim"]) / 2 <= b or (sob > 0.12 and sob >= 0.5 * (p["fim"] - p["inicio"]))
-            tem_palavra = any(dentro(p) for p in palavras)
-            if not tem_palavra and b - a <= RUIDO_MAX:
-                continue
-            limpas.append((a, b))
-        regioes = limpas
-        # palavras baixinhas que a energia não pegou continuam protegidas
-        regioes += [(p["inicio"], p["fim"]) for p in palavras
-                    if not any(a <= (p["inicio"] + p["fim"]) / 2 <= b for a, b in regioes)]
-    return mesclar_intervalos(regioes)
+def _pausas_pelas_palavras(palavras, duracao, minimo) -> list[tuple[float, float]]:
+    """Quando o áudio não ajuda (música alta, ruído forte), usa os buracos entre as palavras."""
+    pausas, anterior = [], 0.0
+    for p in sorted(palavras or [], key=lambda p: p["inicio"]):
+        if p["inicio"] - anterior >= minimo + 0.12:
+            pausas.append((anterior + (0.06 if anterior > 0 else 0), p["inicio"] - 0.06))
+        anterior = max(anterior, p["fim"])
+    if palavras and duracao - anterior >= minimo + 0.12:
+        pausas.append((anterior + 0.06, duracao))
+    return pausas
 
 
 def detectar_silencios(db: np.ndarray, passo: float, duracao: float, cfg: dict,
-                       palavras: list | None = None) -> list[tuple[float, float]]:
-    """Pausas (entre as regiões de fala) com pelo menos ``silencio_minimo``."""
-    if len(db) == 0:
+                       palavras: list | None = None, periodico: np.ndarray | None = None) -> list[tuple[float, float]]:
+    """Pausas (já com as bordas refinadas) com pelo menos ``silencio_minimo``.
+
+    ``periodico`` (opcional, de ``midia.periodicidade``): quanto cada quadro "vibra" como voz."""
+    n = len(db)
+    if n == 0:
         return []
-    fala = regioes_de_fala(db, passo, duracao, cfg, palavras)
-    pausas, anterior = [], 0.0
-    for a, b in fala + [(duracao, duracao)]:
-        if a - anterior >= cfg["silencio_minimo"]:
-            pausas.append((anterior, a))
-        anterior = max(anterior, b)
+    sens = float(cfg["sensibilidade"])
+    minimo = float(cfg["silencio_minimo"])
+    s, fundo, voz, contraste, limite = niveis(db, passo, sens)
+    if float(np.max(contraste)) < 8:
+        return _pausas_pelas_palavras(palavras, duracao, minimo)
+
+    quieto = s < limite
+    audivel = s > fundo + np.maximum(4.0, 0.15 * contraste)
+    vozeado = None
+    if periodico is not None and len(periodico) >= n:
+        # sílaba fraca que vibra como voz nunca é pausa (mesmo abaixo do limite)...
+        vozeado = (periodico[:n] > 0.5) & audivel
+        for a, b in _regioes(quieto):
+            if a == 0 or not vozeado[a:b].any():
+                continue
+            # ...mas o eco da sala logo depois da voz também vibra: o eco só DESCE desde o
+            # fim da voz, a sílaba volta a subir. Até a primeira subida, pode ser cortado.
+            sobe = np.flatnonzero(s[a:b] - np.minimum.accumulate(s[a:b]) >= 2.0)
+            vozeado[a:a + (int(sobe[0]) if len(sobe) else b - a)] = False
+        quieto &= ~vozeado
+    centros = [((p["inicio"] + p["fim"]) / 2) / passo for p in (palavras or [])]
+    estalo = int(round(ESTALO / passo))
+    for a, b in _regioes(~quieto):
+        if a == 0 or b == n:
+            continue
+        dur = (b - a) * passo
+        pico = float(np.max(s[a:b] - voz[a:b]))
+        tem_palavra = any(a <= c < b for c in centros)
+        # respiração, roupa, vento: não vibram como voz
+        sem_voz = vozeado is None or float(np.mean(vozeado[a:b])) < 0.15
+        # estalo de boca solto no meio da pausa (longe da fala dos dois lados)
+        solto = (b - a) <= 3 and pico < -10 and quieto[max(0, a - 10):a].all() and quieto[b:b + 5].all()
+        if (sem_voz and (b - a) <= estalo) or solto:            # clique, estalo de boca
+            quieto[a:b] = True
+        elif sem_voz and dur <= RESPIRO_MAX and pico < -14:     # respiração: bem mais baixa que a voz
+            quieto[a:b] = True
+        elif sem_voz and dur <= 0.45 and pico < -8 and centros and not tem_palavra:   # barulho sem palavra
+            quieto[a:b] = True
+
+    pausas = []
+    for a, b in _regioes(quieto):
+        if (b - a) * passo < minimo:
+            continue
+        ta, tb = a * passo, b * passo
+        # "p", "t", "k" no meio de uma palavra fazem um silêncio curtinho: não é pausa
+        if tb - ta < 0.2 and any(p["inicio"] + 0.06 < ta and tb < p["fim"] - 0.06 and p["fim"] - p["inicio"] < 1.0
+                                 for p in (palavras or [])):
+            continue
+        # fim da fala: segue o som que ainda sobra só um pouco (mais seco com sensibilidade alta)
+        if a > 0:
+            cauda = int(round((0.30 - 0.12 * sens) / passo))
+            i, lim = a, min(b, a + cauda)
+            # (para quando o som chega perto do fundo OU já está bem abaixo da voz: eco de sala
+            # silenciosa vai até 40 dB abaixo, mas depois de ~24 dB quase não se ouve)
+            while i < lim and s[i] > max(fundo[i] + max(3.0, 0.15 * contraste[i]), voz[i] - (30 - 6 * sens)):
+                i += 1
+            a = i
+        # começo da fala: protege sempre a subida da primeira sílaba
+        if b < n:
+            j, lim = b, max(a, b - int(round(ONSET_MAX / passo)))
+            # (o eco da frase anterior ainda soando não conta como começo da próxima)
+            while j > lim and s[j - 1] > max(fundo[j - 1] + max(2.5, 0.10 * contraste[j - 1]), voz[j - 1] - 35):
+                j -= 1
+            b = j
+        if b > a:
+            pausas.append((a * passo, min(b * passo, duracao)))
     return pausas
+
+
+def regioes_de_fala(db: np.ndarray, passo: float, duracao: float, cfg: dict,
+                    palavras: list | None = None) -> list[tuple[float, float]]:
+    """Onde há voz (o complemento das pausas, sem limite de tamanho de pausa)."""
+    pausas = detectar_silencios(db, passo, duracao, {**cfg, "silencio_minimo": 0.0}, palavras)
+    fala, anterior = [], 0.0
+    for a, b in pausas:
+        if a > anterior:
+            fala.append((anterior, a))
+        anterior = max(anterior, b)
+    if anterior < duracao:
+        fala.append((anterior, duracao))
+    return fala
 
 
 def _lacunas_da_transcricao(palavras, duracao, minimo) -> list[tuple[float, float]]:
@@ -462,11 +513,11 @@ def detectar_duvidas(palavras, limite=0.3) -> list[dict]:
 
 # ---------------------------------------------------------------- orquestração
 
-def analisar(palavras, db, passo, duracao, cfg=None) -> list[dict]:
+def analisar(palavras, db, passo, duracao, cfg=None, periodico=None) -> list[dict]:
     cfg = {**CONFIG_PADRAO, **(cfg or {})}
     cortes = []
     if cfg["cortar_silencios"]:
-        silencios = detectar_silencios(db, passo, duracao, cfg, palavras)
+        silencios = detectar_silencios(db, passo, duracao, cfg, palavras, periodico)
         cortes += cortes_de_silencio(silencios, palavras, duracao, cfg, db, passo)
     if cfg["detectar_vicios"]:
         cortes += detectar_vicios(palavras)

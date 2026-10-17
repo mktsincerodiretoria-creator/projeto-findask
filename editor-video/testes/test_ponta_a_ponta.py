@@ -80,6 +80,8 @@ def test_fluxo_completo(cliente):
         "filtro": {"id": "cinema", "intensidade": 0.8},
     })
     assert r.status_code == 200
+    from app import projetos as pj
+    assert (pj.pasta(pid) / "periodicidade.npy").exists()   # refazer a análise reaproveita a "vibração da voz"
     r = c.post(f"/api/projetos/{pid}/recalcular", json={"config": {"silencio_minimo": 1.0}})
     assert any(x["id"] == "manual0001" for x in r.json()["cortes"])
     silencios = [x for x in r.json()["cortes"] if x["tipo"] == "silencio"]
@@ -93,7 +95,6 @@ def test_fluxo_completo(cliente):
     assert p["tarefa"]["status"] == "concluida", p["tarefa"].get("erro")
     exp = p["exportacoes"][-1]
     assert (exp["largura"], exp["altura"]) == (1920, 1080)
-    from app import projetos as pj
     assert "lut3d=cor.cube" in (pj.pasta(pid) / "filtro.txt").read_text()
 
     baixado = c.get(f"/api/projetos/{pid}/arquivos/{exp['video']}")
