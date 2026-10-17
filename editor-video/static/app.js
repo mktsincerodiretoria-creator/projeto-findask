@@ -2369,7 +2369,7 @@ $("#atu-aplicar").addEventListener("click", async () => {
   $("#atu-acoes").hidden = true;
   $("#atu-erro").hidden = true;
   $("#atu-progresso").hidden = false;
-  $("#atu-texto").textContent = "Baixando a atualização…";
+  $("#atu-texto").textContent = "Baixando a atualização… (se vier componente novo, pode levar alguns minutos: não feche a janela)";
   try {
     if (estado.projeto) await salvarAgora();
     await api("/api/atualizacao/aplicar", { method: "POST" });
@@ -2380,8 +2380,8 @@ $("#atu-aplicar").addEventListener("click", async () => {
     $("#atu-erro").hidden = false;
     return;
   }
-  $("#atu-texto").textContent = "Reiniciando o CorteFácil…";
-  const limite = Date.now() + 180000;
+  $("#atu-texto").textContent = "Reiniciando o CorteFácil… a página volta sozinha.";
+  const limite = Date.now() + 600000;
   const esperar = async () => {
     const st = await api("/api/status").catch(() => null);
     if (st?.versao === alvo) { location.reload(); return; }

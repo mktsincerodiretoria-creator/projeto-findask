@@ -10,6 +10,9 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import subprocess
+import sys
+import tempfile
 import urllib.parse
 import urllib.request
 from pathlib import Path, PurePosixPath
@@ -77,6 +80,30 @@ def _destino_seguro(caminho: str) -> Path:
     return RAIZ.joinpath(*p.parts)
 
 
+def _instalar_componentes(requisitos: bytes) -> None:
+    """Componentes novos (requirements.txt mudou) são instalados ANTES de reiniciar, com o
+    programa ainda aberto. Antes isso acontecia na reabertura e, por alguns minutos, a página
+    dava "não consigo chegar a esta página"."""
+    with tempfile.NamedTemporaryFile("wb", suffix=".txt", delete=False) as f:
+        f.write(requisitos)
+        caminho = f.name
+    try:
+        proc = subprocess.run(
+            [sys.executable, "-m", "pip", "install", "--disable-pip-version-check",
+             "--no-warn-script-location", "-r", caminho],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+        )
+    finally:
+        os.unlink(caminho)
+    if proc.returncode != 0:
+        raise RuntimeError("Não consegui instalar os componentes novos. Confira a internet e tente de novo.\n"
+                           + proc.stderr[-800:])
+    # O instalar.ps1 (Windows) guarda o "carimbo" do requirements.txt para não reinstalar à toa.
+    marca = RAIZ / "ferramentas" / "pacotes.ok"
+    if marca.parent.is_dir():
+        marca.write_text(hashlib.sha256(requisitos).hexdigest().upper())
+
+
 def aplicar() -> dict:
     ramo = _ramo()
     m = _manifesto()
@@ -91,6 +118,10 @@ def aplicar() -> dict:
         if hash_conteudo(caminho, dados) != esperado:
             raise RuntimeError("A atualização ainda está sendo publicada. Tente de novo em alguns minutos.")
         novos[destino] = dados
+
+    requisitos = RAIZ / "requirements.txt"
+    if requisitos in novos and not os.environ.get("CF_SEM_PIP"):
+        _instalar_componentes(novos[requisitos])   # se falhar, nada foi trocado ainda
 
     for destino, dados in novos.items():
         destino.parent.mkdir(parents=True, exist_ok=True)
