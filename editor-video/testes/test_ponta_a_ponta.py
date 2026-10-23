@@ -82,6 +82,20 @@ def test_fluxo_completo(cliente):
     assert r.status_code == 200
     from app import projetos as pj
     assert (pj.pasta(pid) / "periodicidade.npy").exists()   # refazer a análise reaproveita a "vibração da voz"
+
+    # o editor no computador mostra o arquivo original (resolução cheia), buscando por pedaços
+    r = c.get(f"/api/projetos/{pid}/original", headers={"Range": "bytes=0-99"})
+    assert r.status_code == 206 and r.headers["content-type"] == "video/mp4" and len(r.content) == 100
+    # navegador que não abre o original: cópia na mesma resolução, feita uma vez só
+    assert c.post(f"/api/projetos/{pid}/previa-hd").json()["status"] in ("gerando", "pronta")
+    fim = time.time() + 120
+    while c.get(f"/api/projetos/{pid}/previa-hd/estado").json()["status"] == "gerando" and time.time() < fim:
+        time.sleep(0.3)
+    assert c.get(f"/api/projetos/{pid}/previa-hd/estado").json()["status"] == "pronta"
+    from app import midia
+    hd = midia.sondar(pj.pasta(pid) / "previa_hd.mp4")
+    assert (hd["largura"], hd["altura"]) == (1280, 720)
+    assert c.get(f"/api/projetos/{pid}/previa-hd").status_code == 200
     r = c.post(f"/api/projetos/{pid}/recalcular", json={"config": {"silencio_minimo": 1.0}})
     assert any(x["id"] == "manual0001" for x in r.json()["cortes"])
     silencios = [x for x in r.json()["cortes"] if x["tipo"] == "silencio"]

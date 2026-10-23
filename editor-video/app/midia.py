@@ -104,6 +104,39 @@ def filtro_hdr(meta: dict | None) -> list[str]:
             "tonemap=tonemap=hable:desat=0", "zscale=t=bt709:m=bt709:r=tv:d=error_diffusion", "format=yuv420p"]
 
 
+LADO_HD = 2160   # a cópia em alta qualidade do editor vai até 4K
+
+
+def gerar_previa_hd(origem: Path, destino: Path, meta: dict | None = None, progresso=None) -> None:
+    """Cópia na resolução do original (até 4K) para o computador cujo navegador não toca o
+    arquivo original (HEVC do iPhone sem suporte na placa de vídeo). Abre em qualquer navegador."""
+    meta = meta or sondar(origem)
+    etapas = list(filtro_hdr(meta))
+    if min(meta["largura"], meta["altura"]) > LADO_HD:
+        etapas.append(f"scale='if(gt(iw,ih),-2,{LADO_HD})':'if(gt(iw,ih),{LADO_HD},-2)':flags=lanczos")
+    etapas.append("format=yuv420p")
+    parcial = destino.with_name(destino.stem + "_parcial.mp4")
+    proc = subprocess.Popen([
+        "ffmpeg", "-y", "-v", "error", "-nostats", "-progress", "pipe:1", "-i", str(origem),
+        "-vf", ",".join(etapas),
+        # quadro-chave a cada meio segundo e sem quadros B: buscar e pular trechos continua rápido
+        "-c:v", "libx264", "-preset", "superfast", "-crf", "17", "-g", "15", "-bf", "0",
+        "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", str(parcial),
+    ], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace")
+    duracao = max(0.1, float(meta.get("duracao") or 0))
+    for linha in proc.stdout:
+        if linha.startswith("out_time_us=") and progresso:
+            try:
+                progresso(min(0.99, int(linha.split("=")[1]) / 1e6 / duracao))
+            except ValueError:
+                pass
+    erro = proc.stderr.read()
+    if proc.wait() != 0:
+        parcial.unlink(missing_ok=True)
+        raise RuntimeError(f"ffmpeg falhou: {erro[-1500:]}")
+    parcial.replace(destino)   # só aparece pronta (o navegador nunca pega um arquivo pela metade)
+
+
 def gerar_previa(origem: Path, destino: Path, meta: dict | None = None) -> None:
     """Cópia leve (720p) para o navegador tocar qualquer formato e buscar rápido."""
     _rodar([

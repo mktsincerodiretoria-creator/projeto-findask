@@ -24,6 +24,10 @@ EXTENSOES = {".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v", ".mts", ".3gp"}
 
 # Uma tarefa pesada por vez (transcrição e exportação usam toda a CPU).
 fila = ThreadPoolExecutor(max_workers=1)
+fila_previa = ThreadPoolExecutor(max_workers=1)   # cópia em alta qualidade do editor (não atrasa exportação)
+previas_hd: dict[str, dict] = {}
+TIPOS_VIDEO = {".webm": "video/webm", ".mkv": "video/x-matroska", ".avi": "video/x-msvideo",
+               ".3gp": "video/3gpp", ".mts": "video/mp2t"}
 
 
 @asynccontextmanager
@@ -503,6 +507,60 @@ def previa(pid: str):
     arq = projetos.pasta(pid) / "previa.mp4"
     if not arq.exists():
         raise HTTPException(404, "Prévia ainda não gerada.")
+    return FileResponse(arq, media_type="video/mp4")
+
+
+@app.get("/api/projetos/{pid}/original")
+def video_original(pid: str):
+    """O arquivo que você subiu: o editor no computador mostra a imagem na resolução cheia (até 4K)."""
+    dados = _projeto_ou_404(pid)
+    arq = projetos.pasta(pid) / dados["original"]
+    if not arq.exists():
+        raise HTTPException(404, "Arquivo original não encontrado.")
+    # .mov do iPhone é o mesmo tipo de arquivo do .mp4: assim todo navegador tenta abrir
+    return FileResponse(arq, media_type=TIPOS_VIDEO.get(arq.suffix.lower(), "video/mp4"))
+
+
+def _gerar_previa_hd(pid: str):
+    def andamento(f):
+        previas_hd[pid] = {"status": "gerando", "progresso": round(f, 3)}
+    try:
+        dados = projetos.carregar(pid)
+        p = projetos.pasta(pid)
+        midia.gerar_previa_hd(p / dados["original"], p / "previa_hd.mp4", dados.get("meta"), andamento)
+        previas_hd[pid] = {"status": "pronta", "progresso": 1.0}
+    except Exception as e:  # noqa: BLE001 - sem a cópia o editor continua com a prévia leve
+        traceback.print_exc()
+        previas_hd[pid] = {"status": "erro", "progresso": 0.0, "erro": str(e)[-300:]}
+
+
+def _estado_previa_hd(pid: str) -> dict:
+    if (projetos.pasta(pid) / "previa_hd.mp4").exists():
+        return {"status": "pronta", "progresso": 1.0}
+    return previas_hd.get(pid, {"status": "nenhuma", "progresso": 0.0})
+
+
+@app.post("/api/projetos/{pid}/previa-hd")
+def pedir_previa_hd(pid: str):
+    """Quando o navegador não toca o arquivo original, prepara uma cópia na mesma resolução."""
+    dados = _projeto_ou_404(pid)
+    if _estado_previa_hd(pid)["status"] in ("nenhuma", "erro") and dados.get("meta"):
+        previas_hd[pid] = {"status": "gerando", "progresso": 0.0}
+        fila_previa.submit(_gerar_previa_hd, pid)
+    return _estado_previa_hd(pid)
+
+
+@app.get("/api/projetos/{pid}/previa-hd/estado")
+def estado_previa_hd(pid: str):
+    _projeto_ou_404(pid)
+    return _estado_previa_hd(pid)
+
+
+@app.get("/api/projetos/{pid}/previa-hd")
+def previa_hd(pid: str):
+    arq = projetos.pasta(pid) / "previa_hd.mp4"
+    if not arq.exists():
+        raise HTTPException(404, "A cópia em alta qualidade ainda não está pronta.")
     return FileResponse(arq, media_type="video/mp4")
 
 

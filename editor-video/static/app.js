@@ -296,6 +296,129 @@ $("#proc-tentar").addEventListener("click", async () => {
   } catch (e) { aviso(e.message, true); }
 });
 
+/* ------------------------------------------------------------ qualidade da imagem no editor */
+
+// "original": o arquivo que você subiu, na resolução cheia (até 4K) — o padrão no computador.
+// "leve": a cópia de 720p — o padrão no celular (abre rápido em qualquer internet).
+// Se o navegador não abrir o original (HEVC do iPhone sem suporte na placa de vídeo), o
+// programa prepara uma cópia na mesma resolução que abre em qualquer navegador.
+const CHAVE_QUALIDADE = "cf-qualidade";
+function qualidadeEscolhida() {
+  try {
+    const q = localStorage.getItem(CHAVE_QUALIDADE);
+    if (q === "original" || q === "leve") return q;
+  } catch { /* sem armazenamento: usa o padrão */ }
+  return celular.matches ? "leve" : "original";
+}
+const semOriginal = (pid) => { try { return localStorage.getItem(`cf-sem-original-${pid}`) === "1"; } catch { return false; } };
+const lembrarSemOriginal = (pid) => { try { localStorage.setItem(`cf-sem-original-${pid}`, "1"); } catch { /* ok */ } };
+
+function trocarImagem(fonte) {
+  const pid = estado.imagem.pid;
+  const url = { original: `/api/projetos/${pid}/original`, hd: `/api/projetos/${pid}/previa-hd`, leve: `/api/projetos/${pid}/previa` }[fonte];
+  estado.imagem.fonte = fonte;
+  if (videoA.dataset.fonte !== url) {
+    // continua no mesmo ponto (e tocando, se estava)
+    const t = estado.tempoAlvo ?? video.currentTime ?? 0, tocando = !video.paused;
+    videoA.dataset.fonte = url;
+    for (const v of videos) v.src = url;
+    reserva.dataset.alvo = "";
+    if (t > 0 || tocando) {
+      video.addEventListener("loadedmetadata", () => {
+        video.currentTime = t;
+        if (tocando) video.play().catch(() => {});
+      }, { once: true });
+    }
+  }
+  rotuloQualidade();
+}
+
+async function escolherImagem(p) {
+  if (estado.imagem.qualidade === "leve") return trocarImagem("leve");
+  if (!semOriginal(p.id)) return trocarImagem("original");
+  const r = await api(`/api/projetos/${p.id}/previa-hd/estado`).catch(() => null);
+  if (estado.imagem.pid !== p.id) return;
+  if (r?.status === "pronta") return trocarImagem("hd");
+  trocarImagem("leve");
+  prepararHD(p.id);
+}
+
+async function prepararHD(pid) {
+  if (estado.imagem.gerando != null) return;
+  estado.imagem.gerando = 0;
+  rotuloQualidade();
+  let r = await enviar(`/api/projetos/${pid}/previa-hd`, "POST", {}).catch(() => null);
+  while (r?.status === "gerando" && estado.imagem.pid === pid) {
+    estado.imagem.gerando = r.progresso || 0;
+    rotuloQualidade();
+    await new Promise((ok) => setTimeout(ok, 1500));
+    r = await api(`/api/projetos/${pid}/previa-hd/estado`).catch(() => r);
+  }
+  if (estado.imagem.pid !== pid) return;
+  estado.imagem.gerando = null;
+  if (r?.status === "pronta" && estado.imagem.qualidade === "original") {
+    trocarImagem("hd");
+    aviso("Pronto: a imagem do editor está na resolução cheia.");
+  } else {
+    if (r?.status === "erro") aviso("Não consegui preparar a imagem em alta qualidade: " + (r.erro || ""), true);
+    rotuloQualidade();
+  }
+}
+
+function rotuloQualidade() {
+  const b = $("#btn-qualidade"), im = estado.imagem;
+  if (!b || !im) return;
+  const lado = Math.min(video.videoWidth || 0, video.videoHeight || 0);
+  const nome = !lado ? "…" : lado >= 2000 ? "4K" : lado >= 1400 ? "2K" : lado >= 1000 ? "1080p" : lado >= 700 ? "720p" : `${lado}p`;
+  b.textContent = im.gerando != null ? `HD ${Math.round(im.gerando * 100)}%` : nome;
+  b.classList.toggle("ligado", im.qualidade === "original");
+  b.title = im.qualidade === "original"
+    ? "Imagem do editor na resolução do vídeo original. Clique para usar a imagem leve (internet lenta ou computador fraco)."
+    : "Imagem leve (720p). Clique para ver na resolução do vídeo original (até 4K).";
+}
+
+// O navegador não abriu o original: alguns tocam só o som (sem imagem), outros dão erro.
+function originalNaoAbriu() {
+  const im = estado.imagem;
+  if (!im || im.fonte === "leve") return;
+  if (im.fonte === "original") {
+    lembrarSemOriginal(im.pid);
+    aviso("Este navegador não abre o vídeo original (formato do iPhone). Preparando uma cópia em alta qualidade…");
+    trocarImagem("leve");
+    prepararHD(im.pid);
+  } else trocarImagem("leve");
+}
+videoA.addEventListener("error", originalNaoAbriu);
+videoA.addEventListener("loadedmetadata", () => {
+  if (estado.imagem && estado.imagem.fonte !== "leve" && !videoA.videoWidth) originalNaoAbriu();
+  else rotuloQualidade();
+});
+
+$("#btn-qualidade").addEventListener("click", () => {
+  const im = estado.imagem;
+  if (!im) return;
+  im.qualidade = im.qualidade === "original" ? "leve" : "original";
+  try { localStorage.setItem(CHAVE_QUALIDADE, im.qualidade); } catch { /* ok */ }
+  escolherImagem(estado.projeto);
+  aviso(im.qualidade === "original" ? "Imagem do editor na resolução do vídeo original."
+    : "Imagem leve (720p): mais rápida em internet lenta.");
+});
+
+// Internet lenta para o arquivo grande: avisa uma vez onde trocar para a imagem leve.
+let travadas = [];
+for (const v of videos) {
+  v.addEventListener("waiting", () => {
+    const im = estado.imagem;
+    if (v !== video || video.paused || !im || im.fonte === "leve" || im.avisouLenta) return;
+    const agora = performance.now();
+    travadas = travadas.filter((x) => agora - x < 20000).concat(agora);
+    if (travadas.length >= 3) {
+      im.avisouLenta = true;
+      aviso(`A imagem em resolução cheia está travando aqui. Clique no botão “${$("#btn-qualidade").textContent}” (ao lado do CC) para usar a imagem leve.`, true);
+    }
+  });
+}
+
 /* ------------------------------------------------------------ editor */
 
 async function abrirEditor(p) {
@@ -308,10 +431,9 @@ async function abrirEditor(p) {
   mostrarTela("editor");
   $("#nome-projeto").textContent = p.nome;
   $("#desfazer").disabled = true;
-  if (videoA.dataset.pid !== p.id) {
-    for (const v of videos) v.src = `/api/projetos/${p.id}/previa`;
-    videoA.dataset.pid = p.id;
-    reserva.dataset.alvo = "";
+  if (estado.imagem?.pid !== p.id) {
+    estado.imagem = { pid: p.id, qualidade: qualidadeEscolhida(), fonte: null, gerando: null };
+    escolherImagem(p);
   }
   estado.onda = await api(`/api/projetos/${p.id}/onda`).catch(() => []);
   carregarQuadros(p.id);
