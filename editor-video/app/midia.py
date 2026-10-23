@@ -63,6 +63,9 @@ def sondar(caminho: Path) -> dict:
     return {
         # iPhone/Android gravam em HDR (HLG/PQ): sem converter, a cor sai lavada e sem contraste.
         "hdr": video.get("color_transfer") in ("arib-std-b67", "smpte2084"),
+        # tabela de cor do vídeo: o arquivo final sai com a mesma (senão a cor pode sair deslocada)
+        "cor": {"primarias": video.get("color_primaries"), "transferencia": video.get("color_transfer"),
+                "matriz": video.get("color_space")},
         "duracao": round(duracao, 3),
         "largura": largura,
         "altura": altura,
@@ -79,27 +82,35 @@ def extrair_audio(origem: Path, destino: Path) -> None:
 
 
 @lru_cache(maxsize=1)
+def _filtros_ffmpeg() -> str:
+    return subprocess.run(["ffmpeg", "-hide_banner", "-filters"], capture_output=True, text=True,
+                          encoding="utf-8", errors="replace").stdout
+
+
+def tem_filtro(nome: str) -> bool:
+    return f" {nome} " in _filtros_ffmpeg()
+
+
 def tem_zscale() -> bool:
-    proc = subprocess.run(["ffmpeg", "-hide_banner", "-filters"], capture_output=True, text=True,
-                          encoding="utf-8", errors="replace")
-    return " zscale " in proc.stdout and " tonemap " in proc.stdout
+    return tem_filtro("zscale") and tem_filtro("tonemap")
 
 
 def filtro_hdr(meta: dict | None) -> list[str]:
     """Converte HDR para a cor normal (SDR) com o contraste certo; vazio se não for HDR."""
     if not meta or not meta.get("hdr") or not tem_zscale():
         return []
+    # (o pontilhado na volta para 8 bits evita degraus/"quadradinhos" em céu e parede lisa)
     return ["zscale=t=linear:npl=100", "format=gbrpf32le", "zscale=p=bt709",
-            "tonemap=tonemap=hable:desat=0", "zscale=t=bt709:m=bt709:r=tv", "format=yuv420p"]
+            "tonemap=tonemap=hable:desat=0", "zscale=t=bt709:m=bt709:r=tv:d=error_diffusion", "format=yuv420p"]
 
 
 def gerar_previa(origem: Path, destino: Path, meta: dict | None = None) -> None:
-    """Cópia leve (540p) para o navegador tocar qualquer formato e buscar rápido."""
+    """Cópia leve (720p) para o navegador tocar qualquer formato e buscar rápido."""
     _rodar([
         "ffmpeg", "-y", "-v", "error", "-i", str(origem),
-        "-vf", ",".join(filtro_hdr(meta) + ["scale='if(gt(iw,ih),-2,540)':'if(gt(iw,ih),540,-2)'"]),
+        "-vf", ",".join(filtro_hdr(meta) + ["scale='if(gt(iw,ih),-2,720)':'if(gt(iw,ih),720,-2)':flags=lanczos"]),
         # quadro-chave a cada 1/3 s e sem quadros B: pular de um trecho para outro é instantâneo
-        "-c:v", "libx264", "-preset", "veryfast", "-crf", "28", "-g", "10", "-bf", "0",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "24", "-g", "10", "-bf", "0",
         "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k",
         "-movflags", "+faststart", str(destino),
     ])

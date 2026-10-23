@@ -28,6 +28,7 @@ const estado = {
   mesclados: [],
   filtro: null,
   selecao: null,        // {a, b} em segundos (linha do tempo)
+  corteSel: null,       // id do corte clicado (marcado na linha do tempo e na lista; Delete apaga)
   selPalavras: null,    // {a, b} índices (transcrição)
   ancoraPalavra: null,
   historico: [],
@@ -302,7 +303,7 @@ async function abrirEditor(p) {
   estado.historico = [];
   estado.refazer = [];
   $("#refazer").disabled = true;
-  estado.selecao = estado.selPalavras = null;
+  estado.selecao = estado.selPalavras = estado.corteSel = null;
   estado.filtro = null;
   mostrarTela("editor");
   $("#nome-projeto").textContent = p.nome;
@@ -468,7 +469,7 @@ function renderCortes() {
   }
   $("#lista-cortes").innerHTML = lista.map((c) => {
     const info = tipoInfo(c.tipo);
-    return `<li class="corte ${c.ativo ? "" : "inativo"}" data-id="${c.id}" style="--cor:${info.cor}">
+    return `<li class="corte ${c.ativo ? "" : "inativo"} ${c.id === estado.corteSel ? "foco" : ""}" data-id="${c.id}" style="--cor:${info.cor}">
       <div class="corte-titulo">${escapar(c.titulo || info.nome)}
         <span class="corte-tempo">${fmt(c.inicio, true)} · ${(c.fim - c.inicio).toFixed(1)}s</span></div>
       <div class="corte-acoes">
@@ -502,15 +503,40 @@ $("#lista-cortes").addEventListener("click", (e) => {
     return;
   }
   irPara(Math.max(0, c.inicio - 0.5));
-  focarCorte(c.id, false);
+  selecionarCorte(c.id, { aba: false, rolar: false });
 });
 
 function focarCorte(id, rolar = true) {
   $$(".corte.foco").forEach((el) => el.classList.remove("foco"));
-  const el = $(`.corte[data-id="${id}"]`);
+  const el = id && $(`.corte[data-id="${id}"]`);
   if (!el) return;
   el.classList.add("foco");
   if (rolar) el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+}
+
+// Corte selecionado (clique nele na linha do tempo ou na lista): fica marcado nos dois lugares
+// e a tecla Delete apaga.
+function selecionarCorte(id, { aba = true, rolar = true } = {}) {
+  const c = id ? cortes().find((x) => x.id === id) : null;
+  estado.corteSel = c ? c.id : null;
+  if (c) {
+    estado.selecao = null;
+    $("#cortar-trecho").hidden = true;
+    if (aba && !celular.matches) $$(".aba").find((a) => a.dataset.aba === "cortes").click();
+    if (estado.filtro && estado.filtro !== c.tipo) { estado.filtro = null; renderFiltros(); renderCortes(); }
+    if (!celular.matches) $("#lt-dica").textContent = `${c.titulo || tipoInfo(c.tipo).nome} selecionado · Delete apaga o corte · Esc desmarca`;
+  }
+  focarCorte(estado.corteSel, rolar);
+  desenharLinhaTempo(true);
+}
+
+function apagarCorte(id) {
+  if (!cortes().some((x) => x.id === id)) return;
+  guardarHistorico();
+  estado.projeto.cortes = cortes().filter((x) => x.id !== id);
+  estado.corteSel = null;
+  alterou();
+  aviso("Corte apagado: esse trecho fica no vídeo. (Ctrl+Z desfaz)");
 }
 
 function alternarVisiveis(ativo) {
@@ -665,6 +691,7 @@ document.addEventListener("mouseup", () => (arrastandoPalavras = false));
 
 function selecionarPalavras(a, b) {
   estado.selPalavras = { a: Math.min(a, b), b: Math.max(a, b) };
+  if (estado.corteSel) selecionarCorte(null);
   for (const el of $$("#transcricao .p")) {
     const i = +el.dataset.i;
     el.classList.toggle("selecionada", i >= estado.selPalavras.a && i <= estado.selPalavras.b);
@@ -1856,7 +1883,7 @@ rolagem.addEventListener("touchstart", (e) => {
   cancelarEmbalo();
   const x = e.touches[0].clientX;
   const borda = bordaPerto(x, e.touches[0].clientY);
-  if (borda) { toqueLT = { borda }; return; }
+  if (borda) { toqueLT = { borda, x0: x }; return; }
   // pegou na agulha: arrasta a agulha (o vídeo acompanha)
   const xAgulha = rolagem.getBoundingClientRect().left + video.currentTime * pps - rolagem.scrollLeft;
   if (Math.abs(x - xAgulha) <= 22) {
@@ -1912,10 +1939,16 @@ function rolarComEmbalo(vel) {
 const fimToque = (e) => {
   if (e.touches.length) return;
   if (toqueLT?.borda?.mexeu) alterou();
+  else if (toqueLT?.borda) {   // tocou na borda sem arrastar: seleciona o corte
+    agulhaNoDedo(toqueLT.x0);
+    selecionarCorte(toqueLT.borda.c.id, { aba: false, rolar: false });
+  }
   if (toqueLT && toqueLT.sl0 !== undefined) {
     const andou = Math.abs(toqueLT.x - toqueLT.x0);
     if (andou < 8 && performance.now() - toqueLT.t0 < 400) {
       agulhaNoDedo(toqueLT.x0);   // toque rápido: a agulha vai até o dedo
+      const c = corteEm((rolagem.scrollLeft + xNaLT(toqueLT.x0)) / pps);
+      selecionarCorte(c ? c.id : null, { aba: false, rolar: false });
     } else if (Math.abs(toqueLT.vel) > 0.15 && performance.now() - toqueLT.ultT < 80) {
       rolarComEmbalo(toqueLT.vel);
     }
@@ -2082,6 +2115,16 @@ function desenharLinhaTempo(doLaco = false) {
     ctx.fillRect(xb - 1, 14, 1, ALTURA_LT - 14);
   }
 
+  // corte selecionado: contorno branco
+  const sel = estado.corteSel && cortes().find((c) => c.id === estado.corteSel);
+  if (sel && sel.fim >= t0 && sel.inicio <= t1) {
+    const xa = X(sel.inicio), xb = Math.max(X(sel.fim), xa + 2);
+    ctx.strokeStyle = "#fff";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(xa - 1, topo - 4, xb - xa + 2, base - topo + 5);
+    ctx.lineWidth = 1;
+  }
+
   // cursor de reprodução
   const xp = X(estado.tempoAlvo ?? video.currentTime);
   ctx.fillStyle = "#19d3c5";
@@ -2119,7 +2162,7 @@ let arrastandoZoom = null;
 let bordaMouse = null;
 canvas.addEventListener("mousedown", (e) => {
   const borda = bordaPerto(e.clientX, e.clientY);
-  if (borda) { bordaMouse = borda; return; }
+  if (borda) { bordaMouse = { ...borda, x: e.clientX }; return; }
   const alvo = zoomNoPonto(e);
   if (alvo) {
     arrastandoZoom = { ...alvo, x: e.clientX, t: tempoNoCanvas(e), ini: alvo.z.inicio, fim: alvo.z.fim, mexeu: false };
@@ -2128,7 +2171,10 @@ canvas.addEventListener("mousedown", (e) => {
   arrastandoLT = { x: e.clientX, t: tempoNoCanvas(e) };
 });
 window.addEventListener("mousemove", (e) => {
-  if (bordaMouse) { arrastarBorda(bordaMouse, e.clientX); return; }
+  if (bordaMouse) {
+    if (bordaMouse.mexeu || Math.abs(e.clientX - bordaMouse.x) > 3) arrastarBorda(bordaMouse, e.clientX);
+    return;
+  }
   if (e.target === canvas && !arrastandoZoom && !arrastandoLT && bordaPerto(e.clientX, e.clientY)) {
     canvas.style.cursor = "ew-resize";
     $("#lt-dica").textContent = "Arraste a borda para ajustar onde o corte começa ou termina";
@@ -2156,6 +2202,7 @@ window.addEventListener("mousemove", (e) => {
     if (Math.abs(e.clientX - arrastandoLT.x) > 4) {
       const t = Math.max(0, Math.min(duracao(), tempoNoCanvas(e)));
       estado.selecao = { a: Math.min(arrastandoLT.t, t), b: Math.max(arrastandoLT.t, t) };
+      if (estado.corteSel) { estado.corteSel = null; focarCorte(null); }
       $("#cortar-trecho").hidden = false;
       $("#lt-dica").textContent = `Seleção: ${fmt(estado.selecao.a, true)} – ${fmt(estado.selecao.b, true)} (${(estado.selecao.b - estado.selecao.a).toFixed(1)}s) · Delete corta`;
       desenharLinhaTempo();
@@ -2180,6 +2227,7 @@ window.addEventListener("mouseup", (e) => {
     bordaMouse = null;
     estado.tempoAlvo = null;
     if (b.mexeu) alterou();
+    else { irPara(tempoNoCanvas(e)); selecionarCorte(b.c.id); }   // só clicou: seleciona o corte
     return;
   }
   if (arrastandoZoom) {
@@ -2207,11 +2255,7 @@ window.addEventListener("mouseup", (e) => {
     $("#cortar-trecho").hidden = true;
     irPara(t);
     const c = corteEm(t);
-    if (c) {
-      $$(".aba").find((a) => a.dataset.aba === "cortes").click();
-      if (estado.filtro && estado.filtro !== c.tipo) { estado.filtro = null; renderFiltros(); renderCortes(); }
-      focarCorte(c.id);
-    }
+    selecionarCorte(c ? c.id : null);
   }
 });
 
@@ -2251,11 +2295,13 @@ document.addEventListener("keydown", (e) => {
   if ($("#tela-editor").hidden || e.target.closest("input, select, textarea, dialog[open]")) return;
   if (e.code === "Space") return;   // tratado acima
   else if (e.key === "Escape" && $("#video-caixa").classList.contains("cheia")) telaCheia(false);
+  else if (e.key === "Escape" && estado.corteSel) selecionarCorte(null);
   else if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === "y" || (e.shiftKey && e.key.toLowerCase() === "z"))) {
     e.preventDefault(); refazer();
   } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") { e.preventDefault(); desfazer(); }
   else if (e.key === "Delete" || e.key === "Backspace") {
     if (estado.selecao) cortarSelecaoLT();
+    else if (estado.corteSel) { e.preventDefault(); apagarCorte(estado.corteSel); }
     else if (estado.selPalavras) $("#cortar-selecao").click();
   } else if (e.key === "ArrowLeft") irPara(video.currentTime - (e.shiftKey ? 5 : 1));
   else if (e.key === "ArrowRight") irPara(video.currentTime + (e.shiftKey ? 5 : 1));
@@ -2264,6 +2310,18 @@ document.addEventListener("keydown", (e) => {
 /* ------------------------------------------------------------ exportação */
 
 const dlgExp = $("#dlg-exportar");
+
+// Baixa sozinho assim que a exportação termina (o link "Baixar vídeo" continua lá, caso o
+// navegador segure o download).
+function baixarArquivo(url, nome) {
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = nome || "";
+  a.hidden = true;
+  (dlgExp.open ? dlgExp : document.body).appendChild(a);   // com o diálogo aberto, o resto da página fica bloqueado
+  a.click();
+  a.remove();
+}
 
 function renderExportacoes() {
   const p = estado.projeto;
@@ -2323,7 +2381,10 @@ $("#exp-iniciar").addEventListener("click", async () => {
     if (tarefa.status === "concluida") {
       clearInterval(timer);
       p.exportacoes = atual.exportacoes;
-      $("#exp-pct").textContent = "Pronto! Baixe abaixo.";
+      const pronto = (atual.exportacoes || []).slice(-1)[0];
+      if (pronto) baixarArquivo(`/api/projetos/${p.id}/arquivos/${pronto.video}`, pronto.video);
+      $("#exp-pct").textContent = "Pronto! O download começou sozinho. Se não aparecer, toque em “Baixar vídeo” abaixo.";
+      if (!dlgExp.open) aviso("Vídeo exportado: o download começou.");
       $("#exp-iniciar").disabled = false;
       $("#exp-opcoes").hidden = false;
       renderExportacoes();

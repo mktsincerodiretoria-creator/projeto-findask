@@ -10,12 +10,95 @@ from app import exportar, midia
 pytestmark = pytest.mark.skipif(not shutil.which("ffmpeg"), reason="precisa do ffmpeg")
 
 
-def test_melhorar_imagem_limpa_antes_e_afia_depois_da_escala():
+def test_melhorar_imagem_afia_depois_da_escala_e_nunca_mistura_quadros():
     f = exportar.filtro_saida(1080, 1920, 720, 1280, True, "suave")
-    assert f[0].startswith("hqdn3d") and f[1].startswith("scale=1080:1920")
-    assert f[2].startswith("unsharp")
-    assert f.index("subtitles=legendas.ass") > f.index(f[2])   # a legenda não é afiada
-    assert not any(e.startswith(("hqdn3d", "unsharp")) for e in exportar.filtro_saida(720, 1280, 720, 1280, False, "nao"))
+    assert f[0].startswith("scale=1080:1920") and f[1].startswith(("cas", "unsharp"))
+    assert f.index("subtitles=legendas.ass") > 1   # a legenda não é afiada
+    forte = exportar.filtro_saida(1080, 1920, 720, 1280, False, "forte")
+    assert forte[0].startswith("hqdn3d") and forte[1].startswith("scale=1080:1920")
+    # o granulado sai só dentro de cada quadro: misturar quadros borra o movimento e deixa rastro nos cortes
+    assert forte[0].split("=")[1].split(":")[2:] == ["0", "0"]
+    nada = exportar.filtro_saida(720, 1280, 720, 1280, False, "nao")
+    assert not any(e.startswith(("hqdn3d", "unsharp", "cas")) for e in nada)
+
+
+def test_taxa_de_quadros_da_saida():
+    from fractions import Fraction
+    assert exportar.taxa_saida(29.97) == Fraction(30000, 1001)
+    assert exportar.taxa_saida(23.998) == 24                     # celular com taxa variável
+    assert exportar.taxa_saida(59.94) == Fraction(60000, 1001)
+    assert exportar.taxa_saida(240) == 60                        # câmera lenta: no máximo 60
+    assert exportar.taxa_saida(10) == 10 and exportar.taxa_saida(0) == 30
+
+
+def _contador(caminho, segundos=6):
+    """Vídeo que mostra o número do quadro em 8 faixas pretas/brancas (bits), com som."""
+    subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", f"color=black:s=320x240:r=30:d={segundos}",
+                    "-f", "lavfi", "-i", f"sine=d={segundos}",
+                    "-vf", "geq=lum='if(bitand(N,pow(2,floor(X/40))),235,16)':cb=128:cr=128",
+                    "-c:v", "libx264", "-qp", "0", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", str(caminho)],
+                   check=True)
+
+
+def _numeros(caminho, largura, altura):
+    """Número de cada quadro exportado (o vídeo ocupa a largura toda nos dois formatos testados)."""
+    cru = subprocess.run(["ffmpeg", "-v", "error", "-i", str(caminho), "-f", "rawvideo", "-pix_fmt", "gray", "-"],
+                         capture_output=True, check=True).stdout
+    q = np.frombuffer(cru, np.uint8).reshape(-1, altura, largura)
+    linha = q[:, altura // 2, :].astype(float)
+    centros = [int((b + 0.5) * largura / 8) for b in range(8)]
+    return [sum(1 << b for b, x in enumerate(centros) if lin[x - 2: x + 3].mean() > 128) for lin in linha]
+
+
+def _duracoes(caminho):
+    saida = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "stream=codec_type,duration", "-of", "csv=p=0",
+                            str(caminho)], capture_output=True, text=True, check=True).stdout
+    return {linha.split(",")[0]: float(linha.split(",")[1]) for linha in saida.split()}
+
+
+@pytest.mark.parametrize("enq", [None, {"formato": "9:16", "x": 0.004}])
+def test_emendas_sem_quadro_repetido_e_som_junto_com_a_imagem(tmp_path, enq):
+    """Era a "travadinha": quadro repetido (ou pulado) em cada corte e o som escorregando."""
+    video = tmp_path / "contador.mp4"
+    _contador(video)
+    meta = midia.sondar(video)
+    cortes = [{"id": str(i), "inicio": 0.41 + i * 0.73, "fim": 0.41 + i * 0.73 + 0.217, "ativo": True}
+              for i in range(7)]
+    r = exportar.exportar(tmp_path, video, meta, [], cortes, {}, {"legenda": "nenhuma", "velocidade": "rapida"},
+                          "saida", enq=enq, mov={"auto": False})
+    n = _numeros(tmp_path / "saida.mp4", r["largura"], r["altura"])
+    passos = [b - a for a, b in zip(n, n[1:])]
+    assert 0 not in passos                                  # nenhum quadro repetido
+    assert sum(p != 1 for p in passos) == len(cortes)       # só pula onde tem corte
+    assert len(n) == round(r["duracao"] * 30)
+    d = _duracoes(tmp_path / "saida.mp4")
+    assert abs(d["audio"] - d["video"]) < 1 / 30 + 0.001
+
+
+@pytest.mark.parametrize("enq", [None, {"formato": "9:16"}])
+def test_cor_nao_desloca_com_filtro_de_cor_e_sai_etiquetada(tmp_path, enq):
+    video = tmp_path / "laranja.mp4"
+    subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "color=c=0xE08030:s=640x360:r=25:d=1",
+                    "-f", "lavfi", "-i", "sine=d=1", "-vf", "scale=out_color_matrix=bt709,format=yuv420p",
+                    "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
+                    "-c:v", "libx264", "-crf", "1", "-c:a", "aac", "-shortest", str(video)], check=True)
+    meta = midia.sondar(video)
+    r = exportar.exportar(tmp_path, video, meta, [], [], {}, {"legenda": "nenhuma", "velocidade": "rapida"}, "s",
+                          filtro={"id": "cinema", "intensidade": 0.0001}, enq=enq, mov={"auto": False})
+
+    def cor_do_meio(arquivo, largura, altura):
+        cru = subprocess.run(["ffmpeg", "-v", "error", "-i", str(arquivo), "-frames:v", "1", "-vf",
+                              "scale=in_color_matrix=bt709,format=rgb24", "-f", "rawvideo", "-"],
+                             capture_output=True, check=True).stdout
+        img = np.frombuffer(cru, np.uint8).reshape(altura, largura, 3)
+        return img[altura // 2 - 20: altura // 2 + 20, largura // 2 - 20: largura // 2 + 20].reshape(-1, 3).mean(axis=0)
+    # filtro quase neutro: a cor tem que sair a mesma (antes deslocava ~35 de 255)
+    antes, depois = cor_do_meio(video, 640, 360), cor_do_meio(tmp_path / r["video"], r["largura"], r["altura"])
+    assert np.abs(antes - depois).max() < 4
+    etiqueta = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v", "-show_entries",
+                               "stream=color_space,color_primaries,color_transfer", "-of", "csv=p=0",
+                               str(tmp_path / r["video"])], capture_output=True, text=True).stdout.strip()
+    assert etiqueta == "bt709,bt709,bt709"
 
 
 def test_miniaturas_cobrem_o_video_inteiro(tmp_path):

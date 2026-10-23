@@ -191,7 +191,7 @@ body.com-tela-cheia { overflow: hidden; }
 .corte:hover { border-color: var(--texto-2); border-left-color: var(--cor); }
 .corte.inativo { opacity: .6; }
 .corte.inativo .corte-titulo { text-decoration: line-through; text-decoration-color: var(--texto-2); }
-.corte.foco { outline: 2px solid var(--cor); }
+.corte.foco { outline: 2px solid #fff; outline-offset: -2px; background: color-mix(in srgb, var(--cor) 24%, var(--fundo-3)); }
 .corte-titulo { font-weight: 600; font-size: 13px; display: flex; gap: 8px; align-items: center; }
 .corte-tempo { color: var(--texto-2); font-size: 11.5px; font-variant-numeric: tabular-nums; font-weight: 400; }
 .corte-trecho { grid-column: 1 / -1; font-style: italic; color: #cfd3dc; font-size: 12.5px; }
