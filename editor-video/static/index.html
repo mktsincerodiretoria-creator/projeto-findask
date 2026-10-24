@@ -39,6 +39,16 @@
         (hesitações, repetições, frases regravadas), mostra o motivo de cada corte
         e exporta em alta resolução com legenda.</p>
 
+      <div class="fazer" id="fazer">
+        <span class="fazer-titulo">O que fazer neste vídeo <small>(desmarque o que não quiser)</small></span>
+        <label class="fazer-item"><input type="checkbox" id="fazer-espacos" checked>
+          <span class="fazer-caixa">✂️ Cortar espaços<small>pausas e respiros entre as falas</small></span></label>
+        <label class="fazer-item"><input type="checkbox" id="fazer-erros" checked>
+          <span class="fazer-caixa">🧹 Tirar erros<small>“éé”, repetições e frases regravadas</small></span></label>
+        <label class="fazer-item"><input type="checkbox" id="fazer-legenda" checked>
+          <span class="fazer-caixa">💬 Legenda<small>gravada no vídeo final</small></span></label>
+      </div>
+
       <label class="soltar" id="soltar">
         <input type="file" id="arquivo" accept="video/*,.mkv,.mts" hidden>
         <span class="soltar-icone">⬆</span>

@@ -68,6 +68,25 @@ button:disabled { cursor: not-allowed; opacity: .5; }
 #tela-inicio { max-width: 880px; width: 100%; margin: 0 auto; padding: 36px 20px; }
 .boas-vindas h1 { font-size: 28px; }
 .boas-vindas > p { color: var(--texto-2); max-width: 680px; }
+/* o que fazer neste vídeo (antes de subir) */
+.fazer { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 0 0 14px; text-align: left; }
+.fazer-titulo { grid-column: 1 / -1; font-size: 14px; font-weight: 700; }
+.fazer-titulo small { font-weight: 400; color: var(--texto-2); }
+.fazer-item { position: relative; display: block; }
+.fazer-item input { position: absolute; opacity: 0; pointer-events: none; }
+.fazer-caixa { display: flex; flex-direction: column; gap: 3px; min-height: 100%; padding: 12px 12px 12px 42px; border-radius: 12px;
+  border: 1.5px solid var(--borda); background: var(--fundo-3); color: var(--texto-2); font-weight: 700; font-size: 14px;
+  cursor: pointer; user-select: none; position: relative; box-sizing: border-box; }
+.fazer-caixa small { font-weight: 400; color: var(--texto-2); font-size: 12px; }
+.fazer-caixa::before { content: ""; position: absolute; left: 13px; top: 50%; transform: translateY(-50%); width: 20px; height: 20px;
+  border-radius: 6px; border: 2px solid var(--texto-2); box-sizing: border-box; }
+.fazer-item input:checked + .fazer-caixa { color: var(--texto); border-color: var(--acento);
+  background: color-mix(in srgb, var(--acento) 12%, var(--fundo-3)); }
+.fazer-item input:checked + .fazer-caixa::before { content: "✓"; background: var(--acento); border-color: var(--acento); color: #04201e;
+  font-size: 14px; line-height: 16px; text-align: center; font-weight: 900; }
+.fazer-item input:focus-visible + .fazer-caixa { outline: 2px solid var(--acento); outline-offset: 2px; }
+@media (max-width: 820px) { .fazer { grid-template-columns: 1fr; gap: 8px; } }
+
 .soltar {
   margin-top: 22px; display: flex; flex-direction: column; align-items: center; gap: 6px;
   border: 2px dashed var(--borda); border-radius: 14px; padding: 44px 20px; cursor: pointer;

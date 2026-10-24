@@ -182,9 +182,36 @@ function lerOpcoes(el) {
 
 /* ------------------------------------------------------------ início */
 
+// O que fazer neste vídeo, escolhido antes de subir. Os três vêm ligados; desligue o que não
+// quiser: só tirar os espaços (sem legenda), ou só a legenda de um vídeo que você já editou.
+const ERROS = ["detectar_vicios", "detectar_repeticoes", "detectar_regravacoes"];
+function oQueFazer(cfg) {
+  if (!$("#fazer-espacos").checked) cfg.cortar_silencios = false;
+  if (!$("#fazer-erros").checked) for (const k of [...ERROS, "usar_ia"]) cfg[k] = false;
+  cfg.legenda = $("#fazer-legenda").checked;
+  return cfg;
+}
+// as chaves grandes e as "Opções da análise" mostram sempre a mesma coisa
+$("#fazer-espacos").addEventListener("change", (e) => {
+  const i = $('#opcoes-iniciais input[data-chave="cortar_silencios"]');
+  if (i) i.checked = e.target.checked;
+});
+$("#fazer-erros").addEventListener("change", (e) => {
+  for (const k of ERROS) {
+    const i = $(`#opcoes-iniciais input[data-chave="${k}"]`);
+    if (i) i.checked = e.target.checked;
+  }
+});
+$("#opcoes-iniciais").addEventListener("change", () => {
+  const cfg = lerOpcoes($("#opcoes-iniciais"));
+  $("#fazer-espacos").checked = !!cfg.cortar_silencios;
+  $("#fazer-erros").checked = ERROS.some((k) => cfg[k]);
+});
+
 async function carregarInicio() {
   mostrarTela("inicio");
   montarOpcoes($("#opcoes-iniciais"), estado.status.config_padrao, { inicial: true });
+  for (const id of ["#fazer-espacos", "#fazer-erros", "#fazer-legenda"]) $(id).checked = true;   // sempre vêm ligados
   const lista = $("#lista-projetos");
   const itens = await api("/api/projetos");
   if (!itens.length) {
@@ -220,7 +247,7 @@ function enviarArquivo(arquivo) {
   if (!arquivo) return;
   const dados = new FormData();
   dados.append("arquivo", arquivo);
-  dados.append("config", JSON.stringify(lerOpcoes($("#opcoes-iniciais"))));
+  dados.append("config", JSON.stringify(oQueFazer(lerOpcoes($("#opcoes-iniciais")))));
   const xhr = new XMLHttpRequest();
   $("#envio").hidden = false;
   xhr.upload.onprogress = (e) => {

@@ -127,3 +127,29 @@ def test_fluxo_completo(cliente):
 
     # Arquivos fora da lista de exportações não podem ser baixados.
     assert c.get(f"/api/projetos/{pid}/arquivos/projeto.json").status_code == 404
+
+
+def test_subir_so_com_cortes_ou_so_com_legenda(cliente):
+    """As chaves da tela de subir: "Legenda" desmarcada abre sem legenda; cortes desmarcados
+    abrem o vídeo inteiro (para só colocar a legenda num vídeo já editado)."""
+    c, video, _ = cliente
+
+    def subir(config):
+        with open(video, "rb") as f:
+            r = c.post("/api/projetos", files={"arquivo": ("video.mp4", f, "video/mp4")},
+                       data={"config": json.dumps({"modelo": "tiny", **config})})
+        assert r.status_code == 200, r.text
+        p = esperar(c, r.json()["id"], lambda p: p["status"] in ("pronto", "erro"))
+        assert p["status"] == "pronto", p.get("erro")
+        return p
+
+    sem_legenda = subir({"legenda": False})
+    assert sem_legenda["estilo_legenda"]["ativa"] is False
+    assert "legenda" not in sem_legenda["config"]
+    assert any(x["ativo"] and x["tipo"] == "silencio" for x in sem_legenda["cortes"])   # os cortes continuam
+
+    so_legenda = subir({"cortar_silencios": False, "detectar_vicios": False, "detectar_repeticoes": False,
+                        "detectar_regravacoes": False, "legenda": True})
+    assert not [x for x in so_legenda["cortes"] if x["ativo"]]
+    assert so_legenda.get("estilo_legenda", {}).get("ativa", True) is True
+    assert so_legenda["palavras"]   # a fala foi transcrita: a legenda está pronta

@@ -515,7 +515,11 @@ async def novo_projeto(request: Request, arquivo: UploadFile = File(...), config
         while bloco := await arquivo.read(8 * 1024 * 1024):
             destino.write(bloco)
     cfg = {**analise.CONFIG_PADRAO, **json.loads(config or "{}")}
-    projetos.atualizar(pid, config=cfg, status="na_fila", etapa="Na fila")
+    mudancas = {"config": cfg, "status": "na_fila", "etapa": "Na fila"}
+    if cfg.pop("legenda", True) is False:
+        # "Legenda" desmarcada ao subir: o vídeo já abre e exporta sem legenda (o CC liga depois)
+        mudancas["estilo_legenda"] = {"ativa": False}
+    projetos.atualizar(pid, **mudancas)
     fila.submit(processar, pid, True)
     return {"id": pid}
 
