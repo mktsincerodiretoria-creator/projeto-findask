@@ -5,6 +5,7 @@ import json
 import re
 import shutil
 import subprocess
+import tempfile
 import wave
 from functools import lru_cache
 from pathlib import Path
@@ -116,24 +117,25 @@ def gerar_previa_hd(origem: Path, destino: Path, meta: dict | None = None, progr
         etapas.append(f"scale='if(gt(iw,ih),-2,{LADO_HD})':'if(gt(iw,ih),{LADO_HD},-2)':flags=lanczos")
     etapas.append("format=yuv420p")
     parcial = destino.with_name(destino.stem + "_parcial.mp4")
-    proc = subprocess.Popen([
-        "ffmpeg", "-y", "-v", "error", "-nostats", "-progress", "pipe:1", "-i", str(origem),
-        "-vf", ",".join(etapas),
-        # quadro-chave a cada meio segundo e sem quadros B: buscar e pular trechos continua rápido
-        "-c:v", "libx264", "-preset", "superfast", "-crf", "17", "-g", "15", "-bf", "0",
-        "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", str(parcial),
-    ], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace")
-    duracao = max(0.1, float(meta.get("duracao") or 0))
-    for linha in proc.stdout:
-        if linha.startswith("out_time_us=") and progresso:
-            try:
-                progresso(min(0.99, int(linha.split("=")[1]) / 1e6 / duracao))
-            except ValueError:
-                pass
-    erro = proc.stderr.read()
-    if proc.wait() != 0:
-        parcial.unlink(missing_ok=True)
-        raise RuntimeError(f"ffmpeg falhou: {erro[-1500:]}")
+    with tempfile.TemporaryFile() as erros:   # (num arquivo: o ffmpeg nunca fica esperando alguém ler)
+        proc = subprocess.Popen([
+            "ffmpeg", "-y", "-v", "error", "-nostats", "-progress", "pipe:1", "-i", str(origem),
+            "-vf", ",".join(etapas),
+            # quadro-chave a cada meio segundo e sem quadros B: buscar e pular trechos continua rápido
+            "-c:v", "libx264", "-preset", "superfast", "-crf", "17", "-g", "15", "-bf", "0",
+            "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", str(parcial),
+        ], stdout=subprocess.PIPE, stderr=erros, text=True, encoding="utf-8", errors="replace")
+        duracao = max(0.1, float(meta.get("duracao") or 0))
+        for linha in proc.stdout:
+            if linha.startswith("out_time_us=") and progresso:
+                try:
+                    progresso(min(0.99, int(linha.split("=")[1]) / 1e6 / duracao))
+                except ValueError:
+                    pass
+        if proc.wait() != 0:
+            parcial.unlink(missing_ok=True)
+            erros.seek(0)
+            raise RuntimeError(f"ffmpeg falhou: {erros.read().decode('utf-8', 'replace')[-1500:]}")
     parcial.replace(destino)   # só aparece pronta (o navegador nunca pega um arquivo pela metade)
 
 

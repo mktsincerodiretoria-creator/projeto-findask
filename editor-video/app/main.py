@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import threading
+import time
 import traceback
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
@@ -25,6 +26,9 @@ EXTENSOES = {".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v", ".mts", ".3gp"}
 # Uma tarefa pesada por vez (transcrição e exportação usam toda a CPU).
 fila = ThreadPoolExecutor(max_workers=1)
 fila_previa = ThreadPoolExecutor(max_workers=1)   # cópia em alta qualidade do editor (não atrasa exportação)
+fila_exportar = ThreadPoolExecutor(max_workers=1)   # exportar não espera a análise de outro vídeo
+exportacoes: dict[str, dict] = {}   # exportações na fila ou rodando: pid -> {cancelar, ultimo, rodando, motivo}
+PARADA_MAX = 600   # s sem andar: a exportação travou e é cancelada (libera exportar de novo)
 previas_hd: dict[str, dict] = {}
 TIPOS_VIDEO = {".webm": "video/webm", ".mkv": "video/x-matroska", ".avi": "video/x-msvideo",
                ".3gp": "video/3gpp", ".mts": "video/mp2t"}
@@ -110,6 +114,10 @@ def _projeto_ou_404(pid: str) -> dict:
 def _com_resumo(dados: dict) -> dict:
     if dados.get("meta"):
         dados["resumo"] = analise.resumo(dados["cortes"], dados["meta"]["duracao"])
+    tarefa = dados.get("tarefa") or {}
+    if tarefa.get("status") in ("rodando", "na_fila") and dados.get("id") not in exportacoes:
+        # ficou marcada como "rodando" mas não tem nada rodando: não pode travar o botão Exportar
+        dados["tarefa"] = {**tarefa, "status": "erro", "erro": "A exportação foi interrompida. Clique em Exportar agora."}
     return dados
 
 
@@ -192,8 +200,34 @@ def processar(pid: str, retranscrever: bool = True):
         projetos.atualizar(pid, status="erro", erro=str(e) or e.__class__.__name__)
 
 
+def _cancelar_paradas():
+    """Exportação que passa 10 minutos sem andar travou: é cancelada e o botão Exportar volta."""
+    agora = time.monotonic()
+    for ativa in list(exportacoes.values()):
+        if ativa.get("rodando") and agora - ativa["ultimo"] > PARADA_MAX:
+            ativa["motivo"] = "A exportação parou de andar e foi cancelada. Clique em Exportar agora para tentar de novo."
+            ativa["cancelar"].set()
+
+
+def _vigiar_exportacoes():
+    while True:
+        time.sleep(20)
+        _cancelar_paradas()
+
+
+threading.Thread(target=_vigiar_exportacoes, daemon=True).start()
+
+
 def tarefa_exportar(pid: str, opcoes: dict):
+    ativa = exportacoes.get(pid)
+    if ativa is None or ativa["cancelar"].is_set():   # cancelada enquanto esperava na fila
+        if ativa is not None and exportacoes.get(pid) is ativa:
+            exportacoes.pop(pid, None)
+        return
+    ativa.update(rodando=True, ultimo=time.monotonic())
+
     def prog(f):
+        ativa["ultimo"] = time.monotonic()
         projetos.atualizar(pid, tarefa={"tipo": "exportar", "status": "rodando", "progresso": round(f, 3)})
 
     try:
@@ -206,15 +240,21 @@ def tarefa_exportar(pid: str, opcoes: dict):
             dados.get("estilo_legenda", {}), opcoes, f"video_editado_{n}", progresso=prog,
             filtro=dados.get("filtro"),
             mov=dados.get("movimento"), trilha=movimento.carregar_trilha(p),
-            enq=dados.get("enquadramento"),
+            enq=dados.get("enquadramento"), cancelar=ativa["cancelar"],
         )
         dados = projetos.carregar(pid)
         dados["exportacoes"] = dados.get("exportacoes", []) + [resultado]
         dados["tarefa"] = {"tipo": "exportar", "status": "concluida", "progresso": 1.0, "resultado": resultado}
         projetos.salvar(pid, dados)
+    except exportar.Cancelado:
+        projetos.atualizar(pid, tarefa={"tipo": "exportar", "status": "cancelada",
+                                        "erro": ativa.get("motivo") or "Exportação cancelada."})
     except Exception as e:  # noqa: BLE001
         traceback.print_exc()
         projetos.atualizar(pid, tarefa={"tipo": "exportar", "status": "erro", "erro": str(e)})
+    finally:
+        if exportacoes.get(pid) is ativa:
+            exportacoes.pop(pid, None)
 
 
 # ---------------------------------------------------------------- API
@@ -755,9 +795,10 @@ def verificar_atualizacao():
 
 
 def _ocupado() -> bool:
+    if exportacoes:
+        return True
     for item in projetos.listar():
-        d = projetos.carregar(item["id"])
-        if d["status"] in ("processando", "na_fila") or (d.get("tarefa") or {}).get("status") in ("rodando", "na_fila"):
+        if projetos.carregar(item["id"])["status"] in ("processando", "na_fila"):
             return True
     return False
 
@@ -783,10 +824,24 @@ def iniciar_exportacao(pid: str, opcoes: dict):
     dados = _projeto_ou_404(pid)
     if dados["status"] != "pronto":
         raise HTTPException(409, "Espere a análise terminar antes de exportar.")
-    if (dados.get("tarefa") or {}).get("status") in ("rodando", "na_fila"):
+    if pid in exportacoes:
         raise HTTPException(409, "Já existe uma exportação em andamento.")
+    exportacoes[pid] = {"cancelar": threading.Event(), "ultimo": time.monotonic(), "rodando": False}
     projetos.atualizar(pid, tarefa={"tipo": "exportar", "status": "na_fila", "progresso": 0.0})
-    fila.submit(tarefa_exportar, pid, opcoes)
+    fila_exportar.submit(tarefa_exportar, pid, opcoes)
+    return {"ok": True}
+
+
+@app.post("/api/projetos/{pid}/exportar/cancelar")
+def cancelar_exportacao(pid: str):
+    _projeto_ou_404(pid)
+    ativa = exportacoes.get(pid)
+    if ativa:
+        ativa["motivo"] = "Exportação cancelada."
+        ativa["cancelar"].set()   # fecha o ffmpeg na hora
+        if not ativa.get("rodando"):   # ainda esperando na fila: sai dela agora
+            exportacoes.pop(pid, None)
+            projetos.atualizar(pid, tarefa={"tipo": "exportar", "status": "cancelada", "erro": "Exportação cancelada."})
     return {"ok": True}
 
 

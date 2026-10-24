@@ -1,11 +1,11 @@
 """Versão do CorteFácil e de onde vêm as atualizações."""
 
-VERSAO = "2.6.0"
+VERSAO = "2.6.1"
 
 NOVIDADES = [
-    "No computador, o editor mostra o vídeo original na resolução cheia (até 4K): botão de qualidade ao lado do CC",
-    "Se o navegador não abrir o vídeo do iPhone (HEVC), o programa prepara sozinho uma cópia na mesma resolução",
-    "Exportação com qualidade de iPhone, seleção de corte com Delete e download automático (versão 2.5)",
+    "Corrigido: \"Já existe uma exportação em andamento\" — a janela mostra o andamento e tem botão Cancelar",
+    "Exportação mostra quanto tempo falta e ficou cerca de 1,5x mais rápida (mesma qualidade)",
+    "Exportação que travar é cancelada sozinha e não espera mais a análise de outro vídeo",
 ]
 
 # Repositório público de onde o programa baixa as atualizações.

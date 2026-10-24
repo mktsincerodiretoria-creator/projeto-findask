@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import bisect
 import subprocess
+import tempfile
+import threading
 from fractions import Fraction
 from pathlib import Path
 
@@ -68,6 +70,66 @@ def cor_saida(meta: dict) -> dict:
     padrao = "bt709" if min(meta.get("largura", 0), meta.get("altura", 0)) >= 720 else "smpte170m"
     cor = meta.get("cor") or {}
     return {k: cor.get(k) if cor.get(k) in CORES_OK[k] else padrao for k in CORES_OK}
+
+
+class Cancelado(Exception):
+    """A exportação foi cancelada (pela pessoa ou porque parou de andar)."""
+
+
+class _Processos:
+    """Os ffmpeg de uma exportação. O que cada um escreve de erro vai para um arquivo (um ffmpeg
+    que escreve muito ali nunca fica parado esperando) e, se a exportação for cancelada ou der
+    erro no meio, todos são fechados: nada fica rodando nem travado."""
+
+    def __init__(self, cancelar: threading.Event | None = None):
+        self.cancelar = cancelar or threading.Event()
+        self.lista: list[subprocess.Popen] = []
+        self.fim = threading.Event()
+        threading.Thread(target=self._vigiar, daemon=True).start()
+
+    def _vigiar(self):
+        while not self.fim.is_set():
+            if self.cancelar.wait(0.3):
+                self.fechar()
+                return
+
+    def abrir(self, cmd, **kw) -> subprocess.Popen:
+        self.conferir()
+        erros = tempfile.TemporaryFile()
+        proc = subprocess.Popen(cmd, stderr=erros, **kw)
+        proc.arquivo_erros = erros
+        self.lista.append(proc)
+        return proc
+
+    def esperar(self, proc: subprocess.Popen, etapa: str) -> None:
+        codigo = proc.wait()
+        self.conferir()
+        if codigo != 0:
+            proc.arquivo_erros.seek(0)
+            texto = proc.arquivo_erros.read().decode("utf-8", "replace")
+            raise RuntimeError(f"ffmpeg falhou {etapa}: {texto[-1500:]}")
+
+    def conferir(self):
+        if self.cancelar.is_set():
+            raise Cancelado()
+
+    def fechar(self):
+        for proc in self.lista:
+            if proc.poll() is None:
+                try:
+                    proc.kill()
+                except OSError:
+                    pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        self.fim.set()
+        self.fechar()
+        for proc in self.lista:
+            proc.wait()
+            proc.arquivo_erros.close()
 
 
 def dimensoes_saida(largura: int, altura: int, resolucao: str) -> tuple[int, int]:
@@ -170,8 +232,9 @@ def _codificacao(opcoes: dict, taxa, cor: dict) -> list[str]:
     rapida = opcoes["velocidade"] == "rapida"
     return [
         # "film" guarda a textura fina (pele, cabelo); aq-mode 3 dá mais bits às partes escuras e
-        # lisas, que é onde aparecem os "quadradinhos"
-        "-c:v", "libx264", "-preset", "faster" if rapida else "slow", "-tune", "film",
+        # lisas, que é onde aparecem os "quadradinhos". Com CRF 16 o "medium" fica igual ao "slow"
+        # na imagem (só o arquivo sai um pouco maior) e exporta na metade do tempo.
+        "-c:v", "libx264", "-preset", "faster" if rapida else "medium", "-tune", "film",
         "-crf", str(CRF.get(opcoes["qualidade"], 16) - (1 if rapida else 0)), "-profile:v", "high",
         "-x264-params", "aq-mode=3", "-r", str(taxa), "-pix_fmt", "yuv420p",
         "-color_primaries", cor["primarias"], "-color_trc", cor["transferencia"], "-colorspace", cor["matriz"],
@@ -182,7 +245,8 @@ def _codificacao(opcoes: dict, taxa, cor: dict) -> list[str]:
 
 def exportar(projeto_dir: Path, original: Path, meta: dict, palavras: list, cortes: list,
              estilo: dict, opcoes: dict, nome_saida: str, progresso=None, filtro: dict | None = None,
-             mov: dict | None = None, trilha: dict | None = None, enq: dict | None = None) -> dict:
+             mov: dict | None = None, trilha: dict | None = None, enq: dict | None = None,
+             cancelar: threading.Event | None = None) -> dict:
     opcoes = {**OPCOES_PADRAO, **(opcoes or {})}
     duracao = meta["duracao"]
     if "hdr" not in meta or "cor" not in meta:   # projetos antigos não guardavam isso
@@ -228,7 +292,7 @@ def exportar(projeto_dir: Path, original: Path, meta: dict, palavras: list, cort
     if movimento.tem_efeito(mov) or not movimento.enquadramento_neutro(enq):
         _exportar_com_movimento(projeto_dir, original, meta, trechos, total, largura, altura, gravar, com_cor,
                                 mov, trilha, flag_filtro, codificacao, arquivos["video"], progresso,
-                                opcoes["melhorar"], enq, hdr, taxa, cor)
+                                opcoes["melhorar"], enq, hdr, taxa, cor, cancelar)
         return resultado
 
     filtro = montar_filtro(trechos, largura, altura, meta["largura"], meta["altura"], gravar, com_cor,
@@ -243,17 +307,16 @@ def exportar(projeto_dir: Path, original: Path, meta: dict, palavras: list, cort
         *codificacao,
         arquivos["video"],
     ]
-    proc = subprocess.Popen(cmd, cwd=projeto_dir, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                            text=True, encoding="utf-8", errors="replace")
-    for linha in proc.stdout:
-        if linha.startswith("out_time_us=") and progresso:
-            try:
-                progresso(min(0.99, int(linha.split("=")[1]) / 1e6 / total))
-            except ValueError:
-                pass
-    erro = proc.stderr.read()
-    if proc.wait() != 0:
-        raise RuntimeError(f"ffmpeg falhou na exportação: {erro[-1500:]}")
+    with _Processos(cancelar) as procs:
+        proc = procs.abrir(cmd, cwd=projeto_dir, stdout=subprocess.PIPE, text=True, encoding="utf-8",
+                           errors="replace")
+        for linha in proc.stdout:
+            if linha.startswith("out_time_us=") and progresso:
+                try:
+                    progresso(min(0.99, int(linha.split("=")[1]) / 1e6 / total))
+                except ValueError:
+                    pass
+        procs.esperar(proc, "na exportação")
 
     return resultado
 
@@ -288,7 +351,7 @@ def _matrizes_yuv(m) -> tuple[np.ndarray, np.ndarray]:
 
 def _exportar_com_movimento(projeto_dir, original, meta, trechos, total, largura, altura, gravar, com_cor,
                             mov, trilha, flag_filtro, codificacao, saida, progresso, melhorar="nao",
-                            enq=None, hdr=None, taxa=Fraction(30), cor=None):
+                            enq=None, hdr=None, taxa=Fraction(30), cor=None, cancelar=None):
     """Três etapas em fila: ffmpeg (cortes + cor) -> Python (formato, enquadramento, zoom e
     tracking em cada quadro, com precisão de subpixel) -> ffmpeg (legenda e codificação).
     Os quadros passam em YUV, como estão no vídeo: sem converter para RGB e voltar (a cor não
@@ -305,69 +368,61 @@ def _exportar_com_movimento(projeto_dir, original, meta, trechos, total, largura
     w, h = (w0, h0) if pf > 0.98 else (max(2, int(round(w0 * pf / 2) * 2)), max(2, int(round(h0 * pf / 2) * 2)))
     ks = _quadros(trechos, taxa)
     q = float(taxa)
-    # 1) Áudio já cortado, num arquivo pronto antes de o vídeo começar.
-    (projeto_dir / "filtro_audio.txt").write_text(";\n".join(_filtro_audio(ks, taxa)), encoding="utf-8")
-    flag_audio = [flag_filtro[0], "filtro_audio.txt"]
-    proc = subprocess.run(
-        ["ffmpeg", "-y", "-v", "error", "-i", str(original.resolve()), *flag_audio,
-         "-map", "[ac]", "-c:a", "pcm_s16le", "-ar", "48000", "audio_final.wav"],
-        cwd=projeto_dir, capture_output=True, text=True, encoding="utf-8", errors="replace",
-    )
-    if proc.returncode != 0:
-        raise RuntimeError(f"ffmpeg falhou no áudio: {proc.stderr[-1500:]}")
+    with _Processos(cancelar) as procs:
+        # 1) Áudio já cortado, num arquivo pronto antes de o vídeo começar.
+        (projeto_dir / "filtro_audio.txt").write_text(";\n".join(_filtro_audio(ks, taxa)), encoding="utf-8")
+        flag_audio = [flag_filtro[0], "filtro_audio.txt"]
+        audio = procs.abrir(["ffmpeg", "-y", "-v", "error", "-i", str(original.resolve()), *flag_audio,
+                             "-map", "[ac]", "-c:a", "pcm_s16le", "-ar", "48000", "audio_final.wav"],
+                            cwd=projeto_dir, stdout=subprocess.DEVNULL)
+        procs.esperar(audio, "no áudio")
 
-    # 2) Quadros crus (cortes + cor) -> Python (zoom/tracking) -> 3) ffmpeg final.
-    filtro = montar_filtro(trechos, W, H, w0, h0, gravar, com_cor, quadros_brutos=True,
-                           hdr=hdr, tamanho_bruto=(w, h), taxa=taxa, cor=cor)
-    (projeto_dir / "filtro.txt").write_text(filtro, encoding="utf-8")
-    entrada = subprocess.Popen(
-        ["ffmpeg", "-y", "-v", "error", "-i", str(original.resolve()), *flag_filtro,
-         "-map", "[vout]", "-f", "rawvideo", "-pix_fmt", "yuv420p", "pipe:1"],
-        cwd=projeto_dir, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-    )
-    # os quadros crus não levam a tabela de cor: ela é marcada de novo antes da legenda
-    etiqueta = (f"setparams=range=tv:color_primaries={cor['primarias']}:color_trc={cor['transferencia']}"
-                f":colorspace={cor['matriz']}")
-    saida_proc = subprocess.Popen(
-        ["ffmpeg", "-y", "-v", "error", "-f", "rawvideo", "-pix_fmt", "yuv420p", "-s", f"{W}x{H}",
-         "-r", str(taxa), "-i", "pipe:0", "-i", "audio_final.wav",
-         "-vf", ",".join([etiqueta] + filtro_saida(W, H, W, H, gravar, melhorar)),
-         "-map", "0:v", "-map", "1:a", *codificacao, "-shortest", saida],
-        cwd=projeto_dir, stdin=subprocess.PIPE, stderr=subprocess.PIPE,
-    )
-    para_original = _tempo_original(trechos)
-    cw, ch = (w + 1) // 2, (h + 1) // 2
-    ty, tc = w * h, cw * ch
-    tamanho = ty + 2 * tc
-    total_quadros = max(1, sum(b - a for a, b in ks))
-    n = 0
-    try:
-        while True:
-            bruto = entrada.stdout.read(tamanho)
-            if len(bruto) < tamanho:
-                break
-            buf = np.frombuffer(bruto, np.uint8)
-            my, mc = _matrizes_yuv(movimento.matriz(para_original(n / q), mov, trilha, enq, w, h, W, H))
-            for plano, mat, tam, fundo in ((buf[:ty].reshape(h, w), my, (W, H), 16),
-                                           (buf[ty:ty + tc].reshape(ch, cw), mc, (W // 2, H // 2), 128),
-                                           (buf[ty + tc:].reshape(ch, cw), mc, (W // 2, H // 2), 128)):
-                saida_proc.stdin.write(cv2.warpAffine(plano, mat, tam, flags=cv2.INTER_CUBIC,
-                                                      borderMode=cv2.BORDER_CONSTANT, borderValue=fundo).tobytes())
-            n += 1
-            if progresso and n % 15 == 0:
-                progresso(min(0.99, n / total_quadros))
-    except BrokenPipeError:
-        pass
-    finally:
-        if saida_proc.stdin and not saida_proc.stdin.closed:
+        # 2) Quadros crus (cortes + cor) -> Python (zoom/tracking) -> 3) ffmpeg final.
+        filtro = montar_filtro(trechos, W, H, w0, h0, gravar, com_cor, quadros_brutos=True,
+                               hdr=hdr, tamanho_bruto=(w, h), taxa=taxa, cor=cor)
+        (projeto_dir / "filtro.txt").write_text(filtro, encoding="utf-8")
+        entrada = procs.abrir(["ffmpeg", "-y", "-v", "error", "-i", str(original.resolve()), *flag_filtro,
+                               "-map", "[vout]", "-f", "rawvideo", "-pix_fmt", "yuv420p", "pipe:1"],
+                              cwd=projeto_dir, stdout=subprocess.PIPE)
+        # os quadros crus não levam a tabela de cor: ela é marcada de novo antes da legenda
+        etiqueta = (f"setparams=range=tv:color_primaries={cor['primarias']}:color_trc={cor['transferencia']}"
+                    f":colorspace={cor['matriz']}")
+        saida_proc = procs.abrir(
+            ["ffmpeg", "-y", "-v", "error", "-f", "rawvideo", "-pix_fmt", "yuv420p", "-s", f"{W}x{H}",
+             "-r", str(taxa), "-i", "pipe:0", "-i", "audio_final.wav",
+             "-vf", ",".join([etiqueta] + filtro_saida(W, H, W, H, gravar, melhorar)),
+             "-map", "0:v", "-map", "1:a", *codificacao, "-shortest", saida],
+            cwd=projeto_dir, stdin=subprocess.PIPE,
+        )
+        para_original = _tempo_original(trechos)
+        cw, ch = (w + 1) // 2, (h + 1) // 2
+        ty, tc = w * h, cw * ch
+        tamanho = ty + 2 * tc
+        total_quadros = max(1, sum(b - a for a, b in ks))
+        n = 0
+        try:
+            while True:
+                bruto = entrada.stdout.read(tamanho)
+                if len(bruto) < tamanho:
+                    break
+                buf = np.frombuffer(bruto, np.uint8)
+                my, mc = _matrizes_yuv(movimento.matriz(para_original(n / q), mov, trilha, enq, w, h, W, H))
+                for plano, mat, tam, fundo in ((buf[:ty].reshape(h, w), my, (W, H), 16),
+                                               (buf[ty:ty + tc].reshape(ch, cw), mc, (W // 2, H // 2), 128),
+                                               (buf[ty + tc:].reshape(ch, cw), mc, (W // 2, H // 2), 128)):
+                    saida_proc.stdin.write(cv2.warpAffine(plano, mat, tam, flags=cv2.INTER_CUBIC,
+                                                          borderMode=cv2.BORDER_CONSTANT, borderValue=fundo).tobytes())
+                n += 1
+                if progresso and n % 15 == 0:
+                    progresso(min(0.99, n / total_quadros))
+        except OSError:   # o ffmpeg final parou (no Windows vem como OSError): o erro dele aparece abaixo
+            pass
+        finally:
             try:
                 saida_proc.stdin.close()
-            except BrokenPipeError:
+            except OSError:
                 pass
-    erro_entrada = entrada.stderr.read().decode("utf-8", "replace")
-    erro_saida = saida_proc.stderr.read().decode("utf-8", "replace")
-    if entrada.wait() != 0:
-        raise RuntimeError(f"ffmpeg falhou ao ler o vídeo: {erro_entrada[-1500:]}")
-    if saida_proc.wait() != 0:
-        raise RuntimeError(f"ffmpeg falhou na exportação: {erro_saida[-1500:]}")
+        # primeiro o final: se ele parou, o de leitura ficou esperando e é fechado ao sair daqui
+        procs.esperar(saida_proc, "na exportação")
+        procs.esperar(entrada, "ao ler o vídeo")
     (projeto_dir / "audio_final.wav").unlink(missing_ok=True)

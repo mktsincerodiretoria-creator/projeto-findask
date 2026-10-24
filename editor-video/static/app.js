@@ -2454,7 +2454,7 @@ function renderExportacoes() {
     </li>`).join("");
 }
 
-$("#btn-exportar").addEventListener("click", () => {
+$("#btn-exportar").addEventListener("click", async () => {
   const p = estado.projeto;
   const m = p.meta;
   const formato = enq().formato === "original" ? "formato original" : `formato ${enq().formato}`;
@@ -2469,6 +2469,13 @@ $("#btn-exportar").addEventListener("click", () => {
   $("#exp-iniciar").disabled = false;
   renderExportacoes();
   dlgExp.showModal();
+  // a janela foi fechada no meio de uma exportação: mostra o andamento dela (e não as opções)
+  const atual = await api(`/api/projetos/${p.id}`).catch(() => null);
+  const tarefa = atual?.tarefa;
+  if (estado.projeto?.id === p.id && (tarefa?.status === "rodando" || tarefa?.status === "na_fila")) {
+    mostrarAndamento(tarefa);
+    acompanharExportacao(p.id);
+  }
 });
 
 $('#exp-opcoes select[name="legenda"]').addEventListener("change", (e) => {
@@ -2479,6 +2486,75 @@ $('#exp-opcoes select[name="legenda"]').addEventListener("change", (e) => {
   }
 });
 
+// Quanto falta: pela velocidade que a barra andou desde que começamos a olhar.
+let ritmoExportacao = null;
+function faltam(f) {
+  const agora = performance.now();
+  if (!ritmoExportacao || f < ritmoExportacao.f) ritmoExportacao = { t: agora, f };
+  const andou = f - ritmoExportacao.f, passou = (agora - ritmoExportacao.t) / 1000;
+  if (andou < 0.02 || passou < 3) return "";
+  const s = Math.max(1, Math.round(passou / andou * (1 - f)));
+  return s < 60 ? ` · faltam ${s} s` : ` · faltam ${Math.round(s / 60)} min`;
+}
+
+function mostrarAndamento(tarefa) {
+  $("#exp-opcoes").hidden = true;
+  $("#exp-erro").hidden = true;
+  $("#exp-progresso").hidden = false;
+  $("#exp-cancelar").hidden = false;
+  $("#exp-iniciar").disabled = true;
+  const f = tarefa?.progresso || 0;
+  $("#exp-barra").style.width = `${f * 100}%`;
+  $("#exp-pct").textContent = tarefa?.status === "na_fila" ? "Na fila…" : `Exportando… ${Math.round(f * 100)}%${faltam(f)}`;
+}
+
+function voltarAsOpcoes(erro = "") {
+  $("#exp-progresso").hidden = true;
+  $("#exp-opcoes").hidden = false;
+  $("#exp-iniciar").disabled = false;
+  $("#exp-erro").textContent = erro;
+  $("#exp-erro").hidden = !erro;
+}
+
+// Acompanha a exportação até o fim (um acompanhamento só, mesmo fechando e abrindo a janela).
+let acompanhando = null;
+function acompanharExportacao(pid) {
+  if (acompanhando === pid) return;
+  acompanhando = pid;
+  ritmoExportacao = null;
+  const timer = setInterval(async () => {
+    const atual = await api(`/api/projetos/${pid}`).catch(() => null);
+    const tarefa = atual?.tarefa;
+    if (!tarefa) return;
+    const aqui = estado.projeto?.id === pid;
+    if (tarefa.status === "rodando" || tarefa.status === "na_fila") {
+      if (aqui && !$("#exp-progresso").hidden) mostrarAndamento(tarefa);
+      return;
+    }
+    clearInterval(timer);
+    acompanhando = null;
+    if (tarefa.status === "concluida") {
+      const pronto = (atual.exportacoes || []).slice(-1)[0];
+      if (pronto) baixarArquivo(`/api/projetos/${pid}/arquivos/${pronto.video}`, pronto.video);
+      if (aqui) {
+        estado.projeto.exportacoes = atual.exportacoes;
+        $("#exp-barra").style.width = "100%";
+        $("#exp-pct").textContent = "Pronto! O download começou sozinho. Se não aparecer, toque em “Baixar vídeo” abaixo.";
+        $("#exp-cancelar").hidden = true;
+        $("#exp-iniciar").disabled = false;
+        $("#exp-opcoes").hidden = false;
+        renderExportacoes();
+      }
+      if (!dlgExp.open) aviso("Vídeo exportado: o download começou.");
+    } else {
+      const motivo = tarefa.erro || "A exportação não terminou.";
+      const voce = tarefa.status === "cancelada" && motivo === "Exportação cancelada.";   // você cancelou
+      if (aqui) voltarAsOpcoes(voce ? "" : motivo);
+      if (voce || !dlgExp.open) aviso(motivo, !voce);
+    }
+  }, 800);
+}
+
 $("#exp-iniciar").addEventListener("click", async () => {
   const p = estado.projeto;
   const opcoes = Object.fromEntries($$("#exp-opcoes select").map((s) => [s.name, s.value]));
@@ -2486,39 +2562,18 @@ $("#exp-iniciar").addEventListener("click", async () => {
   try {
     await enviar(`/api/projetos/${p.id}/exportar`, "POST", opcoes);
   } catch (e) {
-    $("#exp-erro").textContent = e.message;
-    $("#exp-erro").hidden = false;
-    return;
+    // já tem uma exportação rodando deste vídeo: em vez de erro, mostra o andamento dela
+    if (!/andamento/.test(e.message)) return voltarAsOpcoes(e.message);
   }
-  $("#exp-iniciar").disabled = true;
-  $("#exp-opcoes").hidden = true;
-  $("#exp-progresso").hidden = false;
-  $("#exp-erro").hidden = true;
-  const timer = setInterval(async () => {
-    const atual = await api(`/api/projetos/${p.id}`).catch(() => null);
-    const tarefa = atual?.tarefa;
-    if (!tarefa) return;
-    $("#exp-barra").style.width = `${(tarefa.progresso || 0) * 100}%`;
-    $("#exp-pct").textContent = tarefa.status === "na_fila" ? "Na fila…" : `Exportando… ${Math.round((tarefa.progresso || 0) * 100)}%`;
-    if (tarefa.status === "concluida") {
-      clearInterval(timer);
-      p.exportacoes = atual.exportacoes;
-      const pronto = (atual.exportacoes || []).slice(-1)[0];
-      if (pronto) baixarArquivo(`/api/projetos/${p.id}/arquivos/${pronto.video}`, pronto.video);
-      $("#exp-pct").textContent = "Pronto! O download começou sozinho. Se não aparecer, toque em “Baixar vídeo” abaixo.";
-      if (!dlgExp.open) aviso("Vídeo exportado: o download começou.");
-      $("#exp-iniciar").disabled = false;
-      $("#exp-opcoes").hidden = false;
-      renderExportacoes();
-    } else if (tarefa.status === "erro") {
-      clearInterval(timer);
-      $("#exp-erro").textContent = tarefa.erro;
-      $("#exp-erro").hidden = false;
-      $("#exp-progresso").hidden = true;
-      $("#exp-opcoes").hidden = false;
-      $("#exp-iniciar").disabled = false;
-    }
-  }, 800);
+  mostrarAndamento({ status: "na_fila", progresso: 0 });
+  acompanharExportacao(p.id);
+});
+
+$("#exp-cancelar").addEventListener("click", async () => {
+  $("#exp-cancelar").hidden = true;
+  $("#exp-pct").textContent = "Cancelando…";
+  await enviar(`/api/projetos/${estado.projeto.id}/exportar/cancelar`, "POST", {}).catch(() => null);
+  acompanharExportacao(estado.projeto.id);
 });
 
 /* ------------------------------------------------------------ atualização */
