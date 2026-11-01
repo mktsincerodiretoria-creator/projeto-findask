@@ -130,6 +130,11 @@ button:disabled { cursor: not-allowed; opacity: .5; }
 .selo { font-size: 11.5px; padding: 2px 8px; border-radius: 99px; background: var(--fundo-3); color: var(--texto-2); }
 .selo.pronto { background: #0f2e2b; color: var(--acento); }
 .selo.erro { background: #3a1616; color: var(--perigo); }
+.selo.exportando { background: #2b2410; color: #f5c542; font-variant-numeric: tabular-nums; }
+.exp-pct-topo { font-variant-numeric: tabular-nums; }
+.exp-detalhe { margin-top: 4px; }
+.exp-detalhe.alerta { color: #f5c542; }
+.versao-rodape { text-align: center; color: var(--texto-2); font-size: 12px; margin: 24px 0 8px; }
 .vazio { color: var(--texto-2); padding: 12px 0; }
 
 /* ---------- processando ---------- */

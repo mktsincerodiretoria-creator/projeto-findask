@@ -114,11 +114,25 @@ def _projeto_ou_404(pid: str) -> dict:
 def _com_resumo(dados: dict) -> dict:
     if dados.get("meta"):
         dados["resumo"] = analise.resumo(dados["cortes"], dados["meta"]["duracao"])
+    ativa = exportacoes.get(dados.get("id"))
     tarefa = dados.get("tarefa") or {}
-    if tarefa.get("status") in ("rodando", "na_fila") and dados.get("id") not in exportacoes:
+    if ativa:
+        dados["tarefa"] = _andamento(ativa)
+    elif tarefa.get("status") in ("rodando", "na_fila"):
         # ficou marcada como "rodando" mas não tem nada rodando: não pode travar o botão Exportar
         dados["tarefa"] = {**tarefa, "status": "erro", "erro": "A exportação foi interrompida. Clique em Exportar agora."}
     return dados
+
+
+def _andamento(ativa: dict) -> dict:
+    """Como está a exportação agora (fica na memória: atualizar o arquivo a cada passo é que dava
+    erro no Windows). "parada" = segundos sem andar."""
+    agora = time.monotonic()
+    if not ativa.get("rodando"):
+        return {"tipo": "exportar", "status": "na_fila", "progresso": 0.0, "decorrido": 0, "parada": 0}
+    return {"tipo": "exportar", "status": "rodando", "progresso": ativa.get("progresso", 0.0),
+            "decorrido": round(agora - ativa["inicio"]), "parada": round(agora - ativa["ultimo"]),
+            "limite": PARADA_MAX}
 
 
 # ---------------------------------------------------------------- tarefas em segundo plano
@@ -224,14 +238,14 @@ def tarefa_exportar(pid: str, opcoes: dict):
         if ativa is not None and exportacoes.get(pid) is ativa:
             exportacoes.pop(pid, None)
         return
-    ativa.update(rodando=True, ultimo=time.monotonic())
+    ativa.update(rodando=True, inicio=time.monotonic(), ultimo=time.monotonic(), progresso=0.0)
 
     def prog(f):
         ativa["ultimo"] = time.monotonic()
-        projetos.atualizar(pid, tarefa={"tipo": "exportar", "status": "rodando", "progresso": round(f, 3)})
+        ativa["progresso"] = round(f, 3)
 
     try:
-        prog(0.0)
+        projetos.atualizar(pid, tarefa={"tipo": "exportar", "status": "rodando", "progresso": 0.0})
         dados = projetos.carregar(pid)
         p = projetos.pasta(pid)
         n = len(dados.get("exportacoes", [])) + 1
@@ -501,6 +515,9 @@ def listar_projetos(request: Request):
     itens = projetos.listar()
     if not quem["admin"]:
         itens = [i for i in itens if i["dono"] == quem["login"]]
+    for item in itens:   # exportação rodando aparece na lista ("Exportando 45%")
+        if item["id"] in exportacoes:
+            item["exportacao"] = _andamento(exportacoes[item["id"]])
     return itens
 
 

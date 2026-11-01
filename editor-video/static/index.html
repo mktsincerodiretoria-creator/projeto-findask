@@ -27,7 +27,7 @@
       <button class="btn-fantasma" id="btn-usuarios" title="Contas de usuário" hidden>👥 <span class="rotulo">Usuários</span><span class="badge" id="badge-pendentes" hidden></span></button>
       <button class="btn-fantasma" id="btn-conta" title="Minha conta" hidden>👤 <span class="rotulo" id="conta-nome"></span></button>
       <button class="btn-fantasma" id="btn-config" title="Configurações">⚙ <span class="rotulo">Configurações</span></button>
-      <button class="btn-primario" id="btn-exportar" hidden>⬇ <span class="rotulo">Exportar</span></button>
+      <button class="btn-primario" id="btn-exportar" hidden><span id="exp-icone">⬇</span> <span class="rotulo" id="exp-rotulo">Exportar</span><span class="exp-pct-topo" id="exp-pct-topo" hidden></span></button>
     </div>
   </header>
 
@@ -70,6 +70,7 @@
       <h2>Projetos recentes</h2>
       <ul id="lista-projetos" class="lista-projetos"></ul>
     </section>
+    <p class="versao-rodape">CorteFácil versão <span id="versao-rodape"></span></p>
   </main>
 
   <!-- ============ PROCESSANDO ============ -->
@@ -301,6 +302,7 @@
       <div id="exp-progresso" hidden>
         <div class="barra grande"><div class="barra-cheia" id="exp-barra"></div></div>
         <p id="exp-pct">Exportando…</p>
+        <p class="dica exp-detalhe" id="exp-detalhe"></p>
         <button type="button" id="exp-cancelar" class="btn-fantasma">Cancelar exportação</button>
       </div>
       <div class="erro-caixa" id="exp-erro" hidden></div>

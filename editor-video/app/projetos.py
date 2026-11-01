@@ -50,20 +50,32 @@ def criar(nome: str, extensao: str, dono: str | None = None) -> tuple[str, Path]
     return pid, p
 
 
+def _insistir(fazer):
+    """No Windows o antivírus (e o indexador) abre o arquivo por um instante logo depois de cada
+    gravação: em vez de dar "acesso negado" (o que derrubava a exportação no meio), tenta de novo."""
+    for tentativa in range(60):
+        try:
+            return fazer()
+        except PermissionError:
+            if tentativa == 59:
+                raise
+            time.sleep(0.05)
+
+
 def carregar(pid: str) -> dict:
     arquivo = pasta(pid) / "projeto.json"
     if not arquivo.exists():
         raise KeyError(pid)
     with _trava:
-        return json.loads(arquivo.read_text(encoding="utf-8"))
+        return json.loads(_insistir(lambda: arquivo.read_text(encoding="utf-8")))
 
 
 def salvar(pid: str, dados: dict) -> None:
     arquivo = pasta(pid) / "projeto.json"
+    texto = json.dumps(dados, ensure_ascii=False)
     with _trava:
         tmp = arquivo.with_suffix(".tmp")
-        tmp.write_text(json.dumps(dados, ensure_ascii=False), encoding="utf-8")
-        tmp.replace(arquivo)
+        _insistir(lambda: (tmp.write_text(texto, encoding="utf-8"), tmp.replace(arquivo)))
 
 
 def atualizar(pid: str, **campos) -> dict:

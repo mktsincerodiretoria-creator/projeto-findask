@@ -212,20 +212,33 @@ async function carregarInicio() {
   mostrarTela("inicio");
   montarOpcoes($("#opcoes-iniciais"), estado.status.config_padrao, { inicial: true });
   for (const id of ["#fazer-espacos", "#fazer-erros", "#fazer-legenda"]) $(id).checked = true;   // sempre vêm ligados
+  $("#versao-rodape").textContent = estado.status.versao || "";
+  atualizarLista();
+}
+
+let listaTimer = null;
+async function atualizarLista() {
+  clearTimeout(listaTimer);
   const lista = $("#lista-projetos");
-  const itens = await api("/api/projetos");
+  const itens = await api("/api/projetos").catch(() => null);
+  if (!itens || $("#tela-inicio").hidden) return;
   if (!itens.length) {
     lista.innerHTML = `<li class="vazio" style="cursor:default">Nenhum projeto ainda. Envie um vídeo acima para começar.</li>`;
     return;
   }
+  // exportação rodando: a lista vai mostrando o andamento sozinha
+  if (itens.some((p) => p.exportacao)) listaTimer = setTimeout(atualizarLista, 2000);
   const rotulos = { pronto: "Pronto", erro: "Erro", processando: "Analisando", na_fila: "Na fila", enviado: "Enviando" };
+  const selo = (p) => !p.exportacao ? `<span class="selo ${p.status}">${rotulos[p.status] || p.status}</span>`
+    : `<span class="selo exportando">${p.exportacao.status === "na_fila" ? "Exportação na fila"
+      : `Exportando ${Math.round((p.exportacao.progresso || 0) * 100)}%`}</span>`;
   lista.innerHTML = itens.map((p) => `
     <li data-id="${p.id}">
       <span class="nome">${escapar(p.nome)}${estado.status.usuario?.admin && p.dono && p.dono !== "admin"
         ? `<span class="selo-dono">👤 ${escapar(p.dono)}</span>` : ""}</span>
       <span class="info">${p.meta ? fmt(p.meta.duracao) + " · " + p.meta.largura + "×" + p.meta.altura : ""}</span>
       <span class="info">${new Date(p.criado_em * 1000).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}</span>
-      <span class="selo ${p.status}">${rotulos[p.status] || p.status}</span>
+      ${selo(p)}
       <button class="icone" data-apagar="${p.id}" title="Apagar projeto">🗑</button>
     </li>`).join("");
 }
@@ -236,7 +249,7 @@ $("#lista-projetos").addEventListener("click", async (e) => {
     e.stopPropagation();
     if (!confirm("Apagar este projeto e os vídeos exportados dele?")) return;
     await api(`/api/projetos/${apagar.dataset.apagar}`, { method: "DELETE" });
-    carregarInicio();
+    atualizarLista();   // (sem desmarcar o que você escolheu nas chaves de cima)
     return;
   }
   const li = e.target.closest("li[data-id]");
@@ -450,6 +463,8 @@ for (const v of videos) {
 
 async function abrirEditor(p) {
   estado.projeto = p;
+  topoExportacao(p.tarefa);
+  if (p.tarefa?.status === "rodando" || p.tarefa?.status === "na_fila") acompanharExportacao(p.id);
   estado.historico = [];
   estado.refazer = [];
   $("#refazer").disabled = true;
@@ -2490,18 +2505,19 @@ $("#btn-exportar").addEventListener("click", async () => {
   const selLeg = $('#exp-opcoes select[name="legenda"]');
   if (estilo().ativa === false) selLeg.value = "nenhuma";
   else if (selLeg.value === "nenhuma") selLeg.value = "gravada";
-  $("#exp-progresso").hidden = true;
-  $("#exp-erro").hidden = true;
-  $("#exp-opcoes").hidden = false;
-  $("#exp-iniciar").disabled = false;
+  voltarAsOpcoes();
   renderExportacoes();
   dlgExp.showModal();
-  // a janela foi fechada no meio de uma exportação: mostra o andamento dela (e não as opções)
+  // exportação deste vídeo rodando (a janela foi fechada no meio): mostra o andamento dela;
+  // a última deu erro: mostra o motivo (para você ver o que aconteceu)
   const atual = await api(`/api/projetos/${p.id}`).catch(() => null);
-  const tarefa = atual?.tarefa;
-  if (estado.projeto?.id === p.id && (tarefa?.status === "rodando" || tarefa?.status === "na_fila")) {
-    mostrarAndamento(tarefa);
+  if (!atual || estado.projeto?.id !== p.id) return;
+  const t = atual.tarefa;
+  if (t?.status === "rodando" || t?.status === "na_fila") {
+    mostrarAndamento(t);
     acompanharExportacao(p.id);
+  } else if ((t?.status === "erro" || t?.status === "cancelada") && t.erro && t.erro !== "Exportação cancelada.") {
+    voltarAsOpcoes(`A última exportação não terminou: ${t.erro}`);
   }
 });
 
@@ -2513,26 +2529,40 @@ $('#exp-opcoes select[name="legenda"]').addEventListener("change", (e) => {
   }
 });
 
-// Quanto falta: pela velocidade que a barra andou desde que começamos a olhar.
-let ritmoExportacao = null;
-function faltam(f) {
-  const agora = performance.now();
-  if (!ritmoExportacao || f < ritmoExportacao.f) ritmoExportacao = { t: agora, f };
-  const andou = f - ritmoExportacao.f, passou = (agora - ritmoExportacao.t) / 1000;
-  if (andou < 0.02 || passou < 3) return "";
-  const s = Math.max(1, Math.round(passou / andou * (1 - f)));
-  return s < 60 ? ` · faltam ${s} s` : ` · faltam ${Math.round(s / 60)} min`;
+function duracaoTexto(s) {
+  s = Math.max(0, Math.round(s));
+  if (s < 60) return `${s} s`;
+  const m = Math.floor(s / 60), r = s % 60;
+  return r ? `${m} min ${r} s` : `${m} min`;
 }
 
-function mostrarAndamento(tarefa) {
+// Quanto falta: pelo tempo que já levou até aqui (o servidor conta desde o começo).
+function quantoFalta(t) {
+  const f = t.progresso || 0, passou = t.decorrido || 0;
+  if (f < 0.02 || passou < 5) return "calculando quanto falta…";
+  const s = passou / f * (1 - f);
+  return s < 60 ? `faltam uns ${Math.max(5, Math.round(s / 5) * 5)} s` : `faltam uns ${Math.ceil(s / 60)} min`;
+}
+
+function mostrarAndamento(t) {
   $("#exp-opcoes").hidden = true;
   $("#exp-erro").hidden = true;
   $("#exp-progresso").hidden = false;
   $("#exp-cancelar").hidden = false;
   $("#exp-iniciar").disabled = true;
-  const f = tarefa?.progresso || 0;
+  const f = t?.progresso || 0;
   $("#exp-barra").style.width = `${f * 100}%`;
-  $("#exp-pct").textContent = tarefa?.status === "na_fila" ? "Na fila…" : `Exportando… ${Math.round(f * 100)}%${faltam(f)}`;
+  if (t?.status === "na_fila") {
+    $("#exp-pct").textContent = "Na fila… começa assim que a exportação anterior terminar.";
+    $("#exp-detalhe").textContent = "";
+    return;
+  }
+  $("#exp-pct").textContent = `Exportando… ${Math.round(f * 100)}% · ${quantoFalta(t || {})}`;
+  const parada = t?.parada || 0;
+  $("#exp-detalhe").textContent = parada >= 60
+    ? `⚠ Sem avançar há ${duracaoTexto(parada)}. Se não voltar a andar, ela é cancelada sozinha em ${duracaoTexto(Math.max(0, (t.limite || 600) - parada))} e aí é só exportar de novo.`
+    : `Tudo certo: rodando há ${duracaoTexto(t?.decorrido || 0)}. Pode fechar esta janela; o vídeo baixa sozinho no fim.`;
+  $("#exp-detalhe").classList.toggle("alerta", parada >= 60);
 }
 
 function voltarAsOpcoes(erro = "") {
@@ -2543,43 +2573,56 @@ function voltarAsOpcoes(erro = "") {
   $("#exp-erro").hidden = !erro;
 }
 
-// Acompanha a exportação até o fim (um acompanhamento só, mesmo fechando e abrindo a janela).
-let acompanhando = null;
+// Botão Exportar lá em cima mostra o andamento (mesmo com a janela fechada).
+function topoExportacao(t) {
+  const ativa = t && (t.status === "rodando" || t.status === "na_fila");
+  $("#exp-icone").textContent = ativa ? "⏳" : "⬇";
+  $("#exp-rotulo").textContent = ativa ? "Exportando" : "Exportar";
+  $("#exp-pct-topo").hidden = !ativa;
+  $("#exp-pct-topo").textContent = !ativa ? "" : t.status === "na_fila" ? " na fila" : ` ${Math.round((t.progresso || 0) * 100)}%`;
+}
+
+// Acompanha cada exportação até o fim (uma vez por vídeo, mesmo fechando e abrindo a janela,
+// voltando para o início ou abrindo outro vídeo): no fim baixa sozinho.
+const seguindo = new Map();
 function acompanharExportacao(pid) {
-  if (acompanhando === pid) return;
-  acompanhando = pid;
-  ritmoExportacao = null;
-  const timer = setInterval(async () => {
+  if (seguindo.has(pid)) return;
+  seguindo.set(pid, setInterval(async () => {
     const atual = await api(`/api/projetos/${pid}`).catch(() => null);
-    const tarefa = atual?.tarefa;
-    if (!tarefa) return;
-    const aqui = estado.projeto?.id === pid;
-    if (tarefa.status === "rodando" || tarefa.status === "na_fila") {
-      if (aqui && !$("#exp-progresso").hidden) mostrarAndamento(tarefa);
+    const t = atual?.tarefa;
+    if (!t) return;
+    const aqui = estado.projeto?.id === pid && !$("#tela-editor").hidden;
+    if (t.status === "rodando" || t.status === "na_fila") {
+      if (aqui) {
+        topoExportacao(t);
+        if (dlgExp.open) mostrarAndamento(t);
+      }
       return;
     }
-    clearInterval(timer);
-    acompanhando = null;
-    if (tarefa.status === "concluida") {
+    clearInterval(seguindo.get(pid));
+    seguindo.delete(pid);
+    if (aqui) topoExportacao(null);
+    if (t.status === "concluida") {
       const pronto = (atual.exportacoes || []).slice(-1)[0];
       if (pronto) baixarArquivo(`/api/projetos/${pid}/arquivos/${pronto.video}`, pronto.video);
-      if (aqui) {
+      if (estado.projeto?.id === pid) {
         estado.projeto.exportacoes = atual.exportacoes;
         $("#exp-barra").style.width = "100%";
         $("#exp-pct").textContent = "Pronto! O download começou sozinho. Se não aparecer, toque em “Baixar vídeo” abaixo.";
+        $("#exp-detalhe").textContent = "";
         $("#exp-cancelar").hidden = true;
         $("#exp-iniciar").disabled = false;
         $("#exp-opcoes").hidden = false;
         renderExportacoes();
       }
-      if (!dlgExp.open) aviso("Vídeo exportado: o download começou.");
+      if (!dlgExp.open) aviso(`Vídeo exportado (${atual.nome}): o download começou.`);
     } else {
-      const motivo = tarefa.erro || "A exportação não terminou.";
-      const voce = tarefa.status === "cancelada" && motivo === "Exportação cancelada.";   // você cancelou
-      if (aqui) voltarAsOpcoes(voce ? "" : motivo);
+      const motivo = t.erro || "A exportação não terminou.";
+      const voce = t.status === "cancelada" && motivo === "Exportação cancelada.";   // você cancelou
+      if (estado.projeto?.id === pid) voltarAsOpcoes(voce ? "" : motivo);
       if (voce || !dlgExp.open) aviso(motivo, !voce);
     }
-  }, 800);
+  }, 1000));
 }
 
 $("#exp-iniciar").addEventListener("click", async () => {
@@ -2593,6 +2636,7 @@ $("#exp-iniciar").addEventListener("click", async () => {
     if (!/andamento/.test(e.message)) return voltarAsOpcoes(e.message);
   }
   mostrarAndamento({ status: "na_fila", progresso: 0 });
+  topoExportacao({ status: "na_fila" });
   acompanharExportacao(p.id);
 });
 
@@ -2818,7 +2862,7 @@ $("#lista-usuarios").addEventListener("click", async (e) => {
       aviso(`Usuário ${login} removido.`);
     } else return;
     await carregarUsuarios();
-    if (!estado.projeto) carregarInicio();
+    if (!estado.projeto) atualizarLista();
   } catch (err) { $("#usuarios-erro").textContent = err.message; }
 });
 

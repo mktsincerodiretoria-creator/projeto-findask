@@ -100,3 +100,39 @@ def test_cancelar_fecha_processo_parado():
             p.stdout.read()
             procs.esperar(p, "no teste")
     assert time.time() - t0 < 10
+
+
+def test_windows_bloqueando_o_arquivo_por_um_instante_nao_da_erro(tmp_path, monkeypatch):
+    """O antivírus do Windows abre o projeto.json logo depois de cada gravação: insiste."""
+    monkeypatch.setenv("EDITOR_DADOS", str(tmp_path / "dados"))
+    from app import projetos
+    importlib.reload(projetos)
+    pid, _ = projetos.criar("v.mp4", ".mp4")
+    original = type(projetos.pasta(pid)).replace
+    falhas = {"n": 0}
+
+    def replace_bloqueado(self, alvo):
+        if falhas["n"] < 3:
+            falhas["n"] += 1
+            raise PermissionError(13, "Acesso negado (arquivo aberto por outro programa)")
+        return original(self, alvo)
+    monkeypatch.setattr(type(projetos.pasta(pid)), "replace", replace_bloqueado)
+    projetos.atualizar(pid, status="pronto")
+    assert falhas["n"] == 3 and projetos.carregar(pid)["status"] == "pronto"
+
+
+def test_andamento_ao_vivo_sem_gravar_o_projeto_a_cada_passo(app_exportar, monkeypatch):
+    main, projetos, c = app_exportar
+    pid = _projeto(projetos, 30)
+    gravacoes = []
+    salvar = projetos.salvar
+    monkeypatch.setattr(projetos, "salvar", lambda p, d: (gravacoes.append(p), salvar(p, d)))
+    assert c.post(f"/api/projetos/{pid}/exportar", json={"legenda": "nenhuma", "velocidade": "rapida"}).status_code == 200
+    t = _esperar(lambda: (lambda x: x if x["status"] == "rodando" and x["progresso"] > 0 else None)(
+        c.get(f"/api/projetos/{pid}").json()["tarefa"]))
+    assert t["decorrido"] >= 0 and t["parada"] >= 0 and t["limite"] == main.PARADA_MAX
+    item = next(i for i in c.get("/api/projetos").json() if i["id"] == pid)
+    assert item["exportacao"]["status"] == "rodando"          # a lista mostra "Exportando 45%"
+    _esperar(lambda: c.get(f"/api/projetos/{pid}").json()["tarefa"]["status"] == "concluida", 180)
+    assert len(gravacoes) <= 3   # começo e fim (antes: várias vezes por segundo, o que dava erro no Windows)
+    assert "exportacao" not in next(i for i in c.get("/api/projetos").json() if i["id"] == pid)

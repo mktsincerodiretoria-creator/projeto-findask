@@ -1,11 +1,11 @@
 """Versão do CorteFácil e de onde vêm as atualizações."""
 
-VERSAO = "2.7.0"
+VERSAO = "2.7.1"
 
 NOVIDADES = [
-    "Ao subir o vídeo, escolha o que fazer: Cortar espaços, Tirar erros e Legenda (todos já vêm marcados)",
-    "Só legenda num vídeo que você já editou, ou só os cortes sem legenda: é só desmarcar",
-    "Exportação: janela mostra o andamento, botão Cancelar e tempo restante (versão 2.6.1)",
+    "Exportação sempre à vista: o botão Exportar e a lista de projetos mostram a % mesmo com a janela fechada",
+    "Ao abrir de novo: andamento, há quanto tempo está rodando, quanto falta e aviso se parar; se a última deu erro, mostra o motivo",
+    "Corrigido no Windows: a exportação não cai mais no meio por causa do antivírus abrindo o arquivo do projeto",
 ]
 
 # Repositório público de onde o programa baixa as atualizações.
