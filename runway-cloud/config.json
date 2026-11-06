@@ -1,0 +1,12 @@
+{
+  "budget_usd": 0,
+  "budget_authorization": null,
+  "pricing_checked": "2026-11-06",
+  "pricing_source": "https://docs.dev.runwayml.com/guides/pricing/",
+  "usd_per_credit": 0.01,
+  "credits_per_second": {
+    "gen4.5": 12,
+    "gen4_turbo": 5,
+    "hailuo3": 10
+  }
+}

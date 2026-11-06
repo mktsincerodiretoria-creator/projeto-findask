@@ -1,0 +1,12 @@
+{
+  "id": "teste-gen45-01",
+  "image": "../assets/caminhao.jpg",
+  "model": "gen4.5",
+  "duration": 5,
+  "ratio": "832:1104",
+  "prompt": "Subtle natural breathing and a tiny leg swing. Keep the same face frontal, the same clothing, hand gestures and background. Nearly stationary handheld camera. No speaking.",
+  "timeline": {
+    "from_frame": 0,
+    "fps": 24
+  }
+}

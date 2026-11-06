@@ -1,0 +1,8 @@
+.secrets
+.env
+.env.*
+jobs
+assets
+**/node_modules
+**/out
+**/__pycache__

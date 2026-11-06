@@ -1,0 +1,11 @@
+.secrets/
+.env
+.env.*
+!.env.example
+jobs/
+assets/*
+node_modules/
+remotion/out/
+__pycache__/
+*.pyc
+*.lock

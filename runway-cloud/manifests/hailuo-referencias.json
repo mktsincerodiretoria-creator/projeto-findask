@@ -1,0 +1,16 @@
+{
+  "id": "teste-hailuo-01",
+  "image": "../assets/caminhao.jpg",
+  "model": "hailuo3",
+  "duration": 5,
+  "ratio": "3:4",
+  "prompt": "Image 1 defines the truck scene, clothing, pose and composition. Images 2 and 3 define only the exact face of this same adult man. Keep face nearly frontal, tiny leg swing and subtle breathing, nearly stationary camera. Preserve the original single raised index finger on each hand. Preserve facial proportions, beard, hairline and skin texture. Do not copy the indoor background, microphone or black shirt from face references. No speaking.",
+  "timeline": {
+    "from_frame": 0,
+    "fps": 24
+  },
+  "references": [
+    "assets/rosto-frontal.png",
+    "assets/rosto-expressao.png"
+  ]
+}
