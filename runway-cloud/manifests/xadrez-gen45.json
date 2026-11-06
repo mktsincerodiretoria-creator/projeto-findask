@@ -1,0 +1,9 @@
+{
+  "id": "xadrez-abertura-gen45-01",
+  "image": "../assets/xadrez-canva.png",
+  "model": "gen4.5",
+  "duration": 10,
+  "ratio": "960:960",
+  "prompt": "Cinematic slow push-in on the same scene. The two hooded figures' hands pull the puppet strings, and the strings visibly move the chess pieces: a king slides forward, pawns tilt and step on the board. The central lightning bolt flickers and crackles. Blue neon glow on the left and yellow neon glow on the right pulse softly, with drifting light particles and thin fog. Keep the composition, the boxes, the logos and the hooded faces unchanged and in shadow. Realistic lighting, smooth motion, no camera shake. No text, no new objects.",
+  "timeline": {"from_frame": 0, "fps": 24}
+}

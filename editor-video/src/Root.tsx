@@ -1,4 +1,5 @@
 import { Composition } from "remotion";
+import { AberturaXadrez } from "./AberturaXadrez";
 import { NeonDemo } from "./NeonDemo";
 import { Teste } from "./Teste";
 
@@ -15,6 +16,7 @@ export const RemotionRoot: React.FC = () => {
       defaultProps={{ titulo: "Remotion funcionando" }}
     />
     <Composition id="NeonDemo" component={NeonDemo} durationInFrames={90} fps={30} width={1080} height={1920} />
+    <Composition id="AberturaXadrez" component={AberturaXadrez} durationInFrames={240} fps={24} width={1080} height={960} />
     </>
   );
 };
