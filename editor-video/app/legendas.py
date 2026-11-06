@@ -22,7 +22,36 @@ ESTILO_PADRAO = {
     "posicao": "inferior",    # inferior | meio | superior
     "destaque": False,        # pinta a palavra que está sendo falada
     "cor_destaque": "#FFD400",
+    "animacao": "nenhuma",    # nenhuma | pop (a legenda entra crescendo) | palavra (cada palavra "pula" na fala)
+    "palavras_chave": False,  # pinta preços, números, Shopee, frete grátis...
+    "cor_chave": "#FFD400",
 }
+
+# Palavras que chamam atenção em vídeo de quem vende (sem acento, minúsculas). Números e preços
+# entram sempre; as palavras do dicionário (⚙ Configurações) também.
+PALAVRAS_CHAVE = {
+    "shopee", "frete", "gratis", "promocao", "desconto", "cupom", "oferta", "lucro", "lucrar", "lucrando",
+    "vendas", "faturamento", "faturar", "dinheiro", "barato", "segredo", "dica", "atencao", "erro", "erros",
+    "reais", "mil", "milhao", "milhoes",
+}
+PARES_CHAVE = {("mercado", "livre"), ("por", "cento")}
+
+
+def _normal(texto: str) -> str:
+    import unicodedata
+    sem = "".join(c for c in unicodedata.normalize("NFD", texto.lower()) if unicodedata.category(c) != "Mn")
+    return re.sub(r"[^\w$%]", "", sem)
+
+
+def palavras_chave(textos: list[str], extras: set[str] = frozenset()) -> list[bool]:
+    """Quais palavras pintar: números e preços, palavras de venda e as do seu dicionário."""
+    normais = [_normal(t) for t in textos]
+    marcadas = [bool(re.search(r"\d", n)) or n.startswith("r$") or n in PALAVRAS_CHAVE or n in extras
+                for n in normais]
+    for i in range(len(normais) - 1):
+        if (normais[i], normais[i + 1]) in PARES_CHAVE:
+            marcadas[i] = marcadas[i + 1] = True
+    return marcadas
 
 
 class Relogio:
@@ -106,6 +135,12 @@ def montar_blocos(palavras, cortes, duracao, estilo=None, proporcao: float = 16 
         atual.append(item)
     fechar()
 
+    # palavras-chave olhando o texto corrido (assim "mercado | livre" em duas legendas também conta)
+    todas = [w for bloco in blocos for w in bloco]
+    extras = {_normal(p) for p in vocabulario.palavras_certas()}
+    for w, chave in zip(todas, palavras_chave([w["texto"] for w in todas], extras)):
+        w["chave"] = chave
+
     resultado = []
     for idx, bloco in enumerate(blocos):
         ini = bloco[0]["ini_final"]
@@ -124,7 +159,7 @@ def montar_blocos(palavras, cortes, duracao, estilo=None, proporcao: float = 16 
             "fim_orig": bloco[-1]["fim"],
             "texto": " ".join(textos),
             "palavras": [
-                {"texto": t, "inicio": round(w["ini_final"], 3), "inicio_orig": w["inicio"]}
+                {"texto": t, "inicio": round(w["ini_final"], 3), "inicio_orig": w["inicio"], "chave": w["chave"]}
                 for t, w in zip(textos, bloco)
             ],
         })
@@ -213,12 +248,20 @@ Style: Padrao,{estilo["fonte"]},{tamanho},{primaria},{primaria},{cor_borda},{cor
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
-    def linha(textos, quebras, atual=-1):
-        return "".join(
-            ("\\N" if i in quebras else (" " if i else ""))
-            + (f"{{\\c{cor_destaque}}}{t}{{\\c{primaria}}}" if i == atual else t)
-            for i, t in enumerate(textos)
-        )
+    animacao = estilo.get("animacao", "nenhuma")
+    cor_chave = _cor_ass(estilo["cor_chave"]) if estilo.get("palavras_chave") else None
+
+    def palavra(t, i, atual, chaves):
+        cor = cor_destaque if destaque and i == atual else cor_chave if chaves[i] else None
+        if animacao == "palavra" and i == atual:   # a palavra falada "pula" e volta ao tamanho
+            t = f"{{\\fscx118\\fscy118\\t(0,140,\\fscx100\\fscy100)}}{t}{{\\fscx100\\fscy100}}"
+        return f"{{\\c{cor}}}{t}{{\\c{primaria}}}" if cor else t
+
+    def linha(textos, quebras, chaves, atual=-1, entra=False):
+        corpo = "".join(("\\N" if i in quebras else (" " if i else "")) + palavra(t, i, atual, chaves)
+                        for i, t in enumerate(textos))
+        # "pop": a legenda entra crescendo (só quando aparece, não a cada palavra)
+        return ("{\\fscx70\\fscy70\\t(0,110,\\fscx100\\fscy100)}" if entra and animacao == "pop" else "") + corpo
 
     def evento(ini, fim, texto):
         return f"Dialogue: 0,{_tempo_ass(ini)},{_tempo_ass(fim)},Padrao,,0,0,0,,{texto}"
@@ -226,14 +269,15 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     eventos = []
     for b in blocos:
         textos = [w["texto"].replace("{", "(").replace("}", ")") for w in b["palavras"]]
+        chaves = [bool(w.get("chave")) for w in b["palavras"]]
         quebras = _quebrar_linhas(b)
-        if not destaque:
-            eventos.append(evento(b["inicio"], b["fim"], linha(textos, quebras)))
+        if not destaque and animacao != "palavra":
+            eventos.append(evento(b["inicio"], b["fim"], linha(textos, quebras, chaves, entra=True)))
             continue
-        # Um evento por palavra: a frase inteira na tela, só a palavra falada colorida.
+        # Um evento por palavra: a frase inteira na tela, a palavra falada colorida e/ou pulando.
         for i, w in enumerate(b["palavras"]):
             ini = b["inicio"] if i == 0 else w["inicio"]
             fim = b["palavras"][i + 1]["inicio"] if i + 1 < len(b["palavras"]) else b["fim"]
             if fim > ini:
-                eventos.append(evento(ini, fim, linha(textos, quebras, i)))
+                eventos.append(evento(ini, fim, linha(textos, quebras, chaves, i, entra=i == 0)))
     return cabecalho + "\n".join(eventos) + "\n"

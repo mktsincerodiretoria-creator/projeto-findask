@@ -16,7 +16,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import (acesso, analise, atualizacao, exportar, filtros, legendas, midia, movimento, projetos, transcricao,
+from . import (acesso, analise, atualizacao, audio, exportar, filtros, legendas, midia, movimento, projetos, transcricao,
                vocabulario)
 from .versao import VERSAO
 
@@ -254,7 +254,7 @@ def tarefa_exportar(pid: str, opcoes: dict):
             dados.get("estilo_legenda", {}), opcoes, f"video_editado_{n}", progresso=prog,
             filtro=dados.get("filtro"),
             mov=dados.get("movimento"), trilha=movimento.carregar_trilha(p),
-            enq=dados.get("enquadramento"), cancelar=ativa["cancelar"],
+            enq=dados.get("enquadramento"), cancelar=ativa["cancelar"], audio=dados.get("audio"),
         )
         dados = projetos.carregar(pid)
         dados["exportacoes"] = dados.get("exportacoes", []) + [resultado]
@@ -287,6 +287,7 @@ def status(request: Request):
         "modelos": transcricao.MODELOS,
         "config_padrao": analise.CONFIG_PADRAO,
         "estilo_padrao": legendas.ESTILO_PADRAO,
+        "audio_padrao": audio.AUDIO_PADRAO,
         "exportacao_padrao": exportar.OPCOES_PADRAO,
     }
 
@@ -571,6 +572,56 @@ def previa(pid: str):
     return FileResponse(arq, media_type="video/mp4")
 
 
+TIPOS_AUDIO = {".mp3": "audio/mpeg", ".m4a": "audio/mp4", ".aac": "audio/aac", ".wav": "audio/wav",
+               ".ogg": "audio/ogg", ".opus": "audio/ogg", ".flac": "audio/flac"}
+
+
+@app.post("/api/projetos/{pid}/musica")
+async def enviar_musica(pid: str, arquivo: UploadFile = File(...)):
+    """Música de fundo do vídeo (fica na pasta do projeto como "musica.mp3", "musica.m4a"...)."""
+    dados = _projeto_ou_404(pid)
+    nome = Path(arquivo.filename or "musica.mp3").name
+    extensao = Path(nome).suffix.lower()
+    if extensao not in audio.EXTENSOES_MUSICA:
+        raise HTTPException(400, "Use uma música em MP3, M4A, WAV, OGG ou FLAC.")
+    p = projetos.pasta(pid)
+    for velha in p.glob("musica.*"):
+        velha.unlink(missing_ok=True)
+    with open(p / f"musica{extensao}", "wb") as destino:
+        tamanho = 0
+        while bloco := await arquivo.read(4 * 1024 * 1024):
+            tamanho += len(bloco)
+            if tamanho > 200 * 1024 * 1024:
+                destino.close()
+                (p / f"musica{extensao}").unlink(missing_ok=True)
+                raise HTTPException(400, "Música grande demais (máximo 200 MB).")
+            destino.write(bloco)
+    dados = projetos.carregar(pid)
+    dados["audio"] = audio.normalizar({**(dados.get("audio") or {}), "musica": f"musica{extensao}", "musica_nome": nome})
+    projetos.salvar(pid, dados)
+    return dados["audio"]
+
+
+@app.delete("/api/projetos/{pid}/musica")
+def remover_musica(pid: str):
+    dados = _projeto_ou_404(pid)
+    for velha in projetos.pasta(pid).glob("musica.*"):
+        velha.unlink(missing_ok=True)
+    dados["audio"] = audio.normalizar({**(dados.get("audio") or {}), "musica": None, "musica_nome": ""})
+    projetos.salvar(pid, dados)
+    return dados["audio"]
+
+
+@app.get("/api/projetos/{pid}/musica")
+def ouvir_musica(pid: str):
+    dados = _projeto_ou_404(pid)
+    nome = audio.normalizar(dados.get("audio"))["musica"]
+    arq = projetos.pasta(pid) / nome if nome else None
+    if not arq or not arq.exists():
+        raise HTTPException(404, "Este vídeo não tem música.")
+    return FileResponse(arq, media_type=TIPOS_AUDIO.get(arq.suffix.lower(), "audio/mpeg"))
+
+
 @app.get("/api/projetos/{pid}/original")
 def video_original(pid: str):
     """O arquivo que você subiu: o editor no computador mostra a imagem na resolução cheia (até 4K)."""
@@ -678,6 +729,7 @@ class Edicao(BaseModel):
     filtro: Optional[dict] = None             # {"id": "cinema", "intensidade": 0.8}
     movimento: Optional[dict] = None          # tracking, zoom base e lista de zooms
     enquadramento: Optional[dict] = None      # formato (9:16, 1:1...), escala, posição e giro
+    audio: Optional[dict] = None              # melhorar voz, volume da música, whoosh
 
 
 @app.put("/api/projetos/{pid}/edicao")
@@ -697,6 +749,10 @@ def salvar_edicao(pid: str, edicao: Edicao):
         dados["movimento"] = movimento.normalizar(edicao.movimento)
     if edicao.enquadramento is not None:
         dados["enquadramento"] = movimento.normalizar_enquadramento(edicao.enquadramento)
+    if edicao.audio is not None:
+        # o arquivo da música só muda pelo envio dela (nada de apontar para outro arquivo)
+        novo = {k: v for k, v in edicao.audio.items() if k not in ("musica", "musica_nome")}
+        dados["audio"] = audio.normalizar({**(dados.get("audio") or {}), **novo})
     if edicao.filtro is not None:
         fid = edicao.filtro.get("id", "natural")
         dados["filtro"] = {

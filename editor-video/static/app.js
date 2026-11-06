@@ -493,8 +493,10 @@ async function abrirEditor(p) {
     const r = await api(`/api/projetos/${p.id}/movimento`);
     estado.mov = r.movimento;
     estado.trilha = r.trilha;
+    estado.punch = zoomsDosCortes();
   } catch { estado.mov = null; estado.trilha = null; }
   estado.enq = { ...ENQ_PADRAO, ...(p.enquadramento || {}) };
+  montarAudio();
   montarMovimento();
   montarFormato();
   ajustarQuadro();
@@ -518,6 +520,28 @@ function mesclarAtivos() {
     else res.push([a, b]);
   }
   estado.mesclados = res;
+  estado.punch = zoomsDosCortes();
+}
+
+// Zoom alternado a cada corte (punch-in): mesma conta do movimento.py (zooms_dos_cortes).
+const DURACAO_MIN_PUNCH = 0.7;
+function zoomsDosCortes() {
+  const m = estado.mov;
+  if (!m?.punch || !estado.projeto) return [];
+  const dur = duracao(), mantidos = [];
+  let cursor = 0;
+  for (const [a, b] of estado.mesclados) {
+    if (a - cursor >= 0.04) mantidos.push([cursor, a]);
+    cursor = Math.max(cursor, b);
+  }
+  if (dur - cursor >= 0.04) mantidos.push([cursor, dur]);
+  const zooms = [];
+  let perto = false;
+  mantidos.forEach(([a, b], k) => {
+    if (k && b - a >= DURACAO_MIN_PUNCH) perto = !perto;
+    if (perto) zooms.push({ inicio: a, fim: b, intensidade: m.forca_punch ?? 0.12, estilo: "corte", ativo: true });
+  });
+  return zooms;
 }
 
 function tempoFinal(t) {
@@ -775,7 +799,7 @@ function salvarAgora() {
   estado.textosPendentes = {};
   salvando = salvando.then(() => enviar(`/api/projetos/${p.id}/edicao`, "PUT", {
     cortes: p.cortes, textos, estilo_legenda: p.estilo_legenda, filtro: p.filtro, movimento: estado.mov,
-    enquadramento: estado.enq,
+    enquadramento: estado.enq, audio: p.audio,
   })).then(() => carregarLegendas()).catch((e) => aviso("Não consegui salvar: " + e.message, true));
   return salvando;
 }
@@ -1034,7 +1058,10 @@ let palavraAtual = -1;
 let textoTempos = "";
 function quadro() {
   requestAnimationFrame(quadro);
-  if ($("#tela-editor").hidden || !estado.projeto) return;
+  if ($("#tela-editor").hidden || !estado.projeto) {
+    if (!musicaEl.paused) musicaEl.pause();
+    return;
+  }
   let t = video.currentTime;
   if (!video.paused) {
     if (estado.ouvindo) {
@@ -1060,6 +1087,7 @@ function quadro() {
     $("#tempo-final").textContent = fmt(tempoFinal(tt), true);
   }
   aplicarMovimento(t);
+  sincronizarMusica(t);
   desenharFiltro();
   atualizarLegendaPrevia(t);
   if (abaAtiva() === "texto") destacarPalavra(t);
@@ -1128,14 +1156,20 @@ function atualizarLegendaPrevia(t) {
   const margem = vr.height * (vertical ? 0.12 : 0.07);
 
   let atual = -1;
-  if (es.destaque) {
+  if (es.destaque || es.animacao === "palavra") {
     bloco.palavras.forEach((p, i) => { if (t >= p.inicio_orig) atual = i; });
   }
-  const html = bloco.palavras.map((p, i) =>
-    (i === 0 ? "" : i === bloco.quebra ? "<br>" : " ")
-    + (i === atual ? `<span style="color:${es.cor_destaque}">${escapar(p.texto)}</span>` : escapar(p.texto))).join("");
-  const chave = html + JSON.stringify(es) + vr.width + vr.height;
+  // mesma regra do legendas.py: palavra falada na cor de destaque, palavras-chave na cor delas
+  const html = bloco.palavras.map((p, i) => {
+    const cor = es.destaque && i === atual ? es.cor_destaque : es.palavras_chave && p.chave ? es.cor_chave : "";
+    const pula = es.animacao === "palavra" && i === atual ? " class=\"palavra-pop\"" : "";
+    const texto = escapar(p.texto);
+    return (i === 0 ? "" : i === bloco.quebra ? "<br>" : " ")
+      + (cor || pula ? `<span${pula}${cor ? ` style="color:${cor}"` : ""}>${texto}</span>` : texto);
+  }).join("");
+  const chave = bloco.inicio_orig + "|" + html + JSON.stringify(es) + vr.width + vr.height;
   if (chave === legendaAtual) return;
+  const entrou = !legendaAtual.startsWith(bloco.inicio_orig + "|");   // legenda nova: anima a entrada
   legendaAtual = chave;
 
   const largura = (vr.width * es.largura) / 100;
@@ -1152,7 +1186,8 @@ function atualizarLegendaPrevia(t) {
   const fundo = es.fundo ? `background:${hexParaRgba(es.cor_fundo, 0.75)};` : "";
   const traco = !es.fundo && contorno > 0
     ? `-webkit-text-stroke:${(contorno * 2).toFixed(1)}px ${es.cor_contorno};paint-order:stroke fill;` : "";
-  el.innerHTML = `<span class="bloco" style="font-family:'${es.fonte}',sans-serif;font-size:${fs.toFixed(1)}px;
+  const pop = es.animacao === "pop" && entrou ? " pop" : "";
+  el.innerHTML = `<span class="bloco${pop}" style="font-family:'${es.fonte}',sans-serif;font-size:${fs.toFixed(1)}px;
     font-weight:${es.negrito ? 700 : 400};color:${es.cor};${fundo}${traco}">${html}</span>`;
 }
 
@@ -1204,6 +1239,8 @@ function montarFormLegenda() {
     <div class="campo">Linhas na tela ${seg("linhas", [[1, "1 linha"], [2, "2 linhas"]])}</div>
     <div class="campo">Palavras por vez ${seg("modo", [["frase", "Frase inteira"], ["curta", "Até 3 (estilo Reels)"]])}</div>
     <div class="campo">Posição ${seg("posicao", [["superior", "Em cima"], ["meio", "Meio"], ["inferior", "Embaixo"]])}</div>
+    <div class="campo">Animação ${seg("animacao", [["nenhuma", "Nenhuma"], ["pop", "Entra crescendo"], ["palavra", "Palavra pulando"]])}</div>
+    ${campoAlternar("palavras_chave", "Colorir palavras-chave", "Preços, números, Shopee, Mercado Livre, frete grátis, desconto… ficam na cor de palavra-chave", es.palavras_chave)}
     <label class="campo">Fonte<select data-chave="fonte">${FONTES.map((f) =>
       `<option ${f === es.fonte ? "selected" : ""}>${f}</option>`).join("")}</select></label>
     ${campoFaixa("tamanho", "Tamanho", "Dica: arraste também a barra ao lado do vídeo", es.tamanho, 3, 14, 0.5, "%")}
@@ -1213,6 +1250,7 @@ function montarFormLegenda() {
       <label>Texto<input type="color" data-chave="cor" value="${es.cor}"></label>
       <label>Contorno<input type="color" data-chave="cor_contorno" value="${es.cor_contorno}"></label>
       <label>Destaque<input type="color" data-chave="cor_destaque" value="${es.cor_destaque}"></label>
+      <label>Palavra-chave<input type="color" data-chave="cor_chave" value="${es.cor_chave}"></label>
     </div>
     ${campoAlternar("negrito", "Negrito", "", es.negrito)}
     ${campoAlternar("maiusculas", "LETRAS MAIÚSCULAS", "", es.maiusculas)}
@@ -1464,6 +1502,102 @@ $("#comparar").addEventListener("pointerdown", () => (comparando = true));
 $("#comparar").addEventListener("pointerup", soltarComparar);
 $("#comparar").addEventListener("pointerleave", soltarComparar);
 
+/* ------------------------------------------------------------ áudio */
+
+const audioCfg = () => ({ ...estado.status.audio_padrao, ...(estado.projeto?.audio || {}) });
+const musicaEl = $("#musica-previa");
+
+function montarAudio() {
+  const a = audioCfg();
+  $("#form-audio").innerHTML = [
+    campoAlternar("melhorar_voz", "Melhorar voz", "Tira ruído e chiado, iguala o volume das falas e deixa no volume padrão do Instagram (aplicado ao exportar)", a.melhorar_voz),
+    `<div class="campo">Música de fundo
+      <div class="musica-linha">${a.musica
+        ? `<span class="musica-nome">🎵 ${escapar(a.musica_nome || a.musica)}</span>
+           <button type="button" class="btn-mini" data-musica="trocar">Trocar</button>
+           <button type="button" class="btn-mini perigo" data-musica="tirar">Tirar</button>`
+        : `<button type="button" class="btn-secundario" data-musica="escolher">＋ Escolher música</button>`}</div>
+      <small>Use músicas sem direitos autorais (por exemplo, da Biblioteca de Áudio do YouTube) para o Instagram não tirar o som do vídeo.</small></div>`,
+    campoFaixa("volume_musica", "Volume da música", "", Math.round(a.volume_musica * 100), 0, 100, 1, "%"),
+    campoAlternar("abaixar_na_fala", "Abaixar a música quando você fala", "A música desce sozinha na fala e volta nas pausas", a.abaixar_na_fala),
+    campoAlternar("efeito_zoom", "Efeito sonoro nos zooms", "Um “whoosh” rápido quando o zoom muda (combina com o Zoom alternado nos cortes, na aba Zoom)", a.efeito_zoom),
+  ].join("");
+  for (const r of $$("input[type=range]", $("#form-audio"))) {
+    r.addEventListener("input", () => (r.previousElementSibling.textContent = r.value + r.dataset.unidade));
+  }
+  carregarMusica();
+}
+
+function carregarMusica() {
+  const a = audioCfg();
+  const url = a.musica ? `/api/projetos/${estado.projeto.id}/musica?v=${encodeURIComponent(a.musica_nome || a.musica)}` : "";
+  if (musicaEl.dataset.url === url) return;
+  musicaEl.dataset.url = url;
+  musicaEl.pause();
+  if (url) musicaEl.src = url;
+  else musicaEl.removeAttribute("src");
+}
+
+$("#form-audio").addEventListener("input", (e) => {
+  const i = e.target.closest("[data-chave]");
+  if (!i) return;
+  estado.projeto.audio = { ...audioCfg(), [i.dataset.chave]: i.type === "checkbox" ? i.checked : parseFloat(i.value) / 100 };
+  agendarSalvar();
+});
+$("#form-audio").addEventListener("click", async (e) => {
+  const b = e.target.closest("[data-musica]");
+  if (!b) return;
+  if (b.dataset.musica !== "tirar") return $("#arquivo-musica").click();
+  try {
+    estado.projeto.audio = await api(`/api/projetos/${estado.projeto.id}/musica`, { method: "DELETE" });
+    montarAudio();
+  } catch (err) { aviso(err.message, true); }
+});
+$("#arquivo-musica").addEventListener("change", async (e) => {
+  const arquivo = e.target.files[0];
+  e.target.value = "";
+  if (!arquivo) return;
+  const dados = new FormData();
+  dados.append("arquivo", arquivo);
+  aviso("Enviando a música…");
+  try {
+    await salvarAgora();
+    estado.projeto.audio = await api(`/api/projetos/${estado.projeto.id}/musica`, { method: "POST", body: dados });
+    montarAudio();
+    aviso("Música colocada. Dê play no vídeo para ouvir junto.");
+  } catch (err) { aviso(err.message, true); }
+});
+
+// Você está falando neste instante? (a prévia abaixa a música como a exportação faz)
+function falandoEm(t) {
+  const pal = estado.projeto.palavras;
+  let lo = 0, hi = pal.length - 1;
+  while (lo <= hi) {
+    const m = (lo + hi) >> 1;
+    if (pal[m].fim + 0.2 < t) lo = m + 1;
+    else if (pal[m].inicio - 0.1 > t) hi = m - 1;
+    else return true;
+  }
+  return false;
+}
+
+// A música toca junto com a prévia, no tempo do vídeo final (como vai sair no arquivo).
+function sincronizarMusica(t) {
+  const a = audioCfg();
+  if (!a.musica || !musicaEl.src) return;
+  if (video.paused || estado.ouvindo) {
+    if (!musicaEl.paused) musicaEl.pause();
+    return;
+  }
+  const dur = musicaEl.duration;
+  if (!dur) return;
+  const alvo = tempoFinal(t) % dur;
+  if (Math.abs(musicaEl.currentTime - alvo) > 0.35) musicaEl.currentTime = alvo;
+  const vol = a.volume_musica * (a.abaixar_na_fala && falandoEm(t) ? 0.2 : 1);
+  musicaEl.volume = Math.min(1, Math.max(0, musicaEl.volume + (vol - musicaEl.volume) * 0.12));
+  if (musicaEl.paused) musicaEl.play().catch(() => {});
+}
+
 /* ------------------------------------------------------------ zoom e tracking */
 
 // Mesma conta do app/movimento.py: a prévia mostra exatamente o que sai na exportação.
@@ -1472,7 +1606,7 @@ const suaveJS = (x) => { x = Math.min(1, Math.max(0, x)); return x * x * (3 - 2 
 
 function zoomEm(t, m) {
   let extra = 0;   // sobrepostos não somam: vale o mais forte
-  for (const zm of m.zooms) {
+  for (const zm of m.punch ? m.zooms.concat(estado.punch || []) : m.zooms) {
     if (!zm.ativo || t < zm.inicio || t > zm.fim) continue;
     let e = 1;
     if (zm.estilo !== "corte") {
@@ -1744,6 +1878,8 @@ function montarMovimento() {
   const el = $("#opcoes-movimento");
   if (!m) { el.innerHTML = `<p class="vazio">Zoom indisponível neste projeto.</p>`; return; }
   el.innerHTML = [
+    campoAlternar("punch", "Zoom alternado nos cortes", "A cada corte o vídeo aproxima ou volta: esconde o pulo do corte e deixa o vídeo dinâmico (estilo Reels)", m.punch),
+    campoFaixa("forca_punch", "Força do zoom nos cortes", "8–15% fica natural", Math.round((m.forca_punch ?? 0.12) * 100), 4, 25, 1, "%"),
     campoFaixa("zoom_base", "Aproximação fixa", "Deixa o vídeo sempre um pouco mais perto, dando espaço para o tracking", Math.round(m.zoom_base * 100), 0, 20, 1, "%"),
     campoAlternar("auto", "Zooms automáticos", "Coloca zoom in / zoom out em começos de frase, perguntas e destaques", m.auto),
     campoFaixa("sensibilidade", "Sensibilidade", "Poucos zooms ← → muitos zooms", Math.round(m.sensibilidade * 100), 0, 100, 5, "%"),
@@ -1796,7 +1932,12 @@ $("#opcoes-movimento").addEventListener("input", (e) => {
   const k = i.dataset.chave;
   estado.mov[k] = i.type === "checkbox" ? i.checked : parseFloat(i.value) / 100;
   if (k === "tracking" || k === "zoom_base") { transformAtual = "x"; agendarSalvar(); }
-  else agendarRefazer();
+  else if (k === "punch" || k === "forca_punch") {
+    estado.punch = zoomsDosCortes();
+    transformAtual = "x";
+    desenharLinhaTempo();
+    agendarSalvar();
+  } else agendarRefazer();
 });
 $("#opcoes-movimento").addEventListener("click", (e) => {
   const b = e.target.closest("[data-seg-mov] button");
@@ -2246,6 +2387,12 @@ function desenharLinhaTempo(doLaco = false) {
     }
 
     // zooms: faixa roxa embaixo (arraste para mover, puxe as pontas para mudar a duração)
+    // zoom alternado nos cortes: faixa fininha (muda sozinho quando os cortes mudam)
+    cctx.fillStyle = "rgba(165,124,255,.45)";
+    for (const z of estado.punch || []) {
+      if (z.fim < t0 || z.inicio > t1) continue;
+      cctx.fillRect(X(z.inicio), ALTURA_LT - FAIXA_ZOOM + 3, X(z.fim) - X(z.inicio), FAIXA_ZOOM - 8);
+    }
     for (const z of estado.mov?.zooms || []) {
       if (z.fim < t0 || z.inicio > t1) continue;
       const xa = X(z.inicio), xb = X(z.fim);

@@ -132,6 +132,7 @@
           <button class="aba" data-aba="legenda"><span class="aba-icone">💬</span>Legenda</button>
           <button class="aba" data-aba="zoom"><span class="aba-icone">🔍</span>Zoom</button>
           <button class="aba" data-aba="filtros"><span class="aba-icone">🎨</span>Filtros</button>
+          <button class="aba" data-aba="audio"><span class="aba-icone">🎵</span>Áudio</button>
           <button class="aba" data-aba="ajustes"><span class="aba-icone">⚙️</span>Ajustes</button>
         </nav>
 
@@ -202,6 +203,12 @@
           <p class="dica">Arraste a faixa roxa na linha do tempo para mover; puxe as pontas para
             mudar a duração. Ou use ◀ ▶ aqui.</p>
           <ul class="lista-zooms" id="lista-zooms"></ul>
+        </div>
+
+        <div class="aba-conteudo" id="aba-audio" hidden>
+          <div class="grade-opcoes" id="form-audio"></div>
+          <input type="file" id="arquivo-musica" accept="audio/*,.mp3,.m4a,.wav,.ogg,.flac" hidden>
+          <audio id="musica-previa" preload="auto"></audio>
         </div>
 
         <div class="aba-conteudo" id="aba-filtros" hidden>

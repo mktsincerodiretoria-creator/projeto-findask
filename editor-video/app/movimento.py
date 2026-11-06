@@ -39,7 +39,11 @@ MOVIMENTO_PADRAO = {
     "intensidade": 0.12,     # 12% de aproximação
     "estilo": "suave",
     "zooms": [],
+    "punch": False,          # zoom alternado a cada corte (aproxima / volta), estilo Reels
+    "forca_punch": 0.12,     # 12% de aproximação nos trechos "perto"
 }
+
+DURACAO_MIN_PUNCH = 0.7  # trecho mais curto que isso não troca o zoom (senão fica piscando)
 
 
 def normalizar(mov: dict | None) -> dict:
@@ -48,6 +52,8 @@ def normalizar(mov: dict | None) -> dict:
     mov["forca_tracking"] = min(1.0, max(0.0, float(mov["forca_tracking"])))
     mov["sensibilidade"] = min(1.0, max(0.0, float(mov["sensibilidade"])))
     mov["intensidade"] = min(0.25, max(0.03, float(mov["intensidade"])))
+    mov["punch"] = bool(mov.get("punch"))
+    mov["forca_punch"] = min(0.25, max(0.04, float(mov["forca_punch"])))
     mov["estilo"] = "corte" if mov["estilo"] == "corte" else "suave"
     zooms = []
     for z in mov.get("zooms") or []:
@@ -109,6 +115,22 @@ def janela(t: float, mov: dict, trilha: dict | None) -> tuple[float, float, floa
     cx = min(max(fx, w / 2), 1 - w / 2)
     cy = min(max(fy + ALTURA_ROSTO * w, w / 2), 1 - w / 2)
     return z, cx - w / 2, cy - w / 2
+
+
+def zooms_dos_cortes(mantidos, mov: dict) -> list[dict]:
+    """Zoom alternado a cada corte ("punch-in"): um trecho normal, o seguinte mais perto, e assim
+    por diante. O pulo da imagem no corte some dentro da mudança de zoom, como nos Reels.
+    ``mantidos`` = trechos que ficam no vídeo (tempo original). Mesma conta no app.js."""
+    if not mov.get("punch"):
+        return []
+    zooms, perto = [], False
+    for k, (a, b) in enumerate(mantidos):
+        if k and b - a >= DURACAO_MIN_PUNCH:
+            perto = not perto
+        if perto:
+            zooms.append({"id": f"punch{k}", "inicio": a, "fim": b, "intensidade": mov["forca_punch"],
+                          "estilo": "corte", "origem": "punch", "ativo": True})
+    return zooms
 
 
 def tem_efeito(mov: dict) -> bool:

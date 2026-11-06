@@ -136,3 +136,24 @@ def test_andamento_ao_vivo_sem_gravar_o_projeto_a_cada_passo(app_exportar, monke
     _esperar(lambda: c.get(f"/api/projetos/{pid}").json()["tarefa"]["status"] == "concluida", 180)
     assert len(gravacoes) <= 3   # começo e fim (antes: várias vezes por segundo, o que dava erro no Windows)
     assert "exportacao" not in next(i for i in c.get("/api/projetos").json() if i["id"] == pid)
+
+
+def test_musica_de_fundo_pela_api(app_exportar, tmp_path):
+    main, projetos, c = app_exportar
+    pid = _projeto(projetos, 2)
+    wav = tmp_path / "trilha.wav"
+    subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "sine=frequency=200:d=1", str(wav)], check=True)
+    with open(wav, "rb") as f:
+        r = c.post(f"/api/projetos/{pid}/musica", files={"arquivo": ("minha trilha.wav", f, "audio/wav")})
+    assert r.status_code == 200 and r.json()["musica"] == "musica.wav" and r.json()["musica_nome"] == "minha trilha.wav"
+    ouvir = c.get(f"/api/projetos/{pid}/musica")
+    assert ouvir.status_code == 200 and ouvir.headers["content-type"].startswith("audio/wav")
+    # a edição muda volume e chaves, mas nunca aponta a música para outro arquivo
+    c.put(f"/api/projetos/{pid}/edicao", json={"audio": {"volume_musica": 0.4, "musica": "../../projeto.json"}})
+    a = c.get(f"/api/projetos/{pid}").json()["audio"]
+    assert a["musica"] == "musica.wav" and a["volume_musica"] == 0.4
+    with open(wav, "rb") as f:
+        assert c.post(f"/api/projetos/{pid}/musica", files={"arquivo": ("x.exe", f, "application/x")}).status_code == 400
+    assert c.delete(f"/api/projetos/{pid}/musica").json()["musica"] is None
+    assert c.get(f"/api/projetos/{pid}/musica").status_code == 404
+    assert not list(projetos.pasta(pid).glob("musica.*"))

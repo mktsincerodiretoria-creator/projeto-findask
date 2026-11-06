@@ -248,3 +248,25 @@ def test_dimensoes_saida():
     assert dimensoes_saida(1280, 720, "1080") == (1920, 1080)
     filtro = montar_filtro([(0, 1), (2, 3)], 1920, 1080, 1280, 720, True)
     assert "concat=n=2" in filtro and "scale=1920:1080" in filtro and "subtitles=legendas.ass" in filtro
+
+
+def test_palavras_chave_da_legenda():
+    textos = ["VENDI", "R$", "50", "NA", "SHOPEE,", "COM", "FRETE", "GRÁTIS", "NO", "MERCADO", "LIVRE", "HOJE"]
+    marcadas = [t for t, m in zip(textos, legendas.palavras_chave(textos)) if m]
+    assert marcadas == ["R$", "50", "SHOPEE,", "FRETE", "GRÁTIS", "MERCADO", "LIVRE"]
+    assert legendas.palavras_chave(["minha", "loja"], {"loja"}) == [False, True]   # palavra do seu dicionário
+
+
+def test_legenda_animada_e_palavras_chave_no_video():
+    p = falas(("Vendi", 0), ("50", 0), ("na", 0), ("Shopee", 0), ("hoje", 0.9))
+    estilo = {"modo": "curta", "palavras_chave": True, "cor_chave": "#00FF00", "animacao": "pop"}
+    blocos = legendas.montar_blocos(p, [], 5.0, estilo)
+    assert [w["chave"] for b in blocos for w in b["palavras"]] == [False, True, False, True, False]
+    ass = legendas.gerar_ass(blocos, 1080, 1920, estilo)
+    verde = legendas._cor_ass("#00FF00")
+    assert f"{{\\c{verde}}}50" in ass and f"{{\\c{verde}}}SHOPEE" in ass
+    eventos = [l for l in ass.splitlines() if l.startswith("Dialogue")]
+    assert all("\\fscx70" in e for e in eventos)            # cada legenda entra crescendo (uma vez)
+    pulando = legendas.gerar_ass(blocos, 1080, 1920, {**estilo, "animacao": "palavra"})
+    eventos = [l for l in pulando.splitlines() if l.startswith("Dialogue")]
+    assert len(eventos) == 5 and all(e.count("\\fscx118") == 1 for e in eventos)   # um evento por palavra falada

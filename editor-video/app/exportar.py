@@ -10,6 +10,7 @@ from pathlib import Path
 
 import numpy as np
 
+from . import audio as audio_mod
 from . import filtros, movimento
 from .analise import intervalos_mantidos
 from .legendas import gerar_ass, gerar_srt, montar_blocos
@@ -246,7 +247,7 @@ def _codificacao(opcoes: dict, taxa, cor: dict) -> list[str]:
 def exportar(projeto_dir: Path, original: Path, meta: dict, palavras: list, cortes: list,
              estilo: dict, opcoes: dict, nome_saida: str, progresso=None, filtro: dict | None = None,
              mov: dict | None = None, trilha: dict | None = None, enq: dict | None = None,
-             cancelar: threading.Event | None = None) -> dict:
+             cancelar: threading.Event | None = None, audio: dict | None = None) -> dict:
     opcoes = {**OPCOES_PADRAO, **(opcoes or {})}
     duracao = meta["duracao"]
     if "hdr" not in meta or "cor" not in meta:   # projetos antigos não guardavam isso
@@ -289,23 +290,54 @@ def exportar(projeto_dir: Path, original: Path, meta: dict, palavras: list, cort
     resultado = {**arquivos, "duracao": round(total, 2), "largura": largura, "altura": altura, "opcoes": opcoes}
 
     mov = movimento.normalizar(mov)
-    if movimento.tem_efeito(mov) or not movimento.enquadramento_neutro(enq):
-        _exportar_com_movimento(projeto_dir, original, meta, trechos, total, largura, altura, gravar, com_cor,
-                                mov, trilha, flag_filtro, codificacao, arquivos["video"], progresso,
-                                opcoes["melhorar"], enq, hdr, taxa, cor, cancelar)
-        return resultado
+    mov["zooms"] = mov["zooms"] + movimento.zooms_dos_cortes(trechos, mov)   # zoom alternado nos cortes
+    audio = audio_mod.normalizar(audio)
+    extras = _entradas_audio(projeto_dir, audio, trechos, mov, total)
+    filtro_som = audio_mod.filtro_final(audio, total, extras[1], extras[2])
+    try:
+        if movimento.tem_efeito(mov) or not movimento.enquadramento_neutro(enq):
+            _exportar_com_movimento(projeto_dir, original, meta, trechos, total, largura, altura, gravar, com_cor,
+                                    mov, trilha, flag_filtro, codificacao, arquivos["video"], progresso,
+                                    opcoes["melhorar"], enq, hdr, taxa, cor, cancelar, extras[0], filtro_som)
+        else:
+            _exportar_simples(projeto_dir, original, meta, trechos, total, largura, altura, gravar, com_cor,
+                              flag_filtro, codificacao, arquivos["video"], progresso, opcoes["melhorar"], hdr,
+                              taxa, cor, cancelar, extras[0], filtro_som)
+    finally:
+        (projeto_dir / "efeitos.wav").unlink(missing_ok=True)
+    return resultado
 
+
+def _entradas_audio(projeto_dir: Path, cfg: dict, trechos, mov: dict, total: float):
+    """Entradas extras do ffmpeg: a música (repetida até o fim do vídeo) e a trilha de whoosh.
+    Devolve (argumentos, índice da música, índice dos efeitos)."""
+    args, idx, musica, efeitos = [], 1, None, None
+    if cfg["musica"] and (projeto_dir / cfg["musica"]).exists():
+        args += ["-stream_loop", "-1", "-i", str((projeto_dir / cfg["musica"]).resolve())]
+        musica, idx = idx, idx + 1
+    if cfg["efeito_zoom"]:
+        tempos = audio_mod.tempos_dos_zooms(trechos, mov, movimento.zoom_em)
+        if tempos:
+            audio_mod.escrever_efeitos(projeto_dir / "efeitos.wav", tempos, total)
+            args += ["-i", "efeitos.wav"]
+            efeitos = idx
+    return args, musica, efeitos
+
+
+def _exportar_simples(projeto_dir, original, meta, trechos, total, largura, altura, gravar, com_cor, flag_filtro,
+                      codificacao, saida, progresso, melhorar, hdr, taxa, cor, cancelar, entradas_extra, filtro_som):
+    """Sem formato, zoom nem tracking: um ffmpeg só faz tudo."""
     filtro = montar_filtro(trechos, largura, altura, meta["largura"], meta["altura"], gravar, com_cor,
-                           melhorar=opcoes["melhorar"], hdr=hdr, taxa=taxa, cor=cor)
-    (projeto_dir / "filtro.txt").write_text(filtro, encoding="utf-8")
+                           melhorar=melhorar, hdr=hdr, taxa=taxa, cor=cor)
+    (projeto_dir / "filtro.txt").write_text(";\n".join([filtro, *filtro_som]), encoding="utf-8")
 
     cmd = [
         "ffmpeg", "-y", "-v", "error", "-nostats", "-progress", "pipe:1",
-        "-i", str(original.resolve()),
+        "-i", str(original.resolve()), *entradas_extra,
         *flag_filtro,
-        "-map", "[vout]", "-map", "[ac]",
+        "-map", "[vout]", "-map", "[aout]",
         *codificacao,
-        arquivos["video"],
+        saida,
     ]
     with _Processos(cancelar) as procs:
         proc = procs.abrir(cmd, cwd=projeto_dir, stdout=subprocess.PIPE, text=True, encoding="utf-8",
@@ -317,8 +349,6 @@ def exportar(projeto_dir: Path, original: Path, meta: dict, palavras: list, cort
                 except ValueError:
                     pass
         procs.esperar(proc, "na exportação")
-
-    return resultado
 
 
 def _tempo_original(trechos):
@@ -351,7 +381,8 @@ def _matrizes_yuv(m) -> tuple[np.ndarray, np.ndarray]:
 
 def _exportar_com_movimento(projeto_dir, original, meta, trechos, total, largura, altura, gravar, com_cor,
                             mov, trilha, flag_filtro, codificacao, saida, progresso, melhorar="nao",
-                            enq=None, hdr=None, taxa=Fraction(30), cor=None, cancelar=None):
+                            enq=None, hdr=None, taxa=Fraction(30), cor=None, cancelar=None,
+                            entradas_extra=(), filtro_som=None):
     """Três etapas em fila: ffmpeg (cortes + cor) -> Python (formato, enquadramento, zoom e
     tracking em cada quadro, com precisão de subpixel) -> ffmpeg (legenda e codificação).
     Os quadros passam em YUV, como estão no vídeo: sem converter para RGB e voltar (a cor não
@@ -370,10 +401,11 @@ def _exportar_com_movimento(projeto_dir, original, meta, trechos, total, largura
     q = float(taxa)
     with _Processos(cancelar) as procs:
         # 1) Áudio já cortado, num arquivo pronto antes de o vídeo começar.
-        (projeto_dir / "filtro_audio.txt").write_text(";\n".join(_filtro_audio(ks, taxa)), encoding="utf-8")
+        som = filtro_som or audio_mod.filtro_final(audio_mod.normalizar(None), total)
+        (projeto_dir / "filtro_audio.txt").write_text(";\n".join(_filtro_audio(ks, taxa) + som), encoding="utf-8")
         flag_audio = [flag_filtro[0], "filtro_audio.txt"]
-        audio = procs.abrir(["ffmpeg", "-y", "-v", "error", "-i", str(original.resolve()), *flag_audio,
-                             "-map", "[ac]", "-c:a", "pcm_s16le", "-ar", "48000", "audio_final.wav"],
+        audio = procs.abrir(["ffmpeg", "-y", "-v", "error", "-i", str(original.resolve()), *entradas_extra,
+                             *flag_audio, "-map", "[aout]", "-c:a", "pcm_s16le", "-ar", "48000", "audio_final.wav"],
                             cwd=projeto_dir, stdout=subprocess.DEVNULL)
         procs.esperar(audio, "no áudio")
 

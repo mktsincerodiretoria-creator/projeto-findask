@@ -128,3 +128,37 @@ def test_exportacao_aplica_o_zoom_no_quadro_certo(tmp_path):
     antes, durante = largura_branca(0.5), largura_branca(2.0)
     assert antes == pytest.approx(40, abs=3)
     assert durante == pytest.approx(50, abs=3)   # 40 px * 1.25
+
+
+def test_zoom_alternado_nos_cortes():
+    mantidos = [(0, 1), (1.5, 3), (3.2, 3.5), (4, 6), (6.5, 8)]
+    zs = m.zooms_dos_cortes(mantidos, m.normalizar({"punch": True, "forca_punch": 0.1}))
+    # 1º normal, 2º perto, 3º curtinho continua perto (não pisca), 4º volta, 5º perto
+    assert [(z["inicio"], z["fim"]) for z in zs] == [(1.5, 3), (3.2, 3.5), (6.5, 8)]
+    assert all(z["estilo"] == "corte" and z["intensidade"] == 0.1 for z in zs)
+    assert m.zooms_dos_cortes(mantidos, m.normalizar({"punch": False})) == []
+    mov = m.normalizar({"punch": True, "forca_punch": 0.1, "zooms": zs})
+    assert m.zoom_em(0.5, mov) == 1.0 and abs(m.zoom_em(2.0, mov) - 1.1) < 1e-9
+
+
+@pytest.mark.skipif(not shutil.which("ffmpeg"), reason="precisa de ffmpeg")
+def test_exportacao_com_zoom_nos_cortes(tmp_path):
+    """Quadrado branco de 40 px no centro: no 2º trecho (depois do corte) ele fica 12% maior."""
+    entrada = tmp_path / "quadrado.mp4"
+    subprocess.run([
+        "ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "color=c=black:s=320x240:r=10:d=4",
+        "-f", "lavfi", "-i", "sine=d=4", "-vf", "drawbox=x=140:y=100:w=40:h=40:color=white:t=fill",
+        "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", str(entrada)], check=True)
+    meta = midia.sondar(entrada)
+    cortes = [{"id": "c", "inicio": 1.5, "fim": 2.0, "ativo": True}]
+    exportar.exportar(tmp_path, entrada, meta, [], cortes, {}, {"legenda": "nenhuma", "velocidade": "rapida"},
+                      "saida", mov={"auto": False, "tracking": False, "punch": True, "forca_punch": 0.25})
+
+    def largura_branca(t):
+        cru = subprocess.run(["ffmpeg", "-v", "error", "-ss", str(t), "-i", str(tmp_path / "saida.mp4"),
+                              "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "gray", "pipe:1"],
+                             capture_output=True, check=True).stdout
+        return int((np.frombuffer(cru, np.uint8).reshape(240, 320)[120] > 128).sum())
+
+    assert largura_branca(0.7) == pytest.approx(40, abs=3)     # 1º trecho: normal
+    assert largura_branca(2.5) == pytest.approx(50, abs=3)     # depois do corte: 25% mais perto
