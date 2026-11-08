@@ -14,12 +14,37 @@ Pacote de referência no estilo sério, sinistro e de trailer. Todos os sons for
 | `08-reverse-swell` | Sucção antes de um impacto; coloque o fim dele exatamente no `02` ou no `07` |
 | `09-tique-taque-tensao` | Prazo, urgência, contagem |
 | `10-entrada-texto-sutil` | Texto ou número aparecendo na tela, sem soar como desenho animado |
+| `11-flash-transicao` | Clarão de luz branco entre cenas; o golpe cai 0,33 s depois do início |
+| `12-texto-impacto` | Cartão de texto em tela cheia entrando ("E NÃO PERCEBE") |
+| `13-palavra-pulso` | Cada palavra da legenda palavra por palavra; bem sutil |
+| `14-pb-boom` | O momento em que a imagem vira preto e branco |
+| `15-glitch-sombrio` | Borda colorida tremendo, faixas de glitch |
+
+Os sons de 11 a 15 acompanham o kit de edição `src/estilo/` (veja abaixo), que os toca sozinho.
 
 Combinação clássica de trailer: `03` (riser) ou `08` (swell) → corte seco → `02` ou `07` (impacto), com o `05` (drone) embaixo de tudo.
 
 Mixagem: os efeitos devem ficar **abaixo da voz**, audíveis e sem distorcer. Como ponto de partida, deixe o drone de 18 a 24 dB abaixo da voz e os impactos de 6 a 10 dB abaixo, e ajuste de ouvido.
 
 Para gerar variações: `python3 sintetizar.py pasta-de-saida` (precisa de `numpy` e `ffmpeg`). Mude a semente ou as frequências no script.
+
+## Kit de edição "suspense" (Remotion)
+
+Os componentes em `src/estilo/index.tsx` aplicam o estilo e tocam o efeito sonoro de cada elemento:
+
+| Componente | O que faz | Som |
+|---|---|---|
+| `PalavraPorPalavra` | Uma palavra por vez no centro da área segura, com brilho e borda colorida; `destaque` coloca a palavra numa caixa amarela | `13` em cada palavra |
+| `CartaoTexto` | Texto condensado em tela cheia, entrando com impacto, com ícone opcional (alerta, cruz, seta) | `12` |
+| `FlashLuz` | Clarão quente de transição; coloque 10 quadros antes do corte (`FLASH_PICO`) | `11` |
+| `ZoomEnfase` | Zoom rápido (punch-in) nos quadros indicados | — |
+| `PretoEBranco` | A imagem vira preto e branco num intervalo | `14` |
+| `Escurecer` | Escurece a cena por trás das palavras | — |
+| `GradeNeon` | Fundo preto com chão de grade em perspectiva, em movimento | — |
+| `Glitch` | Faixas coloridas deslocadas por alguns quadros | `15` |
+| `Granulacao` | Grão de filme e vinheta | — |
+
+Todo texto fica dentro da área segura de Reels (x 80–880, y 320–1440). Um ganho geral (`VOLUME_GERAL`) evita que os efeitos somados estourem. A composição `EstiloSuspenseDemo` mostra tudo junto.
 
 ## Onde pegar versões profissionais gravadas
 

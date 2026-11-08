@@ -144,3 +144,39 @@ t = tempo(1.2); s = np.exp(-((t - 0.18) / 0.09) ** 2)
 txt = svf(rng.standard_normal(len(t)), 400 + 2500 * s, 1.2, "bp") * s * 0.7
 toque = impacto_grave(1.2, 120, 55, 0.12) * 0.6; toque = np.concatenate([np.zeros(int(0.2 * SR)), toque[: len(t) - int(0.2 * SR)]])
 salvar("10-entrada-texto-sutil", reverb(estereo(txt + toque, 0.006), rt60=1.4, mix=0.25), pico_db=-3)
+
+# ---------- Sons do estilo "edição de suspense" (clarão, texto, palavra, P&B, glitch) ----------
+
+# 11. Clarão de transição: sopro que sobe rápido e estoura num golpe abafado
+t = tempo(1.6); sobe = np.clip(t / 0.32, 0, 1) ** 3 * (t < 0.34)
+ar = svf(rng.standard_normal(len(t)), 600 + 7000 * sobe, 1.0, "bp") * sobe * 0.9
+golpe_f = np.zeros(len(t)); i0 = int(0.33 * SR); g = impacto_grave(1.6 - 0.33, 95, 38, 0.35)
+golpe_f[i0:] = g[: len(t) - i0] * 0.9
+brilho = filtro_fft(rng.standard_normal(len(t)), lo=3000, hi=12000) * np.exp(-np.maximum(t - 0.33, 0) / 0.05) * (t >= 0.33) * 0.35
+salvar("11-flash-transicao", reverb(estereo(ar + golpe_f + brilho, 0.007), rt60=2.2, mix=0.3, escuro=6000))
+
+# 12. Impacto de texto: golpe curto e seco, com um anel metálico grave
+t = tempo(2.0)
+anel = sum(a * seno(73.4 * r, t) * np.exp(-t / d) for r, a, d in [(1, 0.5, 0.6), (2.76, 0.3, 0.35), (5.4, 0.15, 0.2)])
+txt_hit = impacto_grave(2.0, 130, 45, 0.25) + anel
+salvar("12-texto-impacto", reverb(estereo(np.tanh(1.6 * txt_hit), 0.005), rt60=1.8, mix=0.22, escuro=3500))
+
+# 13. Pulso de palavra: toque grave e abafado para cada palavra que surge (sutil, sem "plim")
+t = tempo(0.5)
+pulso_p = seno(62 + 50 * np.exp(-t / 0.02), t) * np.exp(-t / 0.05) + filtro_fft(rng.standard_normal(len(t)), lo=200, hi=1800) * np.exp(-t / 0.012) * 0.25
+salvar("13-palavra-pulso", reverb(estereo(np.tanh(1.5 * pulso_p)), rt60=0.9, mix=0.15, escuro=2500), pico_db=-4)
+
+# 14. Boom do preto e branco: grave fundo com cauda distorcida e respiração de ar
+t = tempo(3.5)
+boom = impacto_grave(3.5, 70, 24, 1.1) * 1.1 + np.tanh(3 * filtro_fft(rng.standard_normal(len(t)), hi=300) * np.exp(-t / 0.5)) * 0.25
+salvar("14-pb-boom", reverb(estereo(np.tanh(1.4 * boom), 0.01), rt60=3.2, mix=0.3, escuro=1600))
+
+# 15. Glitch sombrio: picotes digitais curtos, filtrados e graves (para a borda colorida tremendo)
+t = tempo(0.7); gl = np.zeros(len(t)); pos = 0.0
+while pos < 0.55:
+    n_g = int(rng.uniform(0.012, 0.045) * SR); i0 = int(pos * SR); tt = tempo(n_g / SR)
+    f = rng.choice([110, 147, 196, 880, 1320])
+    bloco = (np.sign(np.sin(2 * np.pi * f * tt)) * 0.5 + rng.standard_normal(n_g) * 0.5) * rng.uniform(0.4, 1)
+    gl[i0: i0 + n_g] += bloco[: max(0, min(n_g, len(t) - i0))]
+    pos += n_g / SR + rng.uniform(0.0, 0.03)
+salvar("15-glitch-sombrio", reverb(estereo(filtro_fft(gl, lo=90, hi=5000), 0.004), rt60=0.8, mix=0.18, escuro=4000), pico_db=-3)

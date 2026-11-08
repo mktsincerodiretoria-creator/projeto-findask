@@ -7,3 +7,6 @@ public/*
 videos
 projetos
 .cache
+# Fontes e efeitos sonoros usados pelas composições vão para o Git
+!public/fontes/
+!public/sfx
