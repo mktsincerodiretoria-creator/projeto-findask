@@ -3,9 +3,12 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import shutil
 import threading
 import time
 import traceback
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -16,8 +19,8 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import (acesso, analise, atualizacao, audio, exportar, filtros, legendas, midia, movimento, projetos, transcricao,
-               vocabulario)
+from . import (acesso, analise, atualizacao, audio, dividir, exportar, filtros, legendas, midia, movimento, projetos,
+               transcricao, vocabulario)
 from .versao import VERSAO
 
 ESTATICOS = Path(__file__).resolve().parent.parent / "static"
@@ -32,6 +35,8 @@ PARADA_MAX = 600   # s sem andar: a exportação travou e é cancelada (libera e
 previas_hd: dict[str, dict] = {}
 TIPOS_VIDEO = {".webm": "video/webm", ".mkv": "video/x-matroska", ".avi": "video/x-msvideo",
                ".3gp": "video/3gpp", ".mts": "video/mp2t"}
+fila_dividir = ThreadPoolExecutor(max_workers=1)   # dividir vídeo em partes de até 28 MB
+divisoes: dict[str, dict] = {}   # id -> como está a divisão (fica também no info.json da pasta)
 
 
 @asynccontextmanager
@@ -620,6 +625,133 @@ def ouvir_musica(pid: str):
     if not arq or not arq.exists():
         raise HTTPException(404, "Este vídeo não tem música.")
     return FileResponse(arq, media_type=TIPOS_AUDIO.get(arq.suffix.lower(), "audio/mpeg"))
+
+
+# ---------------------------------------------------------------- dividir vídeo em partes de até 28 MB
+
+def _pasta_divisao(did: str) -> Path:
+    if not re.fullmatch(r"[a-f0-9]{12}", did):
+        raise HTTPException(404, "Divisão não encontrada.")
+    return projetos.RAIZ / "divisoes" / did
+
+
+def _divisao(did: str, request: Request) -> dict:
+    """A divisão (só quem enviou o vídeo vê; o dono do programa vê todas)."""
+    info = divisoes.get(did)
+    if info is None:
+        arq = _pasta_divisao(did) / "info.json"
+        if not arq.exists():
+            raise HTTPException(404, "Divisão não encontrada.")
+        info = json.loads(arq.read_text(encoding="utf-8"))
+        if info["status"] in ("na_fila", "dividindo"):   # o programa foi fechado no meio
+            info.update(status="erro", erro="A divisão foi interrompida. Escolha o vídeo de novo.")
+    quem = _usuario(request)
+    if not quem["admin"] and info.get("dono") != quem["login"]:
+        raise HTTPException(404, "Divisão não encontrada.")
+    return info
+
+
+def _guardar_divisao(info: dict):
+    (_pasta_divisao(info["id"]) / "info.json").write_text(json.dumps(info, ensure_ascii=False), encoding="utf-8")
+
+
+def _limpar_divisoes_velhas():
+    """As partes ficam um dia guardadas (já baixou, não precisa ocupar o disco)."""
+    agora = time.time()
+    for did, info in list(divisoes.items()):
+        if info["status"] not in ("na_fila", "dividindo") and agora - info["criado_em"] > 24 * 3600:
+            divisoes.pop(did, None)
+    pasta = projetos.RAIZ / "divisoes"
+    for p in pasta.glob("*") if pasta.exists() else []:
+        if p.is_dir() and agora - p.stat().st_mtime > 24 * 3600 and p.name not in divisoes:
+            shutil.rmtree(p, ignore_errors=True)
+
+
+def _apagar_sobras(pasta: Path):
+    """Divisão que não terminou: apaga os pedaços (fica só o info.json, para mostrar o que houve)."""
+    for arq in pasta.glob("*"):
+        if arq.name != "info.json":
+            try:
+                arq.unlink()
+            except OSError:
+                pass
+
+
+def _tarefa_dividir(did: str):
+    info = divisoes[did]
+    pasta = _pasta_divisao(did)
+    original = next(pasta.glob("original.*"))
+
+    def andamento(f):
+        info["progresso"] = round(f, 3)
+
+    try:
+        if info.get("cancelar"):
+            raise dividir.Cancelado("Divisão cancelada.")
+        info["status"] = "dividindo"
+        info["partes"] = dividir.dividir(original, pasta, info["nome"], info["leve"], progresso=andamento,
+                                         cancelado=lambda: info.get("cancelar"))
+        info.update(status="pronto", progresso=1.0)
+    except dividir.Cancelado:
+        info.update(status="cancelada", partes=[])
+    except Exception as e:  # noqa: BLE001 - vira mensagem para a pessoa
+        traceback.print_exc()
+        info.update(status="erro", erro=str(e)[-600:], partes=[])
+    finally:
+        try:
+            projetos._insistir(lambda: original.unlink(missing_ok=True))   # o vídeo inteiro não precisa mais
+        except OSError:
+            pass
+        if info["status"] != "pronto":
+            _apagar_sobras(pasta)
+        _guardar_divisao(info)
+
+
+@app.post("/api/dividir")
+async def nova_divisao(request: Request, arquivo: UploadFile = File(...), leve: str = Form("0")):
+    nome = Path(arquivo.filename or "video.mp4").name
+    extensao = Path(nome).suffix.lower()
+    if extensao not in EXTENSOES:
+        raise HTTPException(400, f"Formato {extensao or 'desconhecido'} não suportado.")
+    _limpar_divisoes_velhas()
+    did = uuid.uuid4().hex[:12]
+    pasta = _pasta_divisao(did)
+    pasta.mkdir(parents=True)
+    with open(pasta / f"original{extensao}", "wb") as destino:
+        while bloco := await arquivo.read(8 * 1024 * 1024):
+            destino.write(bloco)
+    info = {"id": did, "nome": nome, "dono": _usuario(request)["login"], "criado_em": time.time(),
+            "leve": leve == "1", "status": "na_fila", "progresso": 0.0, "partes": [], "erro": None,
+            "limite": dividir.LIMITE}
+    divisoes[did] = info
+    _guardar_divisao(info)
+    fila_dividir.submit(_tarefa_dividir, did)
+    return {"id": did}
+
+
+@app.get("/api/dividir/{did}")
+def estado_divisao(did: str, request: Request):
+    return _divisao(did, request)
+
+
+@app.delete("/api/dividir/{did}")
+def cancelar_divisao(did: str, request: Request):
+    """Rodando: cancela. Já terminou: apaga as partes do disco."""
+    info = _divisao(did, request)
+    if info["status"] in ("na_fila", "dividindo") and did in divisoes:
+        divisoes[did]["cancelar"] = True
+    else:
+        divisoes.pop(did, None)
+        shutil.rmtree(_pasta_divisao(did), ignore_errors=True)
+    return {"ok": True}
+
+
+@app.get("/api/dividir/{did}/{arquivo}")
+def baixar_parte(did: str, arquivo: str, request: Request):
+    info = _divisao(did, request)
+    if arquivo not in {p["arquivo"] for p in info.get("partes", [])}:
+        raise HTTPException(404, "Parte não encontrada.")
+    return FileResponse(_pasta_divisao(did) / arquivo, media_type="video/mp4", filename=arquivo)
 
 
 @app.get("/api/projetos/{pid}/original")

@@ -293,6 +293,208 @@ zona.addEventListener("drop", (e) => {
   enviarArquivo(e.dataTransfer.files[0]);
 });
 
+/* ------------------------------------------------------------ dividir em partes de até 28 MB */
+
+// Ferramenta da tela inicial: corta um vídeo qualquer em partes do mesmo tamanho, com até 28 MB
+// cada (para subir no Claude, mandar no WhatsApp...). As partes baixam sozinhas quando termina.
+const dlgDiv = $("#dlg-dividir");
+const PARTE_MAX = 28e6 * 0.985;      // o servidor mira um pouco abaixo dos 28 MB (o índice de cada parte)
+const LEVE_BYTES_S = 400_000;        // ~3,2 Mbit/s: quanto ocupa um segundo de vídeo em 720p (estimativa)
+const CHAVE_DIVISAO = "cf-divisao";
+const div = { arquivo: null, duracao: 0, id: null, timer: null, xhr: null, baixar: false, baixando: false };
+
+const fmtMB = (b) => `${(b / 1e6).toLocaleString("pt-BR", { maximumFractionDigits: b < 1e9 ? 1 : 0 })} MB`;
+const urlParte = (id, arq) => `/api/dividir/${id}/${encodeURIComponent(arq)}`;
+const lembrarDivisao = (id) => { try { id ? localStorage.setItem(CHAVE_DIVISAO, id) : localStorage.removeItem(CHAVE_DIVISAO); } catch { /* ok */ } };
+const divisaoLembrada = () => { try { return localStorage.getItem(CHAVE_DIVISAO); } catch { return null; } };
+
+function divTela(qual) {   // escolher | confirmar | andamento | pronto | erro
+  $("#dividir-soltar").hidden = !(qual === "escolher" || qual === "erro");
+  $("#dividir-escolha").hidden = qual !== "confirmar";
+  $("#dividir-iniciar").hidden = qual !== "confirmar";
+  $("#dividir-andamento").hidden = qual !== "andamento";
+  $("#dividir-cancelar").hidden = qual !== "andamento";
+  $("#dividir-erro").hidden = qual !== "erro";
+  $("#dividir-resumo").hidden = qual !== "pronto";
+  $("#dividir-todas").hidden = qual !== "pronto";
+  $("#dividir-outro").hidden = qual !== "confirmar" && qual !== "pronto";
+  $("#dividir-outro").textContent = qual === "pronto" ? "Dividir outro vídeo" : "Trocar vídeo";
+  if (qual !== "pronto") $("#dividir-lista").innerHTML = "";
+}
+
+function divProgresso(f, texto) {
+  $("#dividir-barra").style.width = `${Math.round(Math.max(0, Math.min(1, f)) * 100)}%`;
+  $("#dividir-texto").textContent = texto;
+}
+
+function divErro(msg) {
+  divTela("erro");
+  $("#dividir-erro").textContent = `Não deu para dividir: ${msg || "erro desconhecido"}`;
+}
+
+// Quantas partes vão sair (a versão leve depende da duração, que o navegador lê do arquivo)
+function divEstimar() {
+  const a = div.arquivo;
+  if (!a) return;
+  const n = Math.max(1, Math.ceil(a.size / PARTE_MAX));
+  $("#dividir-tamanho").textContent = `· ${fmtMB(a.size)}${div.duracao ? ` · ${fmt(div.duracao)}` : ""}`;
+  $("#dividir-est-original").textContent = n === 1 ? "1 parte: o vídeo já cabe em 28 MB"
+    : `umas ${n} partes de ~${fmtMB(Math.min(a.size / n, PARTE_MAX))} · sem perder nada`;
+  const leve = div.duracao ? Math.max(1, Math.min(n, Math.ceil(div.duracao * LEVE_BYTES_S / PARTE_MAX))) : 0;
+  $("#dividir-est-leve").textContent = !leve ? "bem menos partes · ótimo para mandar para análise"
+    : `${leve === 1 ? "1 parte só" : `umas ${leve} partes`} · ótimo para mandar para análise`;
+}
+
+function divEscolher(arquivo) {
+  if (!arquivo || div.xhr || div.timer) return;
+  div.arquivo = arquivo;
+  div.duracao = 0;
+  $("#dividir-nome").textContent = arquivo.name;
+  divEstimar();
+  divTela("confirmar");
+  const v = document.createElement("video");
+  const url = URL.createObjectURL(arquivo);
+  v.preload = "metadata";
+  v.muted = true;
+  v.onloadedmetadata = () => {
+    if (div.arquivo === arquivo && Number.isFinite(v.duration)) { div.duracao = v.duration; divEstimar(); }
+    URL.revokeObjectURL(url);
+  };
+  v.onerror = () => URL.revokeObjectURL(url);   // (ex.: HEVC num navegador sem suporte: fica sem a duração)
+  v.src = url;
+}
+
+function divIniciar() {
+  const a = div.arquivo;
+  if (!a || div.xhr || div.timer) return;
+  const leve = dlgDiv.querySelector('input[name="dividir-modo"]:checked')?.value === "leve";
+  const dados = new FormData();
+  dados.append("arquivo", a);
+  dados.append("leve", leve ? "1" : "0");
+  const xhr = new XMLHttpRequest();
+  div.xhr = xhr;
+  divTela("andamento");
+  divProgresso(0, "Enviando o vídeo… 0%");
+  xhr.upload.onprogress = (e) => {
+    if (e.lengthComputable) divProgresso(e.loaded / e.total, `Enviando o vídeo… ${Math.round(e.loaded / e.total * 100)}%`);
+  };
+  xhr.onload = () => {
+    div.xhr = null;
+    if (xhr.status >= 300) {
+      let msg = "falha no envio";
+      try { msg = JSON.parse(xhr.responseText).detail || msg; } catch { /* sem JSON */ }
+      divErro(msg);
+      return;
+    }
+    div.id = JSON.parse(xhr.responseText).id;
+    div.baixar = true;   // terminou: baixa as partes sozinho
+    lembrarDivisao(div.id);
+    divProgresso(0, "Começando a dividir…");
+    divAcompanhar();
+  };
+  xhr.onerror = () => { div.xhr = null; divErro("falha no envio. O programa está aberto?"); };
+  xhr.onabort = () => { div.xhr = null; divTela(div.arquivo ? "confirmar" : "escolher"); };
+  xhr.open("POST", "/api/dividir");
+  xhr.send(dados);
+}
+
+async function divAcompanhar() {
+  clearTimeout(div.timer);
+  div.timer = null;
+  const id = div.id;
+  let info;
+  try {
+    info = await api(`/api/dividir/${id}`);
+  } catch (e) {
+    if (id !== div.id) return;
+    if (e instanceof TypeError) { div.timer = setTimeout(divAcompanhar, 2000); return; }   // sem conexão: tenta de novo
+    lembrarDivisao(null);
+    divErro(e.message);
+    return;
+  }
+  if (id !== div.id) return;
+  const pct = Math.round((info.progresso || 0) * 100);
+  if (info.status === "pronto") { divPronto(info, div.baixar); div.baixar = false; return; }
+  if (info.status === "erro") { lembrarDivisao(null); divErro(info.erro); return; }
+  if (info.status === "cancelada") { lembrarDivisao(null); div.id = null; divTela(div.arquivo ? "confirmar" : "escolher"); return; }
+  if (info.status === "na_fila") divProgresso(0, "Na fila: outro vídeo está sendo dividido…");
+  else divProgresso(info.progresso || 0, info.leve ? `Deixando mais leve (720p) e dividindo… ${pct}%` : `Dividindo… ${pct}%`);
+  div.timer = setTimeout(divAcompanhar, 1000);
+}
+
+function divPronto(info, baixar) {
+  divTela("pronto");
+  const partes = info.partes || [];
+  const n = partes.length;
+  const maior = Math.max(0, ...partes.map((p) => p.bytes));
+  $("#dividir-resumo").innerHTML = n === 1
+    ? `✅ Pronto! <b>${escapar(info.nome)}</b> virou <b>1 arquivo de ${fmtMB(maior)}</b> (cabe nos 28 MB).`
+    : `✅ Pronto! <b>${escapar(info.nome)}</b> virou <b>${n} partes</b>, todas com até 28 MB (a maior tem ${fmtMB(maior)}).`;
+  $("#dividir-lista").innerHTML = partes.map((p, i) => `
+    <li><b>Parte ${i + 1} de ${n}</b><span>${fmt(p.inicio)} a ${fmt(p.inicio + p.duracao)} · ${fmtMB(p.bytes)}</span>
+      <a href="${urlParte(info.id, p.arquivo)}" download="${escapar(p.arquivo)}">Baixar</a></li>`).join("");
+  $("#dividir-todas").textContent = n === 1 ? "⬇ Baixar" : `⬇ Baixar todas (${n})`;
+  if (baixar) divBaixarTodas(info);
+}
+
+// Uma de cada vez, com um respiro entre elas (o navegador pode perguntar se deixa baixar vários arquivos: deixe)
+async function divBaixarTodas(info) {
+  if (div.baixando) return;
+  div.baixando = true;
+  const botao = $("#dividir-todas");
+  const partes = info.partes || [];
+  try {
+    for (let i = 0; i < partes.length; i++) {
+      if (div.id !== info.id) break;
+      botao.textContent = `Baixando ${i + 1} de ${partes.length}…`;
+      botao.disabled = true;
+      baixarArquivo(urlParte(info.id, partes[i].arquivo), partes[i].arquivo);
+      await new Promise((r) => setTimeout(r, 900));
+    }
+  } finally {
+    div.baixando = false;
+    botao.disabled = false;
+    botao.textContent = partes.length === 1 ? "⬇ Baixar" : `⬇ Baixar todas (${partes.length})`;
+  }
+}
+
+$("#btn-dividir").addEventListener("click", async () => {
+  dlgDiv.showModal();
+  if (div.xhr || div.timer || div.baixando) return;   // enviando/dividindo/baixando: o diálogo já mostra
+  if (!div.id) div.id = divisaoLembrada();
+  if (!div.id) { divTela(div.arquivo ? "confirmar" : "escolher"); return; }
+  // a última divisão (ex.: o navegador segurou os downloads, ou a página foi recarregada)
+  const info = await api(`/api/dividir/${div.id}`).catch(() => null);
+  if (info?.status === "pronto") divPronto(info, false);
+  else if (info?.status === "na_fila" || info?.status === "dividindo") { divTela("andamento"); divAcompanhar(); }
+  else { lembrarDivisao(null); div.id = null; divTela(div.arquivo ? "confirmar" : "escolher"); }
+});
+$("#dividir-arquivo").addEventListener("change", (e) => { divEscolher(e.target.files[0]); e.target.value = ""; });
+const zonaDiv = $("#dividir-soltar");
+zonaDiv.addEventListener("dragover", (e) => { e.preventDefault(); zonaDiv.classList.add("arrastando"); });
+zonaDiv.addEventListener("dragleave", () => zonaDiv.classList.remove("arrastando"));
+zonaDiv.addEventListener("drop", (e) => {
+  e.preventDefault();
+  zonaDiv.classList.remove("arrastando");
+  divEscolher(e.dataTransfer.files[0]);
+});
+$("#dividir-iniciar").addEventListener("click", divIniciar);
+$("#dividir-cancelar").addEventListener("click", async () => {
+  if (div.xhr) { div.xhr.abort(); return; }
+  if (!div.id) return;
+  $("#dividir-texto").textContent = "Cancelando…";
+  await api(`/api/dividir/${div.id}`, { method: "DELETE" }).catch(() => null);
+});
+$("#dividir-outro").addEventListener("click", () => {
+  if (!$("#dividir-resumo").hidden) { div.id = null; lembrarDivisao(null); div.arquivo = null; divTela("escolher"); }
+  $("#dividir-arquivo").click();
+});
+$("#dividir-todas").addEventListener("click", async () => {
+  const info = div.id && await api(`/api/dividir/${div.id}`).catch(() => null);
+  if (info?.status === "pronto") divBaixarTodas(info);
+  else divErro("as partes não estão mais no programa (ficam guardadas por um dia). Divida de novo.");
+});
+
 /* ------------------------------------------------------------ processamento */
 
 function acompanhar(pid) {
@@ -2629,7 +2831,7 @@ function baixarArquivo(url, nome) {
   a.href = url;
   a.download = nome || "";
   a.hidden = true;
-  (dlgExp.open ? dlgExp : document.body).appendChild(a);   // com o diálogo aberto, o resto da página fica bloqueado
+  (document.querySelector("dialog[open]") || document.body).appendChild(a);   // com um diálogo aberto, o resto da página fica bloqueado
   a.click();
   a.remove();
 }

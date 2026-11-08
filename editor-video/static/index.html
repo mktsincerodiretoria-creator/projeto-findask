@@ -60,6 +60,9 @@
         <span id="envio-texto">Enviando…</span>
       </div>
 
+      <button type="button" class="btn-secundario btn-dividir" id="btn-dividir">✂️ Dividir um vídeo em partes de até 28 MB
+        <small>para enviar no Claude, WhatsApp ou e-mail</small></button>
+
       <details class="opcoes-analise">
         <summary>Opções da análise</summary>
         <div class="grade-opcoes" id="opcoes-iniciais"></div>
@@ -262,6 +265,48 @@
       <div class="lt-dica" id="lt-dica">Clique para ir até o ponto · arraste para selecionar um trecho e cortar</div>
     </section>
   </main>
+
+  <!-- ============ DIVIDIR EM PARTES ============ -->
+  <dialog id="dlg-dividir" class="dialogo">
+    <form method="dialog" class="dialogo-corpo">
+      <h2>✂️ Dividir vídeo em partes</h2>
+      <p class="dica">Corta o vídeo em partes do mesmo tamanho, com até <b>28 MB</b> cada (nunca passa disso),
+        para enviar no Claude, WhatsApp ou e-mail. As partes baixam sozinhas no fim.</p>
+
+      <label class="soltar soltar-mini" id="dividir-soltar">
+        <input type="file" id="dividir-arquivo" accept="video/*,.mkv,.mts" hidden>
+        <span class="soltar-icone">⬆</span>
+        <strong>Arraste o vídeo aqui</strong>
+        <span>ou clique para escolher</span>
+      </label>
+
+      <div id="dividir-escolha" hidden>
+        <p class="dividir-arquivo"><b id="dividir-nome"></b> <span id="dividir-tamanho"></span></p>
+        <div class="dividir-modos">
+          <label class="dividir-modo"><input type="radio" name="dividir-modo" value="original" checked>
+            <span><b>Qualidade original</b><small id="dividir-est-original"></small></span></label>
+          <label class="dividir-modo"><input type="radio" name="dividir-modo" value="leve">
+            <span><b>Mais leve (720p)</b><small id="dividir-est-leve"></small></span></label>
+        </div>
+      </div>
+
+      <div id="dividir-andamento" hidden>
+        <div class="barra grande"><div class="barra-cheia" id="dividir-barra"></div></div>
+        <p class="dica" id="dividir-texto">Enviando…</p>
+      </div>
+      <div class="erro-caixa" id="dividir-erro" hidden></div>
+      <p class="dividir-resumo" id="dividir-resumo" hidden></p>
+      <ul class="lista-exportacoes dividir-lista" id="dividir-lista"></ul>
+
+      <div class="dialogo-acoes">
+        <button type="button" class="btn-fantasma" id="dividir-outro" hidden>Trocar vídeo</button>
+        <button type="button" class="btn-fantasma" id="dividir-cancelar" hidden>Cancelar</button>
+        <button type="button" class="btn-primario" id="dividir-iniciar" hidden>✂️ Dividir</button>
+        <button type="button" class="btn-primario" id="dividir-todas" hidden>⬇ Baixar todas</button>
+        <button value="fechar" class="btn-fantasma">Fechar</button>
+      </div>
+    </form>
+  </dialog>
 
   <!-- ============ EXPORTAR ============ -->
   <dialog id="dlg-exportar" class="dialogo">
