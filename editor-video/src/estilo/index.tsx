@@ -93,18 +93,30 @@ export const Som: React.FC<{ nome: NomeSom; volume?: number | ((quadro: number) 
 );
 
 // ---------- Texto palavra por palavra ----------
-export type Palavra = { texto: string; em: number; destaque?: boolean };
+// Legendas com mais de 11 letras viram duas linhas, para a letra ficar grande.
+const quebrarLegenda = (texto: string): string[] => {
+  if (texto.length <= 11 || !texto.includes(" ")) return [texto];
+  const meio = texto.length / 2;
+  let melhor = -1;
+  for (let i = 0; i < texto.length; i++) if (texto[i] === " " && (melhor < 0 || Math.abs(i - meio) < Math.abs(melhor - meio))) melhor = i;
+  return [texto.slice(0, melhor), texto.slice(melhor + 1)];
+};
+export type Palavra = { texto: string; em: number; destaque?: boolean; cor?: string; ate?: number };
 
 export const PalavraPorPalavra: React.FC<{
   palavras: Palavra[];
   corDestaque?: string;
   som?: boolean;
   volumeSom?: number;
-}> = ({ palavras, corDestaque = CORES.amarelo, som = true, volumeSom = 0.55 }) => {
+  /** Centro vertical da legenda em px (padrão: centro da área segura). */
+  y?: number;
+  tamanhoMax?: number;
+}> = ({ palavras, corDestaque = CORES.amarelo, som = true, volumeSom = 0.55, y, tamanhoMax = 150 }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const area = useAreaSegura();
-  const atual = [...palavras].reverse().find((p) => p.em <= frame);
+  const ultima = [...palavras].reverse().find((p) => p.em <= frame);
+  const atual = ultima && (ultima.ate === undefined || frame < ultima.ate) ? ultima : undefined;
 
   let conteudo: React.ReactNode = null;
   if (atual) {
@@ -113,22 +125,29 @@ export const PalavraPorPalavra: React.FC<{
     const escala = interpolate(s, [0, 1], [1.45, 1]);
     const desfoque = interpolate(local, [0, 4], [10, 0], { extrapolateRight: "clamp" });
     const tremor = local < 4 ? (random(`tr-${atual.em}-${local}`) - 0.5) * 14 : 0;
-    const tamanho = Math.min(150, (area.largura * 0.92) / (atual.texto.length * 0.8));
+    const linhas = quebrarLegenda(atual.texto);
+    const maior = Math.max(...linhas.map((l) => l.length));
+    const tamanho = Math.min(tamanhoMax, (area.largura * 0.92) / (maior * 0.72));
+    const cor = atual.cor ?? corDestaque;
     const base: React.CSSProperties = {
       fontFamily: "Montserrat",
       fontWeight: 900,
       fontSize: tamanho,
-      lineHeight: 1,
+      lineHeight: 1.04,
       letterSpacing: -1,
       textTransform: "uppercase",
       whiteSpace: "nowrap",
+      textAlign: "center",
     };
+    const texto = linhas.map((l, i) => (
+      <div key={i}>{l}</div>
+    ));
     conteudo = (
       <div
         style={{
           position: "absolute",
           left: area.cx,
-          top: area.cy,
+          top: y ?? area.cy,
           transform: `translate(-50%, -50%) translateX(${tremor}px) scale(${escala})`,
           filter: `blur(${desfoque}px)`,
         }}
@@ -138,13 +157,13 @@ export const PalavraPorPalavra: React.FC<{
             style={{
               ...base,
               color: "#0B0B0D",
-              background: corDestaque,
+              background: cor,
               padding: "6px 22px 10px",
               borderRadius: 10,
-              boxShadow: `0 0 40px ${corDestaque}88, 0 0 120px ${corDestaque}44`,
+              boxShadow: `0 0 40px ${cor}88, 0 0 120px ${cor}44`,
             }}
           >
-            {atual.texto}
+            {texto}
           </div>
         ) : (
           <div
@@ -155,7 +174,7 @@ export const PalavraPorPalavra: React.FC<{
                 "-4px 0 rgba(255,30,70,0.65), 4px 0 rgba(0,190,255,0.65), 0 0 28px rgba(255,255,255,0.45), 0 0 80px rgba(255,255,255,0.18)",
             }}
           >
-            {atual.texto}
+            {texto}
           </div>
         )}
       </div>
@@ -171,7 +190,8 @@ export const PalavraPorPalavra: React.FC<{
 };
 
 // ---------- Cartão de texto em tela cheia ----------
-const Icone: React.FC<{ tipo: "alerta" | "cruz" | "seta"; cor: string; tamanho: number }> = ({ tipo, cor, tamanho }) => (
+export type TipoIcone = "alerta" | "cruz" | "seta" | "bomba" | "documento";
+const Icone: React.FC<{ tipo: TipoIcone; cor: string; tamanho: number }> = ({ tipo, cor, tamanho }) => (
   <svg width={tamanho} height={tamanho} viewBox="0 0 100 100" style={{ filter: `drop-shadow(0 0 18px ${cor}99)` }}>
     {tipo === "alerta" && (
       <>
@@ -181,6 +201,24 @@ const Icone: React.FC<{ tipo: "alerta" | "cruz" | "seta"; cor: string; tamanho: 
       </>
     )}
     {tipo === "cruz" && <path d="M44 6 H56 V36 H86 V48 H56 V94 H44 V48 H14 V36 H44 Z" fill={CORES.branco} />}
+    {tipo === "bomba" && (
+      <>
+        <circle cx="44" cy="60" r="30" fill={CORES.branco} />
+        <rect x="58" y="22" width="16" height="14" rx="3" transform="rotate(35 66 29)" fill={CORES.branco} />
+        <path d="M70 22 Q78 8 90 12" fill="none" stroke={CORES.branco} strokeWidth="4" />
+        <circle cx="90" cy="12" r="6" fill={cor} />
+        <path d="M30 50 A16 16 0 0 1 44 40" fill="none" stroke="#0A0A0C" strokeWidth="5" strokeLinecap="round" />
+      </>
+    )}
+    {tipo === "documento" && (
+      <>
+        <path d="M24 6 H62 L80 24 V94 H24 Z" fill="none" stroke={CORES.branco} strokeWidth="6" strokeLinejoin="round" />
+        <path d="M62 6 V24 H80" fill="none" stroke={CORES.branco} strokeWidth="6" />
+        <rect x="34" y="40" width="36" height="6" fill={cor} />
+        <rect x="34" y="54" width="36" height="6" fill={CORES.branco} />
+        <rect x="34" y="68" width="24" height="6" fill={CORES.branco} />
+      </>
+    )}
     {tipo === "seta" && <path d="M10 70 L40 40 L58 58 L86 28 M66 28 H86 V48" fill="none" stroke={cor} strokeWidth="8" />}
   </svg>
 );
@@ -188,7 +226,7 @@ const Icone: React.FC<{ tipo: "alerta" | "cruz" | "seta"; cor: string; tamanho: 
 export const CartaoTexto: React.FC<{
   linhas: string[];
   cor?: string;
-  icone?: "alerta" | "cruz" | "seta";
+  icone?: TipoIcone;
   som?: boolean;
 }> = ({ linhas, cor = CORES.ouro, icone, som = true }) => {
   const frame = useCurrentFrame();
@@ -214,7 +252,7 @@ export const CartaoTexto: React.FC<{
       >
         {icone && (
           <div style={{ opacity: interpolate(frame, [0, 6], [0, 1], { extrapolateRight: "clamp" }) }}>
-            <Icone tipo={icone} cor={cor} tamanho={tamanho * 0.8} />
+            <Icone tipo={icone} cor={cor} tamanho={tamanho * 1.15} />
           </div>
         )}
         {linhas.map((linha, i) => {

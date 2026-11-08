@@ -2,6 +2,7 @@ import { Composition } from "remotion";
 import { AberturaXadrez } from "./AberturaXadrez";
 import { DURACAO_DEMO, EstiloSuspenseDemo } from "./EstiloSuspenseDemo";
 import { NeonDemo } from "./NeonDemo";
+import { DURACAO_PARTE1, Parte1 } from "./edicoes/Parte1";
 import { Teste } from "./Teste";
 
 export const RemotionRoot: React.FC = () => {
@@ -19,6 +20,7 @@ export const RemotionRoot: React.FC = () => {
     <Composition id="NeonDemo" component={NeonDemo} durationInFrames={90} fps={30} width={1080} height={1920} />
     <Composition id="AberturaXadrez" component={AberturaXadrez} durationInFrames={240} fps={24} width={1080} height={960} />
     <Composition id="EstiloSuspenseDemo" component={EstiloSuspenseDemo} durationInFrames={DURACAO_DEMO} fps={30} width={1080} height={1920} />
+    <Composition id="Parte1" component={Parte1} durationInFrames={DURACAO_PARTE1} fps={30} width={1080} height={1920} />
     </>
   );
 };
