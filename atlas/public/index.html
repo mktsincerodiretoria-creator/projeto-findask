@@ -1,0 +1,303 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Atlas</title>
+<style>
+  :root { --verde: #00ff66; --verde2: #0a8f3c; --fundo: #020503; --texto: #b8ffd0; }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; background: var(--fundo); color: var(--texto);
+    font-family: Consolas, "Cascadia Mono", "Courier New", monospace; overflow: hidden; }
+  canvas#chuva { position: fixed; inset: 0; opacity: .28; }
+  main { position: relative; height: 100%; display: flex; flex-direction: column; align-items: center; padding: 18px 16px 12px; gap: 10px; }
+  h1 { margin: 0; font-size: 15px; letter-spacing: .6em; text-indent: .6em; color: var(--verde); text-shadow: 0 0 12px var(--verde); font-weight: 400; }
+  #orbe { width: 150px; height: 150px; border-radius: 50%; margin: 14px 0 4px; flex: none; cursor: pointer;
+    border: 1px solid var(--verde2); background: radial-gradient(circle at 50% 45%, #0c3a1c 0%, #03120a 60%, #010402 100%);
+    box-shadow: 0 0 24px #00ff6633, inset 0 0 30px #00ff6622; transition: box-shadow .3s, transform .3s, border-color .3s; }
+  body[data-estado="ouvindo"] #orbe { border-color: var(--verde); box-shadow: 0 0 60px #00ff66aa, inset 0 0 50px #00ff6666; animation: pulso 1.1s ease-in-out infinite; }
+  body[data-estado="pensando"] #orbe { animation: gira 1.4s linear infinite; border-style: dashed; border-color: var(--verde); }
+  body[data-estado="falando"] #orbe { border-color: var(--verde); box-shadow: 0 0 80px #00ff66cc, inset 0 0 60px #00ff6688; animation: pulso .45s ease-in-out infinite; }
+  body[data-estado="erro"] #orbe { border-color: #ff4040; box-shadow: 0 0 40px #ff404088; }
+  @keyframes pulso { 50% { transform: scale(1.07); } }
+  @keyframes gira { to { transform: rotate(360deg); } }
+  #status { font-size: 13px; color: var(--verde); min-height: 18px; text-align: center; text-shadow: 0 0 8px #00ff6688; }
+  #previa { font-size: 12px; min-height: 16px; opacity: .6; text-align: center; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #registro { flex: 1; width: 100%; max-width: 640px; overflow-y: auto; font-size: 13px; line-height: 1.5; padding: 8px 4px;
+    border-top: 1px solid #0a8f3c55; scrollbar-width: thin; scrollbar-color: var(--verde2) transparent; }
+  #registro p { margin: 0 0 8px; overflow-wrap: anywhere; }
+  #registro .eu { color: #7fd69c; opacity: .85; } #registro .eu::before { content: "> "; }
+  #registro .ele { color: var(--verde); } #registro .sis { color: #ffb347; font-size: 12px; }
+  form { width: 100%; max-width: 640px; display: flex; gap: 6px; }
+  input, select, button { font: inherit; font-size: 13px; color: var(--texto); background: #03120a; border: 1px solid var(--verde2); padding: 8px 10px; border-radius: 3px; }
+  input[type=text] { flex: 1; min-width: 0; } input:focus, select:focus, button:focus { outline: 1px solid var(--verde); }
+  button { cursor: pointer; color: var(--verde); } button:hover { background: #06240f; }
+  details { width: 100%; max-width: 640px; font-size: 12px; } summary { cursor: pointer; opacity: .7; }
+  .ajustes { display: grid; grid-template-columns: auto 1fr; gap: 6px 10px; align-items: center; padding: 8px 0; }
+  .ajustes select, .ajustes input { width: 100%; padding: 4px 6px; }
+  #ativar { position: fixed; inset: 0; background: #000d; display: none; align-items: center; justify-content: center; text-align: center; padding: 24px; z-index: 5; font-size: 15px; color: var(--verde); cursor: pointer; }
+</style>
+</head>
+<body data-estado="parado">
+<canvas id="chuva"></canvas>
+<main>
+  <h1 id="titulo">ATLAS</h1>
+  <div id="orbe" title="Clique para falar sem dizer o nome. Clique de novo (ou Esc) para interromper."></div>
+  <div id="status">Iniciando…</div>
+  <div id="previa"></div>
+  <div id="registro"></div>
+  <form id="formulario">
+    <input type="text" id="campo" placeholder="Ou digite aqui…" autocomplete="off">
+    <button type="submit">Enviar</button>
+  </form>
+  <details>
+    <summary>Ajustes de voz</summary>
+    <div class="ajustes">
+      <label for="selVoz">Voz</label><select id="selVoz"></select>
+      <label for="tom">Tom (grave ← → agudo)</label><input type="range" id="tom" min="0" max="1.5" step="0.05">
+      <label for="vel">Velocidade</label><input type="range" id="vel" min="0.6" max="1.4" step="0.05">
+      <span></span><span><button type="button" id="testar">Testar voz</button> <button type="button" id="nova">Nova conversa</button></span>
+    </div>
+  </details>
+</main>
+<div id="ativar">Clique em qualquer lugar para ativar a voz</div>
+
+<script>
+'use strict';
+const $ = (id) => document.getElementById(id);
+const semAcento = (s) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+const guardar = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
+const ler = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
+
+let cfg = { nome: 'Atlas', apelidos: ['atlas'], voz: {}, segundosDeContinuacao: 8, saudacao: '' };
+let estado = 'parado';        // parado | ouvindo | pensando | falando | erro
+let armadoAte = 0;            // enquanto Date.now() < armadoAte, a proxima frase e um comando (sem precisar do nome)
+let falando = false, respondendo = false, micOk = false;
+let cancelar = null;          // AbortController do pedido em andamento
+
+function definirEstado(e, texto) {
+  estado = e; document.body.dataset.estado = e;
+  if (texto !== undefined) $('status').textContent = texto;
+}
+function emEspera() { definirEstado('parado', micOk ? `Diga "${cfg.nome}" para chamar` : 'Microfone indisponível — use o campo de texto'); }
+function registrar(classe, texto) {
+  const p = document.createElement('p'); p.className = classe; p.textContent = texto;
+  $('registro').appendChild(p); $('registro').scrollTop = 1e9; return p;
+}
+
+// ---------- Som de ativacao ----------
+let audioCtx;
+function bip(freq = 880, dur = 0.09) {
+  try {
+    audioCtx = audioCtx || new AudioContext();
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.type = 'square'; o.frequency.value = freq; g.gain.value = 0.04;
+    g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + dur);
+    o.connect(g).connect(audioCtx.destination); o.start(); o.stop(audioCtx.currentTime + dur);
+  } catch {}
+}
+
+// ---------- Voz (sintese) ----------
+let vozes = [], fila = [], vozBloqueada = false;
+function carregarVozes() {
+  vozes = speechSynthesis.getVoices().filter((v) => /^pt/i.test(v.lang));
+  vozes.sort((a, b) => (/BR/i.test(b.lang) - /BR/i.test(a.lang)));
+  const sel = $('selVoz'); sel.innerHTML = '';
+  for (const v of vozes) sel.add(new Option(`${v.name} (${v.lang})`, v.name));
+  let escolhida = ler('atlas.voz');
+  if (!vozes.some((v) => v.name === escolhida)) {
+    escolhida = null;
+    for (const pref of (cfg.voz.preferidas || [])) {
+      const v = vozes.find((x) => semAcento(x.name).includes(semAcento(pref)));
+      if (v) { escolhida = v.name; break; }
+    }
+    if (!escolhida && vozes[0]) escolhida = vozes[0].name;
+  }
+  if (escolhida) sel.value = escolhida;
+}
+function falar(texto) {
+  texto = texto.replace(/[*_#`]/g, '').trim();
+  if (!texto) return;
+  fila.push(texto); proximaFala();
+}
+function proximaFala() {
+  if (falando) return;
+  const texto = fila.shift();
+  if (texto === undefined) return aoTerminarDeFalar();
+  falando = true; pausarEscuta();
+  definirEstado('falando', 'Falando…');
+  const u = new SpeechSynthesisUtterance(texto);
+  const v = vozes.find((x) => x.name === $('selVoz').value);
+  if (v) { u.voice = v; u.lang = v.lang; } else u.lang = 'pt-BR';
+  u.pitch = Number($('tom').value); u.rate = Number($('vel').value);
+  const seguir = () => { if (u._feito) return; u._feito = true; clearTimeout(vigia); falando = false; proximaFala(); };
+  // Vigia: alguns navegadores nunca disparam onend; nao deixa o assistente travado mudo
+  const vigia = setTimeout(seguir, 4000 + texto.length * 140);
+  u.onend = seguir;
+  u.onerror = (e) => {
+    if (e.error === 'not-allowed') { vozBloqueada = true; fila.unshift(texto); $('ativar').style.display = 'flex'; clearTimeout(vigia); u._feito = true; falando = false; return; }
+    seguir();
+  };
+  speechSynthesis.speak(u);
+}
+function aoTerminarDeFalar() {
+  if (respondendo) { definirEstado('pensando', 'Processando…'); return; }
+  armar(cfg.segundosDeContinuacao, false);
+  retomarEscuta();
+}
+function calar() {
+  fila = []; if (cancelar) cancelar.abort();
+  speechSynthesis.cancel(); falando = false; respondendo = false; armadoAte = 0;
+  emEspera(); retomarEscuta();
+}
+
+// ---------- Conversa com o servidor ----------
+async function perguntar(texto) {
+  if (respondendo) return;
+  const limpo = semAcento(texto).replace(/[^a-z ]/g, '').trim();
+  if (/^(pare|para|parar|silencio|cancela|cancelar|chega|quieto|cala a boca)$/.test(limpo)) return calar();
+  if (/^(nova conversa|esquece tudo|reiniciar conversa)$/.test(limpo)) {
+    await fetch('/nova-conversa', { method: 'POST' }); registrar('sis', 'Conversa reiniciada.'); falar('Memória da conversa apagada.'); return;
+  }
+  respondendo = true; armadoAte = 0; pausarEscuta();
+  registrar('eu', texto);
+  definirEstado('pensando', 'Processando…');
+  const linha = registrar('ele', '');
+  let buffer = '', completo = '';
+  cancelar = new AbortController();
+  const despejar = (final) => {
+    // fala frase a frase, para comecar a responder antes de o texto inteiro chegar
+    for (;;) {
+      const m = /^([\s\S]{12,}?[.!?…:;])\s+/.exec(buffer) || (buffer.length > 220 ? /^([\s\S]{120,220})\s/.exec(buffer) : null);
+      if (!m) break;
+      falar(m[1]); buffer = buffer.slice(m[0].length);
+    }
+    if (final && buffer.trim()) { falar(buffer); buffer = ''; }
+  };
+  try {
+    const r = await fetch('/falar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ texto }), signal: cancelar.signal });
+    if (!r.ok) throw new Error(r.status === 409 ? 'Ainda estou terminando o pedido anterior.' : 'Servidor respondeu ' + r.status);
+    const leitor = r.body.getReader(), dec = new TextDecoder();
+    let sse = '';
+    for (;;) {
+      const { value, done } = await leitor.read();
+      if (done) break;
+      sse += dec.decode(value, { stream: true });
+      let i;
+      while ((i = sse.indexOf('\n\n')) !== -1) {
+        const bloco = sse.slice(0, i); sse = sse.slice(i + 2);
+        const tipo = (/^event: (.+)$/m.exec(bloco) || [])[1];
+        let dados = {}; try { dados = JSON.parse((/^data: (.+)$/m.exec(bloco) || [])[1]); } catch {}
+        if (tipo === 'texto') { completo += dados.t; buffer += dados.t; linha.textContent = completo; $('registro').scrollTop = 1e9; despejar(false); }
+        else if (tipo === 'status' && !falando) definirEstado('pensando', 'Pesquisando na web…');
+        else if (tipo === 'acao') registrar('sis', (dados.ok ? 'Abrindo: ' : 'Não cadastrado: ') + dados.alvo);
+        else if (tipo === 'erro') { registrar('sis', 'Erro: ' + dados.detalhe); buffer += ' Tive um problema para falar com o Claude. Verifique o login do Claude Code.'; }
+      }
+    }
+  } catch (e) {
+    if (e.name !== 'AbortError') { registrar('sis', 'Erro: ' + e.message); buffer = 'Não consegui processar o pedido.'; }
+  }
+  respondendo = false; cancelar = null;
+  if (!linha.textContent) linha.remove();
+  despejar(true);
+  if (!falando && !fila.length) aoTerminarDeFalar();
+}
+
+// ---------- Escuta (reconhecimento de voz) ----------
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let rec = null, escutaLigada = false, querEscutar = false, errosSeguidos = 0, timerArmado = null;
+
+function armar(segundos, comSom = true) {
+  armadoAte = Date.now() + segundos * 1000;
+  if (comSom) bip();
+  definirEstado('ouvindo', 'Ouvindo…');
+  clearTimeout(timerArmado);
+  timerArmado = setTimeout(() => { if (estado === 'ouvindo' && Date.now() >= armadoAte) emEspera(); }, segundos * 1000 + 50);
+}
+function extrairComando(texto) {
+  // devolve o que foi dito depois do nome; null se o nome nao foi dito
+  const n = semAcento(texto);
+  for (const ap of [...cfg.apelidos].sort((a, b) => b.length - a.length)) {
+    const m = new RegExp('(^|[^a-z0-9])' + semAcento(ap).replace(/[^a-z0-9 ]/g, '') + '([^a-z0-9]|$)').exec(n);
+    if (m) return texto.slice(m.index + m[0].length).replace(/^[\s,.!?:;-]+/, '').trim();
+  }
+  return null;
+}
+function aoOuvir(texto) {
+  texto = texto.trim();
+  if (!texto || respondendo || falando) return;
+  const depois = extrairComando(texto);
+  if (depois !== null) {
+    if (depois.length > 1) { bip(); perguntar(depois); } else { armar(8); }
+  } else if (Date.now() < armadoAte) {
+    perguntar(texto);
+  }
+}
+function iniciarEscuta() {
+  if (!SR) { registrar('sis', 'Este navegador não tem reconhecimento de voz. Use o Chrome ou o Edge.'); emEspera(); return; }
+  rec = new SR(); rec.lang = 'pt-BR'; rec.continuous = true; rec.interimResults = true;
+  rec.onstart = () => { escutaLigada = true; if (!micOk) { micOk = true; if (estado === 'parado') emEspera(); } };
+  rec.onresult = (ev) => {
+    errosSeguidos = 0;
+    for (let i = ev.resultIndex; i < ev.results.length; i++) {
+      const t = ev.results[i][0].transcript;
+      if (ev.results[i].isFinal) { $('previa').textContent = ''; aoOuvir(t); } else $('previa').textContent = t;
+    }
+  };
+  rec.onerror = (ev) => {
+    if (ev.error === 'no-speech' || ev.error === 'aborted') return;
+    errosSeguidos++;
+    if (ev.error === 'not-allowed' || ev.error === 'service-not-allowed') {
+      querEscutar = false; micOk = false;
+      registrar('sis', 'Microfone bloqueado. Clique no cadeado ao lado do endereço, permita o microfone e recarregue (F5).');
+      definirEstado('erro', 'Microfone bloqueado');
+    } else if (errosSeguidos === 3) {
+      registrar('sis', 'Reconhecimento de voz falhando (' + ev.error + '). Verifique a internet e o microfone. Se persistir, troque "navegador" no config.json para "chrome" ou "edge".');
+    }
+  };
+  rec.onend = () => { escutaLigada = false; if (querEscutar) setTimeout(ligar, errosSeguidos > 2 ? 3000 : 250); };
+  retomarEscuta();
+}
+function ligar() { if (!rec || escutaLigada || !querEscutar) return; try { rec.start(); } catch {} }
+function retomarEscuta() { querEscutar = true; ligar(); }
+function pausarEscuta() { querEscutar = false; $('previa').textContent = ''; if (rec && escutaLigada) { try { rec.abort(); } catch {} } }
+
+// ---------- Interface ----------
+$('formulario').addEventListener('submit', (e) => { e.preventDefault(); const t = $('campo').value.trim(); $('campo').value = ''; if (t) { speechSynthesis.cancel(); fila = []; falando = false; perguntar(t); } });
+$('orbe').addEventListener('click', () => { if (falando || respondendo) calar(); else if (micOk) armar(8); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') calar(); });
+$('ativar').addEventListener('click', () => { $('ativar').style.display = 'none'; vozBloqueada = false; proximaFala(); });
+$('selVoz').addEventListener('change', () => guardar('atlas.voz', $('selVoz').value));
+$('tom').addEventListener('change', () => guardar('atlas.tom', $('tom').value));
+$('vel').addEventListener('change', () => guardar('atlas.vel', $('vel').value));
+$('testar').addEventListener('click', () => falar('Eu sou ' + cfg.nome + '. A Matrix está em todo lugar.'));
+$('nova').addEventListener('click', async () => { await fetch('/nova-conversa', { method: 'POST' }); registrar('sis', 'Conversa reiniciada.'); });
+
+// ---------- Chuva de codigo ----------
+(function chuva() {
+  const c = $('chuva'), x = c.getContext('2d'); let cols = [], tam = 15;
+  const ajustar = () => { c.width = innerWidth; c.height = innerHeight; cols = Array(Math.ceil(c.width / tam)).fill(0).map(() => Math.random() * -50); };
+  ajustar(); addEventListener('resize', ajustar);
+  const letras = 'ｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄ0123456789ATLAS';
+  setInterval(() => {
+    x.fillStyle = 'rgba(2,5,3,0.09)'; x.fillRect(0, 0, c.width, c.height);
+    x.fillStyle = '#00ff66'; x.font = tam + 'px monospace';
+    cols.forEach((y, i) => { x.fillText(letras[Math.floor(Math.random() * letras.length)], i * tam, y * tam); cols[i] = y * tam > c.height && Math.random() > 0.975 ? 0 : y + 1; });
+  }, 60);
+})();
+
+// ---------- Inicio ----------
+(async function iniciar() {
+  try { cfg = Object.assign(cfg, await (await fetch('/config')).json()); } catch {}
+  document.title = cfg.nome; $('titulo').textContent = cfg.nome.toUpperCase();
+  $('tom').value = ler('atlas.tom') || cfg.voz.tom || 0.45;
+  $('vel').value = ler('atlas.vel') || cfg.voz.velocidade || 0.95;
+  carregarVozes(); speechSynthesis.onvoiceschanged = carregarVozes;
+  await new Promise((r) => setTimeout(r, 600)); // da tempo de as vozes carregarem
+  if (!vozes.length) carregarVozes();
+  iniciarEscuta();
+  if (cfg.saudacao) falar(cfg.saudacao); else emEspera();
+})();
+</script>
+</body>
+</html>

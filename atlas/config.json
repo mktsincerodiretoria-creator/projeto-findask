@@ -1,0 +1,28 @@
+{
+  "nome": "Atlas",
+  "apelidos": ["atlas", "atlis", "ei atlas"],
+  "porta": 7717,
+  "modelo": "sonnet",
+  "navegador": "auto",
+  "voz": {
+    "preferidas": ["Antonio", "Daniel", "Fabio", "Julio"],
+    "tom": 0.45,
+    "velocidade": 0.95
+  },
+  "segundosDeContinuacao": 8,
+  "saudacao": "Sistema online. Atlas à disposição.",
+  "programas": {
+    "calculadora": "calc.exe",
+    "bloco de notas": "notepad.exe",
+    "explorador de arquivos": "explorer.exe",
+    "configuracoes": "ms-settings:",
+    "excel": "excel.exe",
+    "word": "winword.exe",
+    "whatsapp": "https://web.whatsapp.com",
+    "mercado livre": "https://www.mercadolivre.com.br/vendas",
+    "shopee": "https://seller.shopee.com.br",
+    "gmail": "https://mail.google.com",
+    "agenda": "https://calendar.google.com",
+    "youtube": "https://www.youtube.com"
+  }
+}
