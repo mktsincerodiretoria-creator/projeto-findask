@@ -15,7 +15,7 @@
       "Fabio",
       "Julio"
     ],
-    "tom": 0.45,
+    "tom": 0.3,
     "velocidade": 0.95
   },
   "segundosDeContinuacao": 8,
@@ -39,7 +39,7 @@
     "modelo": "eleven_flash_v2_5",
     "estabilidade": 0.5,
     "semelhanca": 0.8,
-    "velocidade": 0.95
+    "velocidade": 1.1
   },
   "agente": {
     "ativo": false,

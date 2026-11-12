@@ -59,6 +59,7 @@
       <span></span><span><button type="button" id="testar">Testar voz</button> <button type="button" id="nova">Nova conversa</button></span>
       <label for="chaveEl">Voz neural (ElevenLabs)</label><input type="password" id="chaveEl" placeholder="Cole aqui a chave da API" autocomplete="off">
       <label for="vozEl">ID da voz</label><input type="text" id="vozEl" placeholder="ID da voz na ElevenLabs" autocomplete="off">
+      <label for="grave">Engrossar voz neural (grossa ← → normal)</label><input type="range" id="grave" min="0.7" max="1" step="0.02">
       <span></span><span><button type="button" id="salvarEl">Salvar voz neural</button> <button type="button" id="desligarEl">Desligar</button> <span id="estadoEl"></span></span>
     </div>
   </details>
@@ -145,6 +146,8 @@ async function proximaFala() {
     const url = URL.createObjectURL(blob), a = new Audio(url);
     let feito = false;
     const seguir = () => { if (feito) return; feito = true; URL.revokeObjectURL(url); if (audioAtual === a) { audioAtual = null; falando = false; proximaFala(); } };
+    // Engrossar: tocar mais devagar sem preservar o tom deixa a voz mais grave
+    a.preservesPitch = false; a.mozPreservesPitch = false; a.webkitPreservesPitch = false; a.playbackRate = Number($('grave').value) || 1;
     audioAtual = a; a.onended = seguir; a.onerror = seguir;
     a.play().catch((e) => {
       if (e.name === 'NotAllowedError') { feito = true; audioAtual = null; falando = false; fila.unshift(item); $('ativar').style.display = 'flex'; }
@@ -297,6 +300,7 @@ $('ativar').addEventListener('click', () => { $('ativar').style.display = 'none'
 $('selVoz').addEventListener('change', () => guardar('atlas.voz', $('selVoz').value));
 $('tom').addEventListener('change', () => guardar('atlas.tom', $('tom').value));
 $('vel').addEventListener('change', () => guardar('atlas.vel', $('vel').value));
+$('grave').addEventListener('change', () => guardar('atlas.grave', $('grave').value));
 $('testar').addEventListener('click', () => falar('Eu sou ' + cfg.nome + '. A Matrix está em todo lugar.'));
 $('nova').addEventListener('click', async () => { await fetch('/nova-conversa', { method: 'POST' }); registrar('sis', 'Conversa reiniciada.'); });
 
@@ -331,6 +335,7 @@ $('desligarEl').addEventListener('click', () => salvarNeural({ chave: '' }));
   $('tom').value = ler('atlas.tom') || cfg.voz.tom || 0.45;
   $('vel').value = ler('atlas.vel') || cfg.voz.velocidade || 0.95;
   mostrarNeural();
+  $('grave').value = ler('atlas.grave') || 0.86;
   carregarVozes(); speechSynthesis.onvoiceschanged = carregarVozes;
   await new Promise((r) => setTimeout(r, 600)); // da tempo de as vozes carregarem
   if (!vozes.length) carregarVozes();
