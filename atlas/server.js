@@ -28,7 +28,23 @@ fs.writeFileSync(
   fs.readFileSync(path.join(DIR, 'persona.md'), 'utf8')
     .replace(/{{NOME}}/g, cfg.nome)
     .replace(/{{PROGRAMAS}}/g, Object.keys(cfg.programas || {}).join(', ') || 'nenhum')
+    + (cfg.agente && cfg.agente.ativo ? '\n' + fs.readFileSync(path.join(DIR, 'persona-agente.md'), 'utf8') : '')
 );
+
+// Segredos (chave da ElevenLabs) ficam so neste computador, fora do config.json
+const ARQ_SEGREDOS = path.join(DIR, 'segredos.json');
+let segredos = {};
+try { segredos = JSON.parse(fs.readFileSync(ARQ_SEGREDOS, 'utf8')); } catch {}
+const el = Object.assign({ voz: 'nPczCjzI2devNBz1zQrb', modelo: 'eleven_flash_v2_5' }, cfg.elevenlabs || {});
+const EL_BASE = process.env.ATLAS_ELEVENLABS_URL || 'https://api.elevenlabs.io';
+const chaveEl = () => process.env.ELEVENLABS_API_KEY || segredos.elevenlabs || '';
+const vozEl = () => segredos.elevenlabsVoz || el.voz;
+
+// Modo agente (opcional): o Atlas deixa de so conversar e passa a comandar o Claude Code neste computador
+const ag = Object.assign({ ativo: false, pasta: '', permissao: 'acceptEdits', chrome: false }, cfg.agente || {});
+if (!['acceptEdits', 'auto', 'dontAsk', 'bypassPermissions'].includes(ag.permissao)) ag.permissao = 'acceptEdits';
+const PASTA_AGENTE = ag.ativo ? (ag.pasta || path.join(os.homedir(), 'Atlas-trabalho')) : DIR;
+if (ag.ativo) fs.mkdirSync(PASTA_AGENTE, { recursive: true });
 
 let sessao = { id: null, ultimoUso: 0 };
 let ocupado = false;
@@ -89,13 +105,20 @@ function criarFiltro(aoTexto, aoAcao) {
 function perguntar(texto, enviar) {
   return new Promise((resolver) => {
     if (Date.now() - sessao.ultimoUso > SESSAO_EXPIRA_MS) sessao.id = null;
+    const arqPersona = path.join(DIR, PERSONA_GERADA);
     const args = ['-p', '--output-format', 'stream-json', '--verbose', '--include-partial-messages',
-      '--system-prompt-file', PERSONA_GERADA,
-      '--tools', 'WebSearch,WebFetch', '--allowedTools', 'WebSearch,WebFetch',
-      '--strict-mcp-config', '--model', String(cfg.modelo || 'sonnet').replace(/[^\w.\-\[\]]/g, '')];
+      '--system-prompt-file', WIN ? `"${arqPersona}"` : arqPersona,
+      '--model', String(cfg.modelo || 'sonnet').replace(/[^\w.\-\[\]]/g, '')];
+    if (ag.ativo) {
+      // Claude Code completo: arquivos e comandos na pasta de trabalho, conectores da conta e, se ligado, o Claude no Chrome
+      args.push('--permission-mode', ag.permissao);
+      if (ag.chrome) args.push('--chrome');
+    } else {
+      args.push('--tools', 'WebSearch,WebFetch', '--allowedTools', 'WebSearch,WebFetch', '--strict-mcp-config');
+    }
     if (sessao.id) args.push('--resume', sessao.id);
 
-    const filho = spawn(CLAUDE, args, { cwd: DIR, shell: WIN, windowsHide: true });
+    const filho = spawn(CLAUDE, args, { cwd: PASTA_AGENTE, shell: WIN, windowsHide: true });
     const filtro = criarFiltro((t) => enviar('texto', { t }), (alvo) => enviar('acao', { alvo, ok: abrir(alvo) }));
     let resto = '', falou = false, erro = '', resultado = null;
 
@@ -165,7 +188,47 @@ const servidor = http.createServer(async (req, res) => {
     return res.end(JSON.stringify({
       nome: cfg.nome, apelidos: cfg.apelidos || [cfg.nome], voz: cfg.voz || {},
       segundosDeContinuacao: cfg.segundosDeContinuacao || 8, saudacao: cfg.saudacao || '',
+      neural: !!chaveEl(), vozNeural: vozEl(), agente: ag.ativo,
     }));
+  }
+  if (req.method === 'GET' && rota === '/voz') {
+    // Voz neural: converte uma frase em audio pela ElevenLabs. A chave nunca sai deste servidor.
+    const texto = (new URL(req.url, URL_LOCAL).searchParams.get('t') || '').slice(0, 1200);
+    if (!chaveEl() || !texto) { res.writeHead(503); return res.end('voz neural nao configurada'); }
+    try {
+      const corpo = { text: texto, model_id: el.modelo,
+        voice_settings: { stability: el.estabilidade ?? 0.5, similarity_boost: el.semelhanca ?? 0.8, speed: el.velocidade ?? 0.95 } };
+      if (/v2_5/.test(el.modelo)) corpo.language_code = 'pt';
+      const r = await fetch(`${EL_BASE}/v1/text-to-speech/${encodeURIComponent(vozEl())}/stream?output_format=mp3_44100_128`, {
+        method: 'POST', headers: { 'xi-api-key': chaveEl(), 'Content-Type': 'application/json', Accept: 'audio/mpeg' }, body: JSON.stringify(corpo) });
+      if (!r.ok) {
+        const detalhe = (await r.text()).slice(0, 300);
+        log('elevenlabs falhou:', r.status, detalhe);
+        res.writeHead(502, { 'Content-Type': 'text/plain; charset=utf-8' }); return res.end(`ElevenLabs ${r.status}: ${detalhe}`);
+      }
+      res.writeHead(200, { 'Content-Type': 'audio/mpeg', 'Cache-Control': 'no-store' });
+      for await (const pedaco of r.body) res.write(pedaco);
+      return res.end();
+    } catch (e) {
+      log('elevenlabs erro:', e.message);
+      if (!res.headersSent) res.writeHead(502);
+      return res.end('erro de rede');
+    }
+  }
+  if (req.method === 'POST' && rota === '/voz-neural') {
+    let corpo = '';
+    req.on('data', (d) => { corpo += d; if (corpo.length > 2000) req.destroy(); });
+    req.on('end', () => {
+      try {
+        const d = JSON.parse(corpo);
+        if (typeof d.chave === 'string' && d.chave.trim()) segredos.elevenlabs = d.chave.trim();
+        if (d.chave === '') delete segredos.elevenlabs;
+        if (typeof d.voz === 'string') { const v = d.voz.trim().replace(/[^\w-]/g, ''); if (v) segredos.elevenlabsVoz = v; else delete segredos.elevenlabsVoz; }
+        fs.writeFileSync(ARQ_SEGREDOS, JSON.stringify(segredos, null, 2));
+        res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ neural: !!chaveEl(), vozNeural: vozEl() }));
+      } catch { res.writeHead(400); res.end('invalido'); }
+    });
+    return;
   }
   if (req.method === 'POST' && rota === '/nova-conversa') {
     sessao = { id: null, ultimoUso: 0 };
@@ -220,4 +283,4 @@ servidor.on('error', (e) => {
   if (e.code === 'EADDRINUSE') { log('ja estava rodando; so abrindo a janela'); abrirJanela(); setTimeout(() => process.exit(0), 500); }
   else { log('erro do servidor:', e.message); process.exit(1); }
 });
-servidor.listen(PORTA, '127.0.0.1', () => { log(`${cfg.nome} online em ${URL_LOCAL}`); abrirJanela(); });
+servidor.listen(PORTA, '127.0.0.1', () => { log(`${cfg.nome} online em ${URL_LOCAL}` + (ag.ativo ? ` | modo agente em ${PASTA_AGENTE} (${ag.permissao}${ag.chrome ? ', chrome' : ''})` : '')); abrirJanela(); });

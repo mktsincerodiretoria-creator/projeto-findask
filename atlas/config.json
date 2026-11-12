@@ -1,11 +1,20 @@
 {
   "nome": "Atlas",
-  "apelidos": ["atlas", "atlis", "ei atlas"],
+  "apelidos": [
+    "atlas",
+    "atlis",
+    "ei atlas"
+  ],
   "porta": 7717,
   "modelo": "sonnet",
   "navegador": "auto",
   "voz": {
-    "preferidas": ["Antonio", "Daniel", "Fabio", "Julio"],
+    "preferidas": [
+      "Antonio",
+      "Daniel",
+      "Fabio",
+      "Julio"
+    ],
     "tom": 0.45,
     "velocidade": 0.95
   },
@@ -24,5 +33,18 @@
     "gmail": "https://mail.google.com",
     "agenda": "https://calendar.google.com",
     "youtube": "https://www.youtube.com"
+  },
+  "elevenlabs": {
+    "voz": "nPczCjzI2devNBz1zQrb",
+    "modelo": "eleven_flash_v2_5",
+    "estabilidade": 0.5,
+    "semelhanca": 0.8,
+    "velocidade": 0.95
+  },
+  "agente": {
+    "ativo": false,
+    "pasta": "",
+    "permissao": "acceptEdits",
+    "chrome": false
   }
 }

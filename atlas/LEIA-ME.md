@@ -31,6 +31,28 @@ O que ele faz hoje: conversa, pesquisa na web e abre sites e programas ("Atlas, 
 
 Depois de mudar `config.json` ou `persona.md`, rode `desinstalar.bat` e `instalar.bat` de novo (ou reinicie o computador).
 
+## Voz neural (ElevenLabs)
+
+1. Crie uma conta em elevenlabs.io e gere uma chave de API (no perfil, em "API Keys").
+2. Na janela do Atlas, abra "Ajustes de voz", cole a chave em "Voz neural (ElevenLabs)" e clique em **Salvar voz neural**.
+3. Para trocar a voz, escolha uma na biblioteca de vozes da ElevenLabs, copie o **ID da voz** e cole no campo "ID da voz".
+
+A chave fica só neste computador, no arquivo `segredos.json`. Se a ElevenLabs falhar (chave errada, créditos esgotados, sem internet), o Atlas volta sozinho para a voz do Windows e avisa na tela. A ElevenLabs cobra por caracteres falados, à parte do plano Claude. Não use vozes clonadas de atores ou de outras pessoas sem autorização.
+
+## Modo agente (comandar o Claude Code pela voz)
+
+Por padrão o Atlas só conversa, pesquisa e abre sites. No modo agente ele passa a comandar o Claude Code neste computador: cria e edita arquivos, roda tarefas e usa os conectores da sua conta. Para ligar, em `config.json`:
+
+```json
+"agente": { "ativo": true, "pasta": "", "permissao": "acceptEdits", "chrome": false }
+```
+
+- `pasta`: onde ele trabalha. Vazio usa `Atlas-trabalho` na sua pasta de usuário. No Windows, escreva o caminho com barras duplas, por exemplo `"C:\\Projetos"`.
+- `permissao`: `acceptEdits` deixa criar e editar arquivos na pasta, mas bloqueia comandos que exigiriam aprovação. `bypassPermissions` libera tudo sem perguntar; como o pedido vem por voz e pode ser entendido errado, só use se aceitar esse risco.
+- `chrome`: `true` liga a integração com a extensão Claude no Chrome, para ele agir no navegador. Exige a extensão instalada e logada. Esta parte não foi testada.
+
+Depois de mudar, reinicie o Atlas. O Cowork não tem uma forma de ser comandado por fora; o Atlas não o controla.
+
 ## Se algo der errado
 
 - **Não escuta**: confira se o microfone foi permitido (cadeado ao lado do endereço na janela) e se o microfone padrão do Windows é o certo. O reconhecimento de voz precisa de internet.
@@ -43,4 +65,4 @@ Depois de mudar `config.json` ou `persona.md`, rode `desinstalar.bat` e `instala
 
 - O Atlas usa a cota do seu plano Claude, como qualquer uso do Claude Code.
 - O áudio do microfone é transcrito pelo serviço de voz do navegador (Google no Chrome, Microsoft no Edge).
-- Ele ainda não mexe em arquivos, e-mail ou agenda; só conversa, pesquisa e abre sites/programas.
+- Sem o modo agente, ele só conversa, pesquisa e abre sites/programas.

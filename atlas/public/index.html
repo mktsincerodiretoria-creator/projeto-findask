@@ -57,6 +57,9 @@
       <label for="tom">Tom (grave ← → agudo)</label><input type="range" id="tom" min="0" max="1.5" step="0.05">
       <label for="vel">Velocidade</label><input type="range" id="vel" min="0.6" max="1.4" step="0.05">
       <span></span><span><button type="button" id="testar">Testar voz</button> <button type="button" id="nova">Nova conversa</button></span>
+      <label for="chaveEl">Voz neural (ElevenLabs)</label><input type="password" id="chaveEl" placeholder="Cole aqui a chave da API" autocomplete="off">
+      <label for="vozEl">ID da voz</label><input type="text" id="vozEl" placeholder="ID da voz na ElevenLabs" autocomplete="off">
+      <span></span><span><button type="button" id="salvarEl">Salvar voz neural</button> <button type="button" id="desligarEl">Desligar</button> <span id="estadoEl"></span></span>
     </div>
   </details>
 </main>
@@ -115,17 +118,40 @@ function carregarVozes() {
   }
   if (escolhida) sel.value = escolhida;
 }
+let audioAtual = null, neuralAvisado = false;
+function buscarAudio(texto) {
+  // pede o audio ja ao enfileirar, para a frase seguinte estar pronta quando a atual terminar
+  return fetch('/voz?t=' + encodeURIComponent(texto)).then(async (r) => {
+    if (r.ok) return r.blob();
+    if (!neuralAvisado) { neuralAvisado = true; registrar('sis', 'Voz neural indisponível (' + (await r.text()).slice(0, 160) + '). Usando a voz do Windows.'); }
+    return null;
+  }).catch(() => null);
+}
 function falar(texto) {
   texto = texto.replace(/[*_#`]/g, '').trim();
   if (!texto) return;
-  fila.push(texto); proximaFala();
+  fila.push({ texto, audio: cfg.neural ? buscarAudio(texto) : null }); proximaFala();
 }
-function proximaFala() {
+async function proximaFala() {
   if (falando) return;
-  const texto = fila.shift();
-  if (texto === undefined) return aoTerminarDeFalar();
+  const item = fila.shift();
+  if (item === undefined) return aoTerminarDeFalar();
+  const texto = item.texto;
   falando = true; pausarEscuta();
   definirEstado('falando', 'Falando…');
+  const blob = item.audio ? await item.audio : null;
+  if (!falando) return; // interrompido enquanto o audio carregava
+  if (blob) {
+    const url = URL.createObjectURL(blob), a = new Audio(url);
+    let feito = false;
+    const seguir = () => { if (feito) return; feito = true; URL.revokeObjectURL(url); if (audioAtual === a) { audioAtual = null; falando = false; proximaFala(); } };
+    audioAtual = a; a.onended = seguir; a.onerror = seguir;
+    a.play().catch((e) => {
+      if (e.name === 'NotAllowedError') { feito = true; audioAtual = null; falando = false; fila.unshift(item); $('ativar').style.display = 'flex'; }
+      else seguir();
+    });
+    return;
+  }
   const u = new SpeechSynthesisUtterance(texto);
   const v = vozes.find((x) => x.name === $('selVoz').value);
   if (v) { u.voice = v; u.lang = v.lang; } else u.lang = 'pt-BR';
@@ -135,11 +161,12 @@ function proximaFala() {
   const vigia = setTimeout(seguir, 4000 + texto.length * 140);
   u.onend = seguir;
   u.onerror = (e) => {
-    if (e.error === 'not-allowed') { vozBloqueada = true; fila.unshift(texto); $('ativar').style.display = 'flex'; clearTimeout(vigia); u._feito = true; falando = false; return; }
+    if (e.error === 'not-allowed') { vozBloqueada = true; fila.unshift(item); $('ativar').style.display = 'flex'; clearTimeout(vigia); u._feito = true; falando = false; return; }
     seguir();
   };
   speechSynthesis.speak(u);
 }
+function pararAudio() { if (audioAtual) { const a = audioAtual; audioAtual = null; try { a.pause(); } catch {} } }
 function aoTerminarDeFalar() {
   if (respondendo) { definirEstado('pensando', 'Processando…'); return; }
   armar(cfg.segundosDeContinuacao, false);
@@ -147,7 +174,7 @@ function aoTerminarDeFalar() {
 }
 function calar() {
   fila = []; if (cancelar) cancelar.abort();
-  speechSynthesis.cancel(); falando = false; respondendo = false; armadoAte = 0;
+  speechSynthesis.cancel(); pararAudio(); falando = false; respondendo = false; armadoAte = 0;
   emEspera(); retomarEscuta();
 }
 
@@ -189,7 +216,7 @@ async function perguntar(texto) {
         const tipo = (/^event: (.+)$/m.exec(bloco) || [])[1];
         let dados = {}; try { dados = JSON.parse((/^data: (.+)$/m.exec(bloco) || [])[1]); } catch {}
         if (tipo === 'texto') { completo += dados.t; buffer += dados.t; linha.textContent = completo; $('registro').scrollTop = 1e9; despejar(false); }
-        else if (tipo === 'status' && !falando) definirEstado('pensando', 'Pesquisando na web…');
+        else if (tipo === 'status' && !falando) definirEstado('pensando', 'Trabalhando…');
         else if (tipo === 'acao') registrar('sis', (dados.ok ? 'Abrindo: ' : 'Não cadastrado: ') + dados.alvo);
         else if (tipo === 'erro') { registrar('sis', 'Erro: ' + dados.detalhe); buffer += ' Tive um problema para falar com o Claude. Verifique o login do Claude Code.'; }
       }
@@ -263,7 +290,7 @@ function retomarEscuta() { querEscutar = true; ligar(); }
 function pausarEscuta() { querEscutar = false; $('previa').textContent = ''; if (rec && escutaLigada) { try { rec.abort(); } catch {} } }
 
 // ---------- Interface ----------
-$('formulario').addEventListener('submit', (e) => { e.preventDefault(); const t = $('campo').value.trim(); $('campo').value = ''; if (t) { speechSynthesis.cancel(); fila = []; falando = false; perguntar(t); } });
+$('formulario').addEventListener('submit', (e) => { e.preventDefault(); const t = $('campo').value.trim(); $('campo').value = ''; if (t) { speechSynthesis.cancel(); pararAudio(); fila = []; falando = false; perguntar(t); } });
 $('orbe').addEventListener('click', () => { if (falando || respondendo) calar(); else if (micOk) armar(8); });
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') calar(); });
 $('ativar').addEventListener('click', () => { $('ativar').style.display = 'none'; vozBloqueada = false; proximaFala(); });
@@ -272,6 +299,17 @@ $('tom').addEventListener('change', () => guardar('atlas.tom', $('tom').value));
 $('vel').addEventListener('change', () => guardar('atlas.vel', $('vel').value));
 $('testar').addEventListener('click', () => falar('Eu sou ' + cfg.nome + '. A Matrix está em todo lugar.'));
 $('nova').addEventListener('click', async () => { await fetch('/nova-conversa', { method: 'POST' }); registrar('sis', 'Conversa reiniciada.'); });
+
+async function salvarNeural(dados) {
+  try {
+    const r = await (await fetch('/voz-neural', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(dados) })).json();
+    cfg.neural = r.neural; cfg.vozNeural = r.vozNeural; neuralAvisado = false; $('chaveEl').value = ''; mostrarNeural();
+    if (cfg.neural) falar('Voz neural ativada. Eu sou ' + cfg.nome + '.');
+  } catch { $('estadoEl').textContent = 'Não consegui salvar.'; }
+}
+function mostrarNeural() { $('estadoEl').textContent = cfg.neural ? 'Ativa' : 'Desligada'; $('vozEl').value = cfg.vozNeural || ''; }
+$('salvarEl').addEventListener('click', () => { const d = { voz: $('vozEl').value }; if ($('chaveEl').value.trim()) d.chave = $('chaveEl').value.trim(); salvarNeural(d); });
+$('desligarEl').addEventListener('click', () => salvarNeural({ chave: '' }));
 
 // ---------- Chuva de codigo ----------
 (function chuva() {
@@ -292,6 +330,7 @@ $('nova').addEventListener('click', async () => { await fetch('/nova-conversa', 
   document.title = cfg.nome; $('titulo').textContent = cfg.nome.toUpperCase();
   $('tom').value = ler('atlas.tom') || cfg.voz.tom || 0.45;
   $('vel').value = ler('atlas.vel') || cfg.voz.velocidade || 0.95;
+  mostrarNeural();
   carregarVozes(); speechSynthesis.onvoiceschanged = carregarVozes;
   await new Promise((r) => setTimeout(r, 600)); // da tempo de as vozes carregarem
   if (!vozes.length) carregarVozes();
