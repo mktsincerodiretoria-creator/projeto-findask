@@ -14,7 +14,22 @@ const cfg = JSON.parse(fs.readFileSync(path.join(DIR, 'config.json'), 'utf8'));
 const PORTA = Number(process.env.ATLAS_PORTA || cfg.porta || 7717);
 const URL_LOCAL = `http://localhost:${PORTA}`;
 const WIN = process.platform === 'win32';
-const CLAUDE = process.env.ATLAS_CLAUDE || 'claude';
+// Um erro inesperado nunca pode derrubar o assistente: registra e segue rodando
+process.on('uncaughtException', (e) => { try { log('ERRO inesperado:', e && e.stack || e); } catch {} });
+process.on('unhandledRejection', (e) => { try { log('ERRO inesperado (promessa):', e && e.stack || e); } catch {} });
+
+// Acha o Claude Code mesmo quando o PATH do Windows ainda nao foi atualizado depois da instalacao
+function acharClaude() {
+  if (process.env.ATLAS_CLAUDE) return process.env.ATLAS_CLAUDE;
+  if (!WIN) return 'claude';
+  const cand = [];
+  for (const d of (process.env.PATH || '').split(';')) if (d) cand.push(path.join(d, 'claude.exe'), path.join(d, 'claude.cmd'));
+  cand.push(path.join(os.homedir(), '.local', 'bin', 'claude.exe'),
+    path.join(process.env.APPDATA || '', 'npm', 'claude.cmd'),
+    path.join(process.env.LOCALAPPDATA || '', 'Programs', 'claude', 'claude.exe'),
+    path.join(path.dirname(process.execPath), 'claude.cmd'));
+  return cand.find((p) => { try { return fs.statSync(p).isFile(); } catch { return false; } }) || null;
+}
 const SESSAO_EXPIRA_MS = 30 * 60 * 1000;
 
 const semAcento = (s) => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
@@ -105,9 +120,16 @@ function criarFiltro(aoTexto, aoAcao) {
 function perguntar(texto, enviar) {
   return new Promise((resolver) => {
     if (Date.now() - sessao.ultimoUso > SESSAO_EXPIRA_MS) sessao.id = null;
+    const claude = acharClaude();
+    if (!claude) {
+      log('Claude Code nao encontrado');
+      return resolver({ ok: false, semClaude: true, detalhe: 'Claude Code não encontrado neste computador. Rode o instalar.bat de novo.' });
+    }
+    // .exe roda direto; o atalho .cmd do npm precisa do interpretador de comandos
+    const viaShell = WIN && !/\.exe$/i.test(claude);
     const arqPersona = path.join(DIR, PERSONA_GERADA);
     const args = ['-p', '--output-format', 'stream-json', '--verbose', '--include-partial-messages',
-      '--system-prompt-file', WIN ? `"${arqPersona}"` : arqPersona,
+      '--system-prompt-file', viaShell ? `"${arqPersona}"` : arqPersona,
       '--model', String(cfg.modelo || 'sonnet').replace(/[^\w.\-\[\]]/g, '')];
     if (ag.ativo) {
       // Claude Code completo: arquivos e comandos na pasta de trabalho, conectores da conta e, se ligado, o Claude no Chrome
@@ -118,7 +140,11 @@ function perguntar(texto, enviar) {
     }
     if (sessao.id) args.push('--resume', sessao.id);
 
-    const filho = spawn(CLAUDE, args, { cwd: PASTA_AGENTE, shell: WIN, windowsHide: true });
+    const ambiente = Object.assign({}, process.env);
+    const chavePath = Object.keys(ambiente).find((k) => k.toLowerCase() === 'path') || 'PATH';
+    ambiente[chavePath] = path.dirname(process.execPath) + path.delimiter + (ambiente[chavePath] || ''); // garante o node para o atalho .cmd
+    const filho = spawn(viaShell ? `"${claude}"` : claude, args, { cwd: PASTA_AGENTE, shell: viaShell, windowsHide: true, env: ambiente });
+    filho.stdin.on('error', (e) => { erro += ' ' + e.message; }); // se o claude nao abrir, a escrita falha: nao pode derrubar o servidor
     const filtro = criarFiltro((t) => enviar('texto', { t }), (alvo) => enviar('acao', { alvo, ok: abrir(alvo) }));
     let resto = '', falou = false, erro = '', resultado = null;
 
@@ -153,6 +179,7 @@ function perguntar(texto, enviar) {
         sessao = { id: resultado.session_id, ultimoUso: Date.now() };
       }
       const falhou = !resultado || resultado.is_error || codigo !== 0;
+      if (falhou) log('claude terminou com falha:', `codigo ${codigo}`, (erro || '').slice(0, 300));
       if (falhou && !falou) {
         const detalhe = ((resultado && resultado.result) || erro || `codigo ${codigo}`).toString().slice(0, 400);
         log('falha do claude:', detalhe);
@@ -248,7 +275,7 @@ const servidor = http.createServer(async (req, res) => {
       log('pedido:', texto);
       try {
         let r = await perguntar(texto, enviar);
-        if (!r.ok && sessao.id) { sessao.id = null; r = await perguntar(texto, enviar); } // sessao antiga invalida
+        if (!r.ok && !r.semClaude && sessao.id) { sessao.id = null; r = await perguntar(texto, enviar); } // sessao antiga invalida
         if (!r.ok) enviar('erro', { detalhe: r.detalhe });
       } catch (e) {
         enviar('erro', { detalhe: e.message });
@@ -280,7 +307,7 @@ function abrirJanela() {
 }
 
 servidor.on('error', (e) => {
-  if (e.code === 'EADDRINUSE') { log('ja estava rodando; so abrindo a janela'); abrirJanela(); setTimeout(() => process.exit(0), 500); }
+  if (e.code === 'EADDRINUSE') { log('ja estava rodando; so abrindo a janela'); abrirJanela(); setTimeout(() => process.exit(0), 1500); }
   else { log('erro do servidor:', e.message); process.exit(1); }
 });
 servidor.listen(PORTA, '127.0.0.1', () => { log(`${cfg.nome} online em ${URL_LOCAL}` + (ag.ativo ? ` | modo agente em ${PASTA_AGENTE} (${ag.permissao}${ag.chrome ? ', chrome' : ''})` : '')); abrirJanela(); });

@@ -73,7 +73,8 @@ $vbs = Join-Path $dir 'Atlas.vbs'
 $conteudo = @"
 Set s = CreateObject("WScript.Shell")
 s.CurrentDirectory = "$dir"
-s.Run """$node"" server.js", 0, False
+s.Environment("PROCESS")("ATLAS_NODE") = """$node"""
+s.Run "cmd /c rodar.bat", 0, False
 "@
 Set-Content -Path $vbs -Value $conteudo -Encoding Default
 
@@ -88,7 +89,30 @@ foreach ($pasta in @([Environment]::GetFolderPath('Startup'), [Environment]::Get
   $atalho.Save()
 }
 
+# Desliga uma versao antiga que esteja rodando, para a nova assumir
+try {
+  Get-CimInstance Win32_Process -Filter "Name='cmd.exe'" | Where-Object { $_.CommandLine -like '*rodar.bat*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+  Get-NetTCPConnection -LocalPort 7717 -State Listen -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }
+} catch { }
+Start-Sleep -Seconds 1
+
 Start-Process $wscript -ArgumentList ('"' + $vbs + '"')
+
+# Confere se o Atlas respondeu
+$ligou = $false
+for ($i = 0; $i -lt 15; $i++) {
+  Start-Sleep -Seconds 1
+  try { $null = Invoke-WebRequest -UseBasicParsing -Uri 'http://localhost:7717/config' -TimeoutSec 2; $ligou = $true; break } catch { }
+}
+if (-not $ligou) {
+  Write-Host ''
+  Write-Host 'O Atlas NAO respondeu. Tire uma foto desta janela e envie. Ultimas linhas do registro:' -ForegroundColor Red
+  if (Test-Path (Join-Path $dir 'atlas.log')) { Get-Content (Join-Path $dir 'atlas.log') -Tail 15 }
+  Write-Host '--- tentativa direta ---' -ForegroundColor Red
+  $env:ATLAS_SEM_JANELA = '1'
+  & $node (Join-Path $dir 'server.js')
+  exit 1
+}
 
 Write-Host ''
 Write-Host 'Pronto. O Atlas esta abrindo agora e vai abrir sozinho sempre que voce ligar o computador.' -ForegroundColor Green

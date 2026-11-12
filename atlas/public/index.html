@@ -221,7 +221,7 @@ async function perguntar(texto) {
         if (tipo === 'texto') { completo += dados.t; buffer += dados.t; linha.textContent = completo; $('registro').scrollTop = 1e9; despejar(false); }
         else if (tipo === 'status' && !falando) definirEstado('pensando', 'Trabalhando…');
         else if (tipo === 'acao') registrar('sis', (dados.ok ? 'Abrindo: ' : 'Não cadastrado: ') + dados.alvo);
-        else if (tipo === 'erro') { registrar('sis', 'Erro: ' + dados.detalhe); buffer += ' Tive um problema para falar com o Claude. Verifique o login do Claude Code.'; }
+        else if (tipo === 'erro') { registrar('sis', 'Erro: ' + dados.detalhe); buffer += /encontrado/.test(dados.detalhe || '') ? ' Não encontrei o Claude Code neste computador. Rode o instalador de novo.' : ' Tive um problema para falar com o Claude. Veja a mensagem na tela.'; }
       }
     }
   } catch (e) {
