@@ -24,6 +24,7 @@
   #status { font-size: 13px; color: var(--verde); min-height: 18px; text-align: center; text-shadow: 0 0 8px #00ff6688; }
   #mic { font-size: 11px; opacity: .8; text-align: center; width: 100%; max-width: 320px; }
   #nivel { height: 5px; border: 1px solid #0a8f3c88; margin-top: 4px; } #barra { display: block; height: 100%; width: 0; background: var(--verde); }
+  #diag { font-size: 11px; opacity: .8; text-align: center; overflow-wrap: anywhere; max-width: 100%; }
   #previa { font-size: 12px; min-height: 16px; opacity: .6; text-align: center; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   #registro { flex: 1; width: 100%; max-width: 640px; overflow-y: auto; font-size: 13px; line-height: 1.5; padding: 8px 4px;
     border-top: 1px solid #0a8f3c55; scrollbar-width: thin; scrollbar-color: var(--verde2) transparent; }
@@ -51,6 +52,7 @@
   <div id="orbe" title="Clique para falar sem dizer o nome. Clique de novo (ou Esc) para interromper."></div>
   <div id="status">Iniciando…</div>
   <div id="mic"><span id="micNome">Microfone: verificando…</span><div id="nivel"><i id="barra"></i></div></div>
+  <div id="diag">Escuta: iniciando…</div>
   <div id="previa"></div>
   <div id="registro"></div>
   <div id="anexos"></div>
@@ -159,9 +161,17 @@ async function proximaFala() {
     // Engrossar: tocar mais devagar sem preservar o tom deixa a voz mais grave
     a.preservesPitch = false; a.mozPreservesPitch = false; a.webkitPreservesPitch = false; a.playbackRate = Number($('grave').value) || 1;
     audioAtual = a; a.onended = seguir; a.onerror = seguir;
+    // Vigia: se o audio empacar, segue em frente em vez de deixar o assistente surdo
+    let vigia = setTimeout(seguir, 6000 + texto.length * 160);
+    a.onloadedmetadata = () => { if (isFinite(a.duration)) { clearTimeout(vigia); vigia = setTimeout(seguir, (a.duration / a.playbackRate) * 1000 + 2500); } };
     a.play().catch((e) => {
-      if (e.name === 'NotAllowedError') { feito = true; audioAtual = null; falando = false; fila.unshift(item); $('ativar').style.display = 'flex'; }
-      else seguir();
+      clearTimeout(vigia);
+      if (e.name === 'NotAllowedError') {
+        // O navegador so libera som depois de um clique: avisa, mas continua ouvindo
+        feito = true; audioAtual = null; falando = false; fila = []; $('ativar').style.display = 'flex';
+        registrar('sis', 'O navegador bloqueou o som até você clicar na janela uma vez. Clique em qualquer lugar.');
+        if (!respondendo) { emEspera(); retomarEscuta(); }
+      } else seguir();
     });
     return;
   }
@@ -174,7 +184,7 @@ async function proximaFala() {
   const vigia = setTimeout(seguir, 4000 + texto.length * 140);
   u.onend = seguir;
   u.onerror = (e) => {
-    if (e.error === 'not-allowed') { vozBloqueada = true; fila.unshift(item); $('ativar').style.display = 'flex'; clearTimeout(vigia); u._feito = true; falando = false; return; }
+    if (e.error === 'not-allowed') { vozBloqueada = true; fila = []; $('ativar').style.display = 'flex'; clearTimeout(vigia); u._feito = true; falando = false; if (!respondendo) { emEspera(); retomarEscuta(); } return; }
     seguir();
   };
   speechSynthesis.speak(u);
@@ -239,6 +249,7 @@ async function perguntar(texto) {
   const linha = registrar('ele', '');
   let buffer = '', completo = '';
   cancelar = new AbortController();
+  const guarda = setTimeout(() => { if (cancelar) cancelar.abort(); registrar('sis', 'O pedido demorou demais e foi cancelado.'); }, cfg.agente ? 900000 : 200000);
   const despejar = (final) => {
     // fala frase a frase, para comecar a responder antes de o texto inteiro chegar
     for (;;) {
@@ -271,7 +282,7 @@ async function perguntar(texto) {
   } catch (e) {
     if (e.name !== 'AbortError') { registrar('sis', 'Erro: ' + e.message); buffer = 'Não consegui processar o pedido.'; }
   }
-  respondendo = false; cancelar = null;
+  clearTimeout(guarda); respondendo = false; cancelar = null;
   if (!linha.textContent) linha.remove();
   despejar(true);
   if (!falando && !fila.length) aoTerminarDeFalar();
@@ -279,7 +290,8 @@ async function perguntar(texto) {
 
 // ---------- Escuta (reconhecimento de voz) ----------
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-let ouviuAlgo = false;
+let ouviuAlgo = false, ultimoOuvido = '', estadoEscuta = 'iniciando…';
+function diag(e) { if (e) estadoEscuta = e; $('diag').textContent = 'Escuta: ' + estadoEscuta + (ultimoOuvido ? ' | Última frase entendida: "' + ultimoOuvido + '"' : ' | Nenhuma frase entendida ainda'); }
 let rec = null, escutaLigada = false, querEscutar = false, errosSeguidos = 0, timerArmado = null;
 
 function armar(segundos, comSom = true) {
@@ -296,6 +308,9 @@ function extrairComando(texto) {
     const m = new RegExp('(^|[^a-z0-9])' + semAcento(ap).replace(/[^a-z0-9 ]/g, '') + '([^a-z0-9]|$)').exec(n);
     if (m) return texto.slice(m.index + m[0].length).replace(/^[\s,.!?:;-]+/, '').trim();
   }
+  // Formas parecidas que o reconhecimento costuma escrever; valem so no comeco da frase, para nao disparar a toa
+  const m = /^(?:ei |e |oi |ola |o |ok |hey )?(?:atlas|atlaz|atlass|at las|a tlas|atlans|atlan|atras|atraz|adlas|aglas|athlas|hatlas|alas|altas|atila|atilas|atos)(?:[^a-z0-9]|$)/.exec(n);
+  if (m) return texto.slice(m[0].length).replace(/^[\s,.!?:;-]+/, '').trim();
   return null;
 }
 function aoOuvir(texto) {
@@ -336,18 +351,18 @@ async function verificarMicrofone() {
 function iniciarEscuta() {
   if (!SR) { registrar('sis', 'Este navegador não tem reconhecimento de voz. Use o Chrome ou o Edge.'); emEspera(); return; }
   rec = new SR(); rec.lang = 'pt-BR'; rec.continuous = true; rec.interimResults = true;
-  rec.onstart = () => { escutaLigada = true; if (!micOk) { micOk = true; if (estado === 'parado') emEspera(); } };
+  rec.onstart = () => { diag('ligada'); escutaLigada = true; if (!micOk) { micOk = true; if (estado === 'parado') emEspera(); } };
   rec.onresult = (ev) => {
     errosSeguidos = 0;
     ouviuAlgo = true;
     for (let i = ev.resultIndex; i < ev.results.length; i++) {
       const t = ev.results[i][0].transcript;
-      if (ev.results[i].isFinal) { $('previa').textContent = ''; aoOuvir(t); } else $('previa').textContent = t;
+      if (ev.results[i].isFinal) { $('previa').textContent = ''; ultimoOuvido = t.trim().slice(0, 80); diag(); aoOuvir(t); } else $('previa').textContent = t;
     }
   };
   rec.onerror = (ev) => {
     if (ev.error === 'no-speech' || ev.error === 'aborted') return;
-    errosSeguidos++;
+    errosSeguidos++; diag('ERRO "' + ev.error + '"');
     if (ev.error === 'not-allowed' || ev.error === 'service-not-allowed') {
       querEscutar = false; micOk = false;
       registrar('sis', 'Microfone bloqueado. Clique no cadeado ao lado do endereço, permita o microfone e recarregue (F5).');
@@ -358,7 +373,7 @@ function iniciarEscuta() {
       registrar('sis', 'O reconhecimento de voz do navegador está falhando (' + ev.error + '). Ele precisa de internet. Se a barra do microfone se mexe quando você fala e mesmo assim nada é entendido, instale o Google Chrome: o reconhecimento de voz funciona melhor nele do que no Edge.');
     }
   };
-  rec.onend = () => { escutaLigada = false; if (querEscutar) setTimeout(ligar, errosSeguidos > 2 ? 3000 : 250); };
+  rec.onend = () => { escutaLigada = false; if (!/ERRO/.test(estadoEscuta)) diag(querEscutar ? 'religando…' : 'pausada enquanto ele fala ou processa'); if (querEscutar) setTimeout(ligar, errosSeguidos > 2 ? 3000 : 250); };
   retomarEscuta();
 }
 function ligar() { if (!rec || escutaLigada || !querEscutar) return; try { rec.start(); } catch {} }
@@ -371,7 +386,7 @@ $('anexar').addEventListener('click', () => $('arquivo').click());
 $('arquivo').addEventListener('change', () => { anexarArquivos([...$('arquivo').files]); $('arquivo').value = ''; });
 $('orbe').addEventListener('click', () => { if (falando || respondendo) calar(); else if (micOk) armar(8); });
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') calar(); });
-$('ativar').addEventListener('click', () => { $('ativar').style.display = 'none'; vozBloqueada = false; proximaFala(); });
+$('ativar').addEventListener('click', () => { $('ativar').style.display = 'none'; vozBloqueada = false; if (audioCtx) audioCtx.resume(); falar('Voz ativada.'); });
 $('selVoz').addEventListener('change', () => guardar('atlas.voz', $('selVoz').value));
 $('tom').addEventListener('change', () => guardar('atlas.tom', $('tom').value));
 $('vel').addEventListener('change', () => guardar('atlas.vel', $('vel').value));

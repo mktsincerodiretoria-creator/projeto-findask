@@ -184,7 +184,10 @@ function perguntar(texto, enviar, anexos = []) {
     });
     filho.stderr.on('data', (d) => { erro += d.toString('utf8'); });
     filho.on('error', (e) => { erro += e.message; });
+    // Se o Claude Code travar (por exemplo esperando login), encerra em vez de deixar o assistente preso
+    const limite = setTimeout(() => { erro += ' Tempo esgotado: o Claude Code não respondeu.'; try { filho.kill(); } catch {} if (WIN && filho.pid) spawn('taskkill', ['/pid', String(filho.pid), '/t', '/f'], { stdio: 'ignore' }).on('error', () => {}); }, ag.ativo ? 14 * 60000 : 3 * 60000);
     filho.on('close', (codigo) => {
+      clearTimeout(limite);
       filtro.fim();
       if (resultado && resultado.session_id && !resultado.is_error) {
         sessao = { id: resultado.session_id, ultimoUso: Date.now() };
