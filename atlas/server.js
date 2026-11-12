@@ -43,6 +43,7 @@ fs.writeFileSync(
   fs.readFileSync(path.join(DIR, 'persona.md'), 'utf8')
     .replace(/{{NOME}}/g, cfg.nome)
     .replace(/{{PROGRAMAS}}/g, Object.keys(cfg.programas || {}).join(', ') || 'nenhum')
+    .replace(/{{LOJAS}}/g, Object.keys(cfg.lojas || {}).join(', ') || 'nenhuma')
     + (cfg.agente && cfg.agente.ativo ? '\n' + fs.readFileSync(path.join(DIR, 'persona-agente.md'), 'utf8') : '')
 );
 
@@ -99,6 +100,59 @@ function abrir(alvoBruto) {
   return true;
 }
 
+// ---------- Navegadores das lojas (perfis do Chrome) ----------
+function acharChrome() {
+  const pf = [process.env['ProgramFiles'], process.env['ProgramFiles(x86)'], process.env['LOCALAPPDATA']].filter(Boolean);
+  return pf.map((p) => path.join(p, 'Google', 'Chrome', 'Application', 'chrome.exe')).find((p) => fs.existsSync(p)) || null;
+}
+// Le os perfis que existem no Chrome deste computador: pasta interna -> nome que aparece no Chrome
+function lerPerfisChrome() {
+  const base = process.env.ATLAS_CHROME_DADOS || path.join(process.env.LOCALAPPDATA || '', 'Google', 'Chrome', 'User Data');
+  try {
+    const cache = JSON.parse(fs.readFileSync(path.join(base, 'Local State'), 'utf8')).profile.info_cache;
+    return Object.entries(cache).map(([dir, i]) => ({ dir, nome: String(i.name || i.shortcut_name || dir) }));
+  } catch { return []; }
+}
+const lojas = Object.entries(cfg.lojas || {}).map(([nome, l]) => ({
+  nome, perfil: semAcento(l.perfil || nome), paginas: Array.isArray(l.paginas) ? l.paginas : [],
+  apelidos: [nome, ...(l.apelidos || [])].map(semAcento),
+}));
+function acharLoja(falado) {
+  const f = semAcento(falado).replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+  return lojas.find((l) => l.apelidos.includes(f))
+    || [...lojas].sort((a, b) => b.nome.length - a.nome.length).find((l) => l.apelidos.some((a) => f.includes(a)));
+}
+// Casa a loja com o perfil do Chrome pelo nome; prefere o nome igual, depois o mais curto que contenha o texto
+function acharPerfil(loja, perfis) {
+  const cand = perfis.map((p) => ({ p, n: semAcento(p.nome).replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim() }));
+  const igual = cand.find((c) => c.n === loja.perfil || c.p.dir.toLowerCase() === loja.perfil);
+  if (igual) return igual.p;
+  const palavras = loja.perfil.split(' ');
+  const contem = cand.filter((c) => palavras.every((w) => c.n.split(' ').includes(w))).sort((a, b) => a.n.length - b.n.length);
+  return contem.length ? contem[0].p : null;
+}
+function abrirNavegador(pedido) {
+  const [alvoBruto, urlExtra] = String(pedido).split('|').map((x) => x.trim());
+  const perfis = lerPerfisChrome();
+  const todas = /^(todas|todos|tudo)$/.test(semAcento(alvoBruto));
+  const escolhidas = todas ? lojas : [acharLoja(alvoBruto)].filter(Boolean);
+  if (!escolhidas.length) { log('navegador: loja nao cadastrada:', alvoBruto); return { ok: false, detalhe: `Loja "${alvoBruto}" não cadastrada no config.json.` }; }
+  const chrome = acharChrome();
+  const abertas = [], faltando = [];
+  for (const loja of escolhidas) {
+    const perfil = acharPerfil(loja, perfis);
+    if (!perfil) { faltando.push(loja.nome); continue; }
+    const urls = [...loja.paginas, ...(urlExtra ? [urlExtra] : [])].filter((u) => { try { return ['http:', 'https:'].includes(new URL(u).protocol); } catch { return false; } });
+    log('abrindo navegador:', loja.nome, '->', perfil.nome, `(${perfil.dir})`, urls.join(' '));
+    abertas.push(loja.nome);
+    if (WIN && chrome) spawn(chrome, [`--profile-directory=${perfil.dir}`, ...urls], { detached: true, stdio: 'ignore' }).on('error', (e) => log('erro ao abrir o Chrome:', e.message)).unref();
+  }
+  if (WIN && !chrome) return { ok: false, detalhe: 'Não encontrei o Google Chrome neste computador.' };
+  const detalhe = (abertas.length ? 'Navegador aberto: ' + abertas.join(', ') + '.' : '')
+    + (faltando.length ? ` Sem perfil do Chrome com o nome de: ${faltando.join(', ')}. Perfis que existem: ${perfis.map((p) => p.nome).join(', ') || 'nenhum encontrado'}.` : '');
+  return { ok: abertas.length > 0, detalhe };
+}
+
 // Separa o texto falavel das marcacoes [[ABRIR:...]] conforme o texto chega em pedacos
 function criarFiltro(aoTexto, aoAcao) {
   let pend = '';
@@ -114,8 +168,8 @@ function criarFiltro(aoTexto, aoAcao) {
           return;
         }
         if (i > 0) aoTexto(pend.slice(0, i));
-        const m = /^ABRIR\s*:(.+)$/is.exec(pend.slice(i + 2, f));
-        if (m) aoAcao(m[1]);
+        const m = /^(ABRIR|NAVEGADOR)\s*:(.+)$/is.exec(pend.slice(i + 2, f));
+        if (m) aoAcao(m[1].toUpperCase(), m[2]);
         pend = pend.slice(f + 2);
       }
       const segura = pend.endsWith('[') ? pend.length - 1 : pend.length;
@@ -143,7 +197,7 @@ function perguntar(texto, enviar, anexos = []) {
     if (ag.ativo) {
       // Claude Code completo: arquivos e comandos na pasta de trabalho, conectores da conta e, se ligado, o Claude no Chrome
       args.push('--permission-mode', ag.permissao);
-      if (ag.chrome) args.push('--chrome');
+      if (ag.chrome) args.push('--chrome', '--allowedTools', 'mcp__claude-in-chrome'); // libera as ferramentas da extensao sem pergunta
     } else {
       // A leitura de arquivos so e liberada na vez em que o operador anexou algo
       const ferramentas = anexos.length ? 'WebSearch,WebFetch,Read' : 'WebSearch,WebFetch';
@@ -156,7 +210,10 @@ function perguntar(texto, enviar, anexos = []) {
     ambiente[chavePath] = path.dirname(process.execPath) + path.delimiter + (ambiente[chavePath] || ''); // garante o node para o atalho .cmd
     const filho = spawn(viaShell ? `"${claude}"` : claude, args, { cwd: PASTA_AGENTE, shell: viaShell, windowsHide: true, env: ambiente });
     filho.stdin.on('error', (e) => { erro += ' ' + e.message; }); // se o claude nao abrir, a escrita falha: nao pode derrubar o servidor
-    const filtro = criarFiltro((t) => enviar('texto', { t }), (alvo) => enviar('acao', { alvo, ok: abrir(alvo) }));
+    const filtro = criarFiltro((t) => enviar('texto', { t }), (tipo, alvo) => {
+      if (tipo === 'NAVEGADOR') { const r = abrirNavegador(alvo); enviar('acao', { alvo, ok: r.ok, detalhe: r.detalhe }); }
+      else enviar('acao', { alvo, ok: abrir(alvo) });
+    });
     let resto = '', falou = false, erro = '', resultado = null;
 
     filho.stdout.on('data', (d) => {

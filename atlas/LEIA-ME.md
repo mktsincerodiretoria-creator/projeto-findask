@@ -53,6 +53,18 @@ Por padrão o Atlas só conversa, pesquisa e abre sites. No modo agente ele pass
 
 Depois de mudar, reinicie o Atlas. O Cowork não tem uma forma de ser comandado por fora; o Atlas não o controla.
 
+## Navegadores das lojas
+
+O Atlas abre o Chrome no perfil de cada loja: "Atlas, abre o navegador da Núcleo" ou "Atlas, iniciar os trabalhos" (abre todos). As lojas ficam em `lojas`, no `config.json`:
+
+- `perfil`: parte do nome do perfil como aparece no Chrome (no círculo do canto superior direito). O Atlas casa pelo nome.
+- `apelidos`: formas como você fala o nome da loja.
+- `paginas`: endereços que devem abrir junto, por exemplo `["https://seller.shopee.com.br"]`.
+
+Se uma loja não abrir, a tela mostra os nomes dos perfis que o Atlas encontrou; ajuste `perfil` para bater com um deles.
+
+Para o Atlas também **agir dentro** do navegador pelo Claude no Chrome, ligue `"ativo": true` e `"chrome": true` em `agente`. Isso é experimental: a documentação do Claude Code só descreve a escolha entre vários navegadores no modo interativo (comando `/chrome`, "Select browser"), então o Atlas pode agir apenas no navegador escolhido lá.
+
 ## Se algo der errado
 
 - **Não escuta**: confira se o microfone foi permitido (cadeado ao lado do endereço na janela) e se o microfone padrão do Windows é o certo. O reconhecimento de voz precisa de internet.

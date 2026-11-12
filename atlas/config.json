@@ -46,5 +46,58 @@
     "pasta": "",
     "permissao": "acceptEdits",
     "chrome": false
+  },
+  "lojas": {
+    "dil": {
+      "perfil": "dil",
+      "apelidos": [
+        "dio",
+        "diu",
+        "dil"
+      ],
+      "paginas": []
+    },
+    "tania": {
+      "perfil": "tania",
+      "apelidos": [
+        "tania",
+        "tânia",
+        "tania shopee"
+      ],
+      "paginas": []
+    },
+    "tania mercado livre": {
+      "perfil": "tania mercado livre",
+      "apelidos": [
+        "tania ml",
+        "tania mercado livre"
+      ],
+      "paginas": []
+    },
+    "nucleo": {
+      "perfil": "nucleo",
+      "apelidos": [
+        "nucleo",
+        "núcleo"
+      ],
+      "paginas": []
+    },
+    "alta performance": {
+      "perfil": "alta",
+      "apelidos": [
+        "alta",
+        "alta performance"
+      ],
+      "paginas": []
+    },
+    "cj": {
+      "perfil": "cj",
+      "apelidos": [
+        "cj",
+        "ce jota",
+        "cejota"
+      ],
+      "paginas": []
+    }
   }
 }
