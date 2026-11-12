@@ -124,7 +124,7 @@ function buscarAudio(texto) {
   // pede o audio ja ao enfileirar, para a frase seguinte estar pronta quando a atual terminar
   return fetch('/voz?t=' + encodeURIComponent(texto)).then(async (r) => {
     if (r.ok) return r.blob();
-    if (!neuralAvisado) { neuralAvisado = true; registrar('sis', 'Voz neural indisponível (' + (await r.text()).slice(0, 160) + '). Usando a voz do Windows.'); }
+    if (!neuralAvisado) { neuralAvisado = true; const motivo = (await r.text()).slice(0, 400); registrar('sis', 'VOZ NEURAL NÃO CONECTOU: ' + motivo + ' Por enquanto estou usando a voz do Windows.'); $('estadoEl').textContent = 'Falhou: ' + motivo; }
     return null;
   }).catch(() => null);
 }
@@ -308,10 +308,10 @@ async function salvarNeural(dados) {
   try {
     const r = await (await fetch('/voz-neural', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(dados) })).json();
     cfg.neural = r.neural; cfg.vozNeural = r.vozNeural; neuralAvisado = false; $('chaveEl').value = ''; mostrarNeural();
-    if (cfg.neural) falar('Voz neural ativada. Eu sou ' + cfg.nome + '.');
+    if (cfg.neural) falar('Voz neural ativada. Eu sou ' + cfg.nome + '.'); else $('estadoEl').textContent = 'Desligada (cole a chave e salve)';
   } catch { $('estadoEl').textContent = 'Não consegui salvar.'; }
 }
-function mostrarNeural() { $('estadoEl').textContent = cfg.neural ? 'Ativa' : 'Desligada'; $('vozEl').value = cfg.vozNeural || ''; }
+function mostrarNeural() { $('estadoEl').textContent = cfg.neural ? 'Chave salva' : 'Desligada (sem chave)'; $('vozEl').value = cfg.vozNeural || ''; }
 $('salvarEl').addEventListener('click', () => { const d = { voz: $('vozEl').value }; if ($('chaveEl').value.trim()) d.chave = $('chaveEl').value.trim(); salvarNeural(d); });
 $('desligarEl').addEventListener('click', () => salvarNeural({ chave: '' }));
 
@@ -340,6 +340,7 @@ $('desligarEl').addEventListener('click', () => salvarNeural({ chave: '' }));
   await new Promise((r) => setTimeout(r, 600)); // da tempo de as vozes carregarem
   if (!vozes.length) carregarVozes();
   iniciarEscuta();
+  registrar('sis', cfg.neural ? 'Voz: ElevenLabs (voz ' + cfg.vozNeural + ').' : 'Voz: Windows. Nenhuma chave da ElevenLabs salva; cole em Ajustes de voz.');
   if (cfg.saudacao) falar(cfg.saudacao); else emEspera();
 })();
 </script>

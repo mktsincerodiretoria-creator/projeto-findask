@@ -194,6 +194,19 @@ function perguntar(texto, enviar) {
   });
 }
 
+// Traduz o erro da ElevenLabs para uma instrucao clara
+function explicarElevenLabs(status, detalhe) {
+  const d = String(detalhe).toLowerCase();
+  const formato = /^sk_/.test(chaveEl()) ? '' : ' A chave salva não começa com "sk_", então provavelmente não é uma chave de API: crie uma nova em elevenlabs.io, no menu Developers, em API Keys, e copie no momento em que ela aparece.';
+  if (status === 401 && /missing_permissions/.test(d)) return 'A chave da ElevenLabs existe, mas está sem a permissão de Texto para Fala (Text to Speech). Crie outra chave com essa permissão liberada.';
+  if (status === 401 && /quota/.test(d)) return 'Os créditos da ElevenLabs acabaram.';
+  if (status === 401) return 'A ElevenLabs recusou a chave (chave inválida).' + formato;
+  if (status === 404 || /voice_not_found/.test(d)) return 'A ElevenLabs não encontrou o ID da voz nesta conta. Confira o ID e se a voz foi salva em "Minhas vozes".';
+  if (status === 402 || /payment|subscription|free_users|can_not_use/.test(d)) return 'O seu plano da ElevenLabs não permite usar esta voz pela API. É preciso um plano pago ou outra voz.';
+  if (status === 429 || /quota_exceeded/.test(d)) return 'Limite ou créditos da ElevenLabs esgotados.';
+  return `ElevenLabs respondeu ${status}: ${String(detalhe).slice(0, 200)}`;
+}
+
 // ---------- Servidor HTTP (somente local) ----------
 function origemValida(req) {
   const hosts = [`localhost:${PORTA}`, `127.0.0.1:${PORTA}`];
@@ -221,7 +234,7 @@ const servidor = http.createServer(async (req, res) => {
   if (req.method === 'GET' && rota === '/voz') {
     // Voz neural: converte uma frase em audio pela ElevenLabs. A chave nunca sai deste servidor.
     const texto = (new URL(req.url, URL_LOCAL).searchParams.get('t') || '').slice(0, 1200);
-    if (!chaveEl() || !texto) { res.writeHead(503); return res.end('voz neural nao configurada'); }
+    if (!chaveEl() || !texto) { res.writeHead(503, { 'Content-Type': 'text/plain; charset=utf-8' }); return res.end('Nenhuma chave da ElevenLabs salva.'); }
     try {
       const corpo = { text: texto, model_id: el.modelo,
         voice_settings: { stability: el.estabilidade ?? 0.5, similarity_boost: el.semelhanca ?? 0.8, speed: el.velocidade ?? 0.95 } };
@@ -231,15 +244,15 @@ const servidor = http.createServer(async (req, res) => {
       if (!r.ok) {
         const detalhe = (await r.text()).slice(0, 300);
         log('elevenlabs falhou:', r.status, detalhe);
-        res.writeHead(502, { 'Content-Type': 'text/plain; charset=utf-8' }); return res.end(`ElevenLabs ${r.status}: ${detalhe}`);
+        res.writeHead(502, { 'Content-Type': 'text/plain; charset=utf-8' }); return res.end(explicarElevenLabs(r.status, detalhe));
       }
       res.writeHead(200, { 'Content-Type': 'audio/mpeg', 'Cache-Control': 'no-store' });
       for await (const pedaco of r.body) res.write(pedaco);
       return res.end();
     } catch (e) {
       log('elevenlabs erro:', e.message);
-      if (!res.headersSent) res.writeHead(502);
-      return res.end('erro de rede');
+      if (!res.headersSent) res.writeHead(502, { 'Content-Type': 'text/plain; charset=utf-8' });
+      return res.end('Não consegui alcançar a ElevenLabs (internet, antivírus ou firewall bloqueando api.elevenlabs.io).');
     }
   }
   if (req.method === 'POST' && rota === '/voz-neural') {
