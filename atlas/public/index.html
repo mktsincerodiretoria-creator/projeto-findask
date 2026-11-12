@@ -30,6 +30,10 @@
   #registro p { margin: 0 0 8px; overflow-wrap: anywhere; }
   #registro .eu { color: #7fd69c; opacity: .85; } #registro .eu::before { content: "> "; }
   #registro .ele { color: var(--verde); } #registro .sis { color: #ffb347; font-size: 12px; }
+  #anexos { width: 100%; max-width: 640px; display: flex; flex-wrap: wrap; gap: 6px; font-size: 12px; }
+  #anexos span { border: 1px solid var(--verde2); padding: 3px 8px; border-radius: 3px; display: flex; gap: 8px; align-items: center; max-width: 100%; overflow-wrap: anywhere; }
+  #anexos img { height: 34px; border-radius: 2px; } #anexos b { cursor: pointer; color: #ffb347; font-weight: 400; }
+  body.soltar main { outline: 2px dashed var(--verde); outline-offset: -8px; }
   form { width: 100%; max-width: 640px; display: flex; gap: 6px; }
   input, select, button { font: inherit; font-size: 13px; color: var(--texto); background: #03120a; border: 1px solid var(--verde2); padding: 8px 10px; border-radius: 3px; }
   input[type=text] { flex: 1; min-width: 0; } input:focus, select:focus, button:focus { outline: 1px solid var(--verde); }
@@ -49,8 +53,11 @@
   <div id="mic"><span id="micNome">Microfone: verificando…</span><div id="nivel"><i id="barra"></i></div></div>
   <div id="previa"></div>
   <div id="registro"></div>
+  <div id="anexos"></div>
   <form id="formulario">
-    <input type="text" id="campo" placeholder="Ou digite aqui…" autocomplete="off">
+    <button type="button" id="anexar" title="Enviar foto ou arquivo">Anexar</button>
+    <input type="file" id="arquivo" multiple hidden>
+    <input type="text" id="campo" placeholder="Digite, cole uma foto (Ctrl+V) ou arraste um arquivo…" autocomplete="off">
     <button type="submit">Enviar</button>
   </form>
   <details>
@@ -184,6 +191,39 @@ function calar() {
   emEspera(); retomarEscuta();
 }
 
+// ---------- Fotos e arquivos ----------
+let pendentes = []; // anexos ja enviados ao servidor, esperando o proximo pedido
+function desenharAnexos() {
+  const c = $('anexos'); c.innerHTML = '';
+  pendentes.forEach((a, i) => {
+    const s = document.createElement('span');
+    if (a.previa) { const im = document.createElement('img'); im.src = a.previa; s.appendChild(im); }
+    s.appendChild(document.createTextNode(a.nome));
+    const x = document.createElement('b'); x.textContent = 'remover'; x.onclick = () => { pendentes.splice(i, 1); desenharAnexos(); };
+    s.appendChild(x); c.appendChild(s);
+  });
+}
+async function anexarArquivos(lista) {
+  for (const f of lista) {
+    if (pendentes.length >= 10) { registrar('sis', 'Limite de 10 anexos por pedido.'); break; }
+    const nome = f.name || ('foto-colada.' + ((f.type || 'image/png').split('/')[1] || 'png'));
+    try {
+      const r = await fetch('/anexo?nome=' + encodeURIComponent(nome), { method: 'POST', body: f });
+      if (!r.ok) { registrar('sis', 'Não anexei "' + nome + '": ' + (await r.text() || 'erro ' + r.status)); continue; }
+      const d = await r.json();
+      pendentes.push({ id: d.id, nome: d.nome, previa: /^image\//.test(f.type) ? URL.createObjectURL(f) : null });
+    } catch { registrar('sis', 'Não consegui enviar "' + nome + '".'); }
+  }
+  desenharAnexos(); $('campo').focus();
+}
+document.addEventListener('paste', (e) => {
+  const arqs = [...(e.clipboardData ? e.clipboardData.files : [])];
+  if (arqs.length) { e.preventDefault(); anexarArquivos(arqs); }
+});
+document.addEventListener('dragover', (e) => { e.preventDefault(); document.body.classList.add('soltar'); });
+document.addEventListener('dragleave', () => document.body.classList.remove('soltar'));
+document.addEventListener('drop', (e) => { e.preventDefault(); document.body.classList.remove('soltar'); if (e.dataTransfer && e.dataTransfer.files.length) anexarArquivos([...e.dataTransfer.files]); });
+
 // ---------- Conversa com o servidor ----------
 async function perguntar(texto) {
   if (respondendo) return;
@@ -193,7 +233,8 @@ async function perguntar(texto) {
     await fetch('/nova-conversa', { method: 'POST' }); registrar('sis', 'Conversa reiniciada.'); falar('Memória da conversa apagada.'); return;
   }
   respondendo = true; armadoAte = 0; pausarEscuta();
-  registrar('eu', texto);
+  const anexos = pendentes; pendentes = []; desenharAnexos();
+  registrar('eu', texto + (anexos.length ? '  [' + anexos.map((a) => a.nome).join(', ') + ']' : ''));
   definirEstado('pensando', 'Processando…');
   const linha = registrar('ele', '');
   let buffer = '', completo = '';
@@ -208,7 +249,7 @@ async function perguntar(texto) {
     if (final && buffer.trim()) { falar(buffer); buffer = ''; }
   };
   try {
-    const r = await fetch('/falar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ texto }), signal: cancelar.signal });
+    const r = await fetch('/falar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ texto, anexos: anexos.map((a) => a.id) }), signal: cancelar.signal });
     if (!r.ok) throw new Error(r.status === 409 ? 'Ainda estou terminando o pedido anterior.' : 'Servidor respondeu ' + r.status);
     const leitor = r.body.getReader(), dec = new TextDecoder();
     let sse = '';
@@ -325,7 +366,9 @@ function retomarEscuta() { querEscutar = true; ligar(); }
 function pausarEscuta() { querEscutar = false; $('previa').textContent = ''; if (rec && escutaLigada) { try { rec.abort(); } catch {} } }
 
 // ---------- Interface ----------
-$('formulario').addEventListener('submit', (e) => { e.preventDefault(); const t = $('campo').value.trim(); $('campo').value = ''; if (t) { speechSynthesis.cancel(); pararAudio(); fila = []; falando = false; perguntar(t); } });
+$('formulario').addEventListener('submit', (e) => { e.preventDefault(); const t = $('campo').value.trim(); $('campo').value = ''; if (t || pendentes.length) { speechSynthesis.cancel(); pararAudio(); fila = []; falando = false; perguntar(t || 'Veja o que eu anexei e me diga o que é.'); } });
+$('anexar').addEventListener('click', () => $('arquivo').click());
+$('arquivo').addEventListener('change', () => { anexarArquivos([...$('arquivo').files]); $('arquivo').value = ''; });
 $('orbe').addEventListener('click', () => { if (falando || respondendo) calar(); else if (micOk) armar(8); });
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') calar(); });
 $('ativar').addEventListener('click', () => { $('ativar').style.display = 'none'; vozBloqueada = false; proximaFala(); });

@@ -61,6 +61,15 @@ if (!['acceptEdits', 'auto', 'dontAsk', 'bypassPermissions'].includes(ag.permiss
 const PASTA_AGENTE = ag.ativo ? (ag.pasta || path.join(os.homedir(), 'Atlas-trabalho')) : DIR;
 if (ag.ativo) fs.mkdirSync(PASTA_AGENTE, { recursive: true });
 
+// Fotos e arquivos enviados pela janela ficam nesta pasta, para o Claude ler
+const PASTA_ANEXOS = path.join(DIR, 'anexos');
+const LIMITE_ANEXO = 20 * 1024 * 1024;
+fs.mkdirSync(PASTA_ANEXOS, { recursive: true });
+function caminhosDosAnexos(ids) {
+  return (Array.isArray(ids) ? ids : []).slice(0, 10).map((id) => path.join(PASTA_ANEXOS, path.basename(String(id))))
+    .filter((p) => { try { return fs.statSync(p).isFile(); } catch { return false; } });
+}
+
 let sessao = { id: null, ultimoUso: 0 };
 let ocupado = false;
 
@@ -117,7 +126,7 @@ function criarFiltro(aoTexto, aoAcao) {
 }
 
 // ---------- Conversa com o Claude ----------
-function perguntar(texto, enviar) {
+function perguntar(texto, enviar, anexos = []) {
   return new Promise((resolver) => {
     if (Date.now() - sessao.ultimoUso > SESSAO_EXPIRA_MS) sessao.id = null;
     const claude = acharClaude();
@@ -136,7 +145,9 @@ function perguntar(texto, enviar) {
       args.push('--permission-mode', ag.permissao);
       if (ag.chrome) args.push('--chrome');
     } else {
-      args.push('--tools', 'WebSearch,WebFetch', '--allowedTools', 'WebSearch,WebFetch', '--strict-mcp-config');
+      // A leitura de arquivos so e liberada na vez em que o operador anexou algo
+      const ferramentas = anexos.length ? 'WebSearch,WebFetch,Read' : 'WebSearch,WebFetch';
+      args.push('--tools', ferramentas, '--allowedTools', ferramentas, '--strict-mcp-config');
     }
     if (sessao.id) args.push('--resume', sessao.id);
 
@@ -190,7 +201,10 @@ function perguntar(texto, enviar) {
       }
     });
     const agora = new Date().toLocaleString('pt-BR', { dateStyle: 'full', timeStyle: 'short' });
-    filho.stdin.end(`[Agora: ${agora}]\n${texto}`);
+    const notaAnexos = anexos.length
+      ? `\n\n[O operador anexou ${anexos.length} arquivo(s). Abra cada um com a ferramenta Read antes de responder:\n${anexos.join('\n')}]`
+      : '';
+    filho.stdin.end(`[Agora: ${agora}]\n${texto}${notaAnexos}`);
   });
 }
 
@@ -270,6 +284,21 @@ const servidor = http.createServer(async (req, res) => {
     });
     return;
   }
+  if (req.method === 'POST' && rota === '/anexo') {
+    // Recebe o arquivo cru no corpo; o nome vem na URL
+    const original = path.basename(new URL(req.url, URL_LOCAL).searchParams.get('nome') || 'arquivo').replace(/[^\w.\- ]/g, '_').slice(-80) || 'arquivo';
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${original}`;
+    const destino = path.join(PASTA_ANEXOS, id);
+    const saida = fs.createWriteStream(destino);
+    let tamanho = 0, estourou = false;
+    req.on('data', (d) => { tamanho += d.length; if (tamanho > LIMITE_ANEXO) { estourou = true; req.destroy(); saida.destroy(); } });
+    req.pipe(saida);
+    const falhar = (codigo, msg) => { fs.unlink(destino, () => {}); if (!res.headersSent) { res.writeHead(codigo, { 'Content-Type': 'text/plain; charset=utf-8' }); res.end(msg); } };
+    req.on('close', () => { if (estourou) falhar(413, 'Arquivo grande demais (limite de 20 MB).'); });
+    saida.on('error', () => falhar(500, 'Não consegui salvar o arquivo.'));
+    saida.on('finish', () => { if (estourou) return; res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify({ id, nome: original })); });
+    return;
+  }
   if (req.method === 'POST' && rota === '/nova-conversa') {
     sessao = { id: null, ultimoUso: 0 };
     res.writeHead(204); return res.end();
@@ -278,17 +307,18 @@ const servidor = http.createServer(async (req, res) => {
     let corpo = '';
     req.on('data', (d) => { corpo += d; if (corpo.length > 20000) req.destroy(); });
     req.on('end', async () => {
-      let texto = '';
-      try { texto = String(JSON.parse(corpo).texto || '').trim(); } catch {}
+      let texto = '', anexos = [];
+      try { const d = JSON.parse(corpo); texto = String(d.texto || '').trim(); anexos = caminhosDosAnexos(d.anexos); } catch {}
+      if (!texto && anexos.length) texto = 'Veja o que eu anexei e me diga o que é.';
       if (!texto) { res.writeHead(400); return res.end('sem texto'); }
       if (ocupado) { res.writeHead(409); return res.end('ocupado'); }
       ocupado = true;
       res.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-store', Connection: 'keep-alive' });
       const enviar = (tipo, dados) => res.write(`event: ${tipo}\ndata: ${JSON.stringify(dados)}\n\n`);
-      log('pedido:', texto);
+      log('pedido:', texto, anexos.length ? `(+${anexos.length} anexo)` : '');
       try {
-        let r = await perguntar(texto, enviar);
-        if (!r.ok && !r.semClaude && sessao.id) { sessao.id = null; r = await perguntar(texto, enviar); } // sessao antiga invalida
+        let r = await perguntar(texto, enviar, anexos);
+        if (!r.ok && !r.semClaude && sessao.id) { sessao.id = null; r = await perguntar(texto, enviar, anexos); } // sessao antiga invalida
         if (!r.ok) enviar('erro', { detalhe: r.detalhe });
       } catch (e) {
         enviar('erro', { detalhe: e.message });
@@ -323,4 +353,5 @@ servidor.on('error', (e) => {
   if (e.code === 'EADDRINUSE') { log('ja estava rodando; so abrindo a janela'); abrirJanela(); setTimeout(() => process.exit(0), 1500); }
   else { log('erro do servidor:', e.message); process.exit(1); }
 });
+try { for (const f of fs.readdirSync(PASTA_ANEXOS)) { const p = path.join(PASTA_ANEXOS, f); if (Date.now() - fs.statSync(p).mtimeMs > 7 * 864e5) fs.unlinkSync(p); } } catch {}
 servidor.listen(PORTA, '127.0.0.1', () => { log(`${cfg.nome} online em ${URL_LOCAL}` + (ag.ativo ? ` | modo agente em ${PASTA_AGENTE} (${ag.permissao}${ag.chrome ? ', chrome' : ''})` : '')); abrirJanela(); });
