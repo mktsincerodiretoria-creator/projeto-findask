@@ -42,10 +42,10 @@
     "velocidade": 1.1
   },
   "agente": {
-    "ativo": false,
+    "ativo": true,
     "pasta": "",
     "permissao": "acceptEdits",
-    "chrome": false
+    "chrome": true
   },
   "lojas": {
     "dil": {

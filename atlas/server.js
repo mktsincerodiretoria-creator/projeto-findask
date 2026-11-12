@@ -180,6 +180,7 @@ function criarFiltro(aoTexto, aoAcao) {
 }
 
 // ---------- Conversa com o Claude ----------
+let chromeFalhou = false; // se a ligacao com o Chrome quebrar o Claude Code, segue sem ela ate reiniciar
 function perguntar(texto, enviar, anexos = []) {
   return new Promise((resolver) => {
     if (Date.now() - sessao.ultimoUso > SESSAO_EXPIRA_MS) sessao.id = null;
@@ -197,7 +198,7 @@ function perguntar(texto, enviar, anexos = []) {
     if (ag.ativo) {
       // Claude Code completo: arquivos e comandos na pasta de trabalho, conectores da conta e, se ligado, o Claude no Chrome
       args.push('--permission-mode', ag.permissao);
-      if (ag.chrome) args.push('--chrome', '--allowedTools', 'mcp__claude-in-chrome'); // libera as ferramentas da extensao sem pergunta
+      if (ag.chrome && !chromeFalhou) args.push('--chrome', '--allowedTools', 'mcp__claude-in-chrome'); // libera as ferramentas da extensao sem pergunta
     } else {
       // A leitura de arquivos so e liberada na vez em que o operador anexou algo
       const ferramentas = anexos.length ? 'WebSearch,WebFetch,Read' : 'WebSearch,WebFetch';
@@ -378,6 +379,14 @@ const servidor = http.createServer(async (req, res) => {
       log('pedido:', texto, anexos.length ? `(+${anexos.length} anexo)` : '');
       try {
         let r = await perguntar(texto, enviar, anexos);
+        if (!r.ok && !r.semClaude && ag.ativo && ag.chrome && !chromeFalhou) {
+          // Pode ter sido a ligacao com o Chrome: tenta de novo sem ela, para o assistente nao ficar mudo
+          chromeFalhou = true; log('falhou com --chrome; tentando sem:', r.detalhe);
+          const r2 = await perguntar(texto, enviar, anexos);
+          if (r2.ok) enviar('acao', { ok: false, detalhe: 'A ligação com o Claude no Chrome falhou (' + String(r.detalhe).slice(0, 200) + '). Respondi sem ela.' });
+          else chromeFalhou = false;
+          r = r2;
+        }
         if (!r.ok && !r.semClaude && sessao.id) { sessao.id = null; r = await perguntar(texto, enviar, anexos); } // sessao antiga invalida
         if (!r.ok) enviar('erro', { detalhe: r.detalhe });
       } catch (e) {
