@@ -22,6 +22,8 @@
   @keyframes pulso { 50% { transform: scale(1.07); } }
   @keyframes gira { to { transform: rotate(360deg); } }
   #status { font-size: 13px; color: var(--verde); min-height: 18px; text-align: center; text-shadow: 0 0 8px #00ff6688; }
+  #mic { font-size: 11px; opacity: .8; text-align: center; width: 100%; max-width: 320px; }
+  #nivel { height: 5px; border: 1px solid #0a8f3c88; margin-top: 4px; } #barra { display: block; height: 100%; width: 0; background: var(--verde); }
   #previa { font-size: 12px; min-height: 16px; opacity: .6; text-align: center; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   #registro { flex: 1; width: 100%; max-width: 640px; overflow-y: auto; font-size: 13px; line-height: 1.5; padding: 8px 4px;
     border-top: 1px solid #0a8f3c55; scrollbar-width: thin; scrollbar-color: var(--verde2) transparent; }
@@ -44,6 +46,7 @@
   <h1 id="titulo">ATLAS</h1>
   <div id="orbe" title="Clique para falar sem dizer o nome. Clique de novo (ou Esc) para interromper."></div>
   <div id="status">Iniciando…</div>
+  <div id="mic"><span id="micNome">Microfone: verificando…</span><div id="nivel"><i id="barra"></i></div></div>
   <div id="previa"></div>
   <div id="registro"></div>
   <form id="formulario">
@@ -235,6 +238,7 @@ async function perguntar(texto) {
 
 // ---------- Escuta (reconhecimento de voz) ----------
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let ouviuAlgo = false;
 let rec = null, escutaLigada = false, querEscutar = false, errosSeguidos = 0, timerArmado = null;
 
 function armar(segundos, comSom = true) {
@@ -263,12 +267,38 @@ function aoOuvir(texto) {
     perguntar(texto);
   }
 }
+// Diagnostico do microfone: forca o pedido de permissao, mostra qual aparelho esta em uso e o nivel do som
+async function verificarMicrofone() {
+  const nome = $('micNome');
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { nome.textContent = 'Microfone: este navegador não dá acesso.'; return; }
+  try {
+    const fluxo = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const faixa = fluxo.getAudioTracks()[0];
+    nome.textContent = 'Microfone: ' + (faixa && faixa.label ? faixa.label : 'ligado');
+    audioCtx = audioCtx || new AudioContext();
+    const analisador = audioCtx.createAnalyser(); analisador.fftSize = 512;
+    audioCtx.createMediaStreamSource(fluxo).connect(analisador);
+    const dados = new Uint8Array(analisador.fftSize); let pico = 0, avisou = false; const inicio = Date.now();
+    setInterval(() => {
+      analisador.getByteTimeDomainData(dados);
+      let m = 0; for (const v of dados) m = Math.max(m, Math.abs(v - 128));
+      pico = Math.max(pico, m); $('barra').style.width = Math.min(100, m * 2.5) + '%';
+      if (!avisou && pico < 3 && Date.now() - inicio > 12000) { avisou = true; registrar('sis', 'O microfone "' + (faixa.label || '') + '" está ligado, mas não chega som nenhum. Confira se ele não está mudo e se é o microfone certo em Configurações do Windows > Sistema > Som > Entrada.'); }
+    }, 100);
+    if (audioCtx.state === 'suspended') document.addEventListener('click', () => audioCtx.resume(), { once: true });
+  } catch (e) {
+    if (e.name === 'NotAllowedError') { nome.textContent = 'Microfone: BLOQUEADO'; registrar('sis', 'O microfone está bloqueado para o Atlas. Clique no ícone à esquerda do endereço, no alto da janela, escolha Permitir para o microfone e aperte F5. Confira também Configurações do Windows > Privacidade e segurança > Microfone.'); }
+    else if (e.name === 'NotFoundError') { nome.textContent = 'Microfone: NÃO ENCONTRADO'; registrar('sis', 'O Windows não encontrou nenhum microfone. Conecte um microfone ou headset e aperte F5.'); }
+    else { nome.textContent = 'Microfone: erro (' + e.name + ')'; registrar('sis', 'Não consegui abrir o microfone: ' + e.message); }
+  }
+}
 function iniciarEscuta() {
   if (!SR) { registrar('sis', 'Este navegador não tem reconhecimento de voz. Use o Chrome ou o Edge.'); emEspera(); return; }
   rec = new SR(); rec.lang = 'pt-BR'; rec.continuous = true; rec.interimResults = true;
   rec.onstart = () => { escutaLigada = true; if (!micOk) { micOk = true; if (estado === 'parado') emEspera(); } };
   rec.onresult = (ev) => {
     errosSeguidos = 0;
+    ouviuAlgo = true;
     for (let i = ev.resultIndex; i < ev.results.length; i++) {
       const t = ev.results[i][0].transcript;
       if (ev.results[i].isFinal) { $('previa').textContent = ''; aoOuvir(t); } else $('previa').textContent = t;
@@ -281,8 +311,10 @@ function iniciarEscuta() {
       querEscutar = false; micOk = false;
       registrar('sis', 'Microfone bloqueado. Clique no cadeado ao lado do endereço, permita o microfone e recarregue (F5).');
       definirEstado('erro', 'Microfone bloqueado');
+    } else if (ev.error === 'audio-capture') {
+      if (errosSeguidos === 1) registrar('sis', 'O reconhecimento de voz não conseguiu usar o microfone (nenhum microfone ou em uso exclusivo por outro programa).');
     } else if (errosSeguidos === 3) {
-      registrar('sis', 'Reconhecimento de voz falhando (' + ev.error + '). Verifique a internet e o microfone. Se persistir, troque "navegador" no config.json para "chrome" ou "edge".');
+      registrar('sis', 'O reconhecimento de voz do navegador está falhando (' + ev.error + '). Ele precisa de internet. Se a barra do microfone se mexe quando você fala e mesmo assim nada é entendido, instale o Google Chrome: o reconhecimento de voz funciona melhor nele do que no Edge.');
     }
   };
   rec.onend = () => { escutaLigada = false; if (querEscutar) setTimeout(ligar, errosSeguidos > 2 ? 3000 : 250); };
@@ -339,7 +371,9 @@ $('desligarEl').addEventListener('click', () => salvarNeural({ chave: '' }));
   carregarVozes(); speechSynthesis.onvoiceschanged = carregarVozes;
   await new Promise((r) => setTimeout(r, 600)); // da tempo de as vozes carregarem
   if (!vozes.length) carregarVozes();
+  verificarMicrofone();
   iniciarEscuta();
+  setTimeout(() => { if (micOk && !ouviuAlgo) registrar('sis', 'Ainda não entendi nenhuma palavra. Se a barra verde do microfone se mexe quando você fala, o problema é o reconhecimento de voz do navegador (precisa de internet; funciona melhor no Google Chrome). Se a barra não se mexe, o problema é o microfone no Windows. Enquanto isso, dá para digitar.'); }, 45000);
   registrar('sis', cfg.neural ? 'Voz: ElevenLabs (voz ' + cfg.vozNeural + ').' : 'Voz: Windows. Nenhuma chave da ElevenLabs salva; cole em Ajustes de voz.');
   if (cfg.saudacao) falar(cfg.saudacao); else emEspera();
 })();
